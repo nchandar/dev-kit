@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Local learning inbox: move reusable lessons from a task's state.md toward the shared library, with your approval.
+#   learn queue [-t id]               move open "general" and "recipe" learnings to the inbox (box becomes [~])
+#   learn list                        queued learnings not yet promoted or dropped, with ids
+#   learn count                       how many are waiting
+#   learn done <id> promoted|dropped  record the outcome and flip the box in the task's state.md ([x] or [-])
+# Inbox: ${HARNESS_LEARN_DIR:-~/.agents/learnings}/inbox.tsv and done.tsv. Append-only, local, never inside any repo.
+set -u
+here=$(dirname "$0")
+L=${HARNESS_LEARN_DIR:-$HOME/.agents/learnings}; IN=$L/inbox.tsv; DN=$L/done.tsv
+die() { echo "learn: $*" >&2; exit 2; }
+pending() { # "<id>\t<inbox row>" for rows with no outcome yet
+  [ -s "$IN" ] || return 0
+  local ids=" "; [ -f "$DN" ] && ids=" $(tail -n +2 "$DN" | cut -f2 | tr '\n' ' ') "
+  awk -F'\t' -v done="$ids" 'FNR > 1 && index(done, " " (FNR - 1) " ") == 0 { print FNR - 1 "\t" $0 }' "$IN"; }
+
+cmd=${1:-}; [ $# -gt 0 ] && shift
+case $cmd in
+  count) pending | wc -l | tr -d ' ';;
+  list)
+    p=$(pending); [ -n "$p" ] || { echo "no learnings queued"; exit 0; }
+    printf '%s\n' "$p" | awk -F'\t' '{ printf "%s  %-7s %s (%s) [%s]\n", $1, $5, $6, $7, $3 }';;
+  queue)
+    task=${HARNESS_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
+    [ -n "$task" ] || die "no task (set HARNESS_TASK or pass -t)"
+    D=$("$here/ledger" -t "$task" path 2>/dev/null) || die "unknown task '$task'"
+    S=$D/state.md; [ -f "$S" ] || die "no state.md in $task"
+    base=$("$here/ledger" base); project=$(basename "$(dirname "$base")")
+    mkdir -p "$L"; [ -s "$IN" ] || printf 'time\tproject\ttask\tscope\tlesson\tref\tfrom\n' > "$IN"
+    cnt=$(mktemp); trap 'rm -f "$cnt" "$S.new"' EXIT
+    awk -v ts="$(date -u +%FT%TZ)" -v project="$project" -v task="$task" -v from="$base" -v inbox="$IN" -v cnt="$cnt" '
+      /^- \[ \] .* \| scope: (general|recipe) \| ref: .+$/ {
+        line = $0; sub(/^- \[ \] /, "", line)
+        i = index(line, " | scope: "); lesson = substr(line, 1, i - 1); rest = substr(line, i + 10)
+        j = index(rest, " | ref: "); scope = substr(rest, 1, j - 1); ref = substr(rest, j + 8)
+        gsub(/\t/, " ", lesson); gsub(/\t/, " ", ref)
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, project, task, scope, lesson, ref, from >> inbox
+        print "- [~] " line; q++; next }
+      { print }
+      END { print q + 0 > cnt }' "$S" > "$S.new" && mv "$S.new" "$S"
+    echo "queued $(cat "$cnt")";;
+  done)
+    id=${1:-}; out=${2:-}
+    case $id in ''|*[!0-9]*) die "usage: learn done <id> promoted|dropped";; esac
+    case $out in promoted|dropped) ;; *) die "outcome must be promoted or dropped";; esac
+    row=$(pending | awk -F'\t' -v id="$id" '$1 == id') ; [ -n "$row" ] || die "no queued learning with id $id"
+    mkdir -p "$L"; [ -s "$DN" ] || printf 'time\tid\toutcome\n' > "$DN"
+    printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$id" "$out" >> "$DN"
+    task=$(printf '%s' "$row" | cut -f4); lesson=$(printf '%s' "$row" | cut -f6); from=$(printf '%s' "$row" | cut -f8)
+    S=$from/tasks/$task/state.md
+    if [ -f "$S" ]; then
+      box=x; [ "$out" = dropped ] && box=-
+      awk -v pre="- [~] $lesson | scope: " -v box="$box" 'index($0, pre) == 1 { $0 = "- [" box "] " substr($0, 7) } { print }' "$S" > "$S.new" && mv "$S.new" "$S"
+    fi
+    echo "learning $id $out";;
+  *) die "usage: learn queue|list|count|done";;
+esac
