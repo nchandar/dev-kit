@@ -63,6 +63,11 @@ Workers skip permission prompts but can never push.
 | `HARNESS_SAFE=1` | restricted worker permissions |
 | `HARNESS_TIMEOUT` / `HARNESS_MAX_WORKERS` | kill a hung worker (900 s) / live workers (2) |
 
-[Contributing](CONTRIBUTING.md) · [Animated architecture](docs/architecture.html) (open locally) · MIT, see `LICENSE`
+## Under the hood
+![Detailed architecture](docs/architecture.svg)
+
+Every tool, file format, skill and library file is described in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+[Contributing](CONTRIBUTING.md) · [Architecture](ARCHITECTURE.md) · MIT, see `LICENSE`
 
 Ideas adapted, not copied, from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), [mattpocock/skills](https://github.com/mattpocock/skills) and [cursor/plugins](https://github.com/cursor/plugins). All MIT.

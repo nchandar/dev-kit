@@ -22,7 +22,7 @@ Requirements: bash 3.2 or newer, git 2.31 or newer. Standard Unix tools only (no
 | `bin/` | Tools: ledger, reconcile, spawn, state, learn, run, lint-budget |
 | `tests/` | One script suite per tool, plus `run-all.sh` |
 | `evals/` | Real-agent end-to-end checks (cost tokens) |
-| `docs/` | `flow.svg` (the README animation) and `architecture.html` (animated walkthrough) |
+| `docs/` | `flow.svg` (README hero), `architecture.svg` (detailed, animated) and `architecture.html` (interactive walkthrough) |
 
 ## 3. The budgets
 Enforced by `bin/lint-budget`:
@@ -50,7 +50,7 @@ One home per rule. Point to it elsewhere, never copy.
 | A library rule | Its home file, and the pointer in `library/principles.md` |
 | `AGENTS.md` routes | `README.md` (skills, usage)  |
 | A recipe | Its line in `library/recipes/index.md` |
-| The task flow (stages or tools) | `docs/flow.svg` and `docs/architecture.html` |
+| The task flow, tools or tiers | `docs/flow.svg`, `docs/architecture.svg`, `docs/architecture.html` and `ARCHITECTURE.md` |
 
 ## 5. Adding things
 | Add | How |

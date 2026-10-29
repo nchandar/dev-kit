@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 670" width="1000" height="670" role="img" aria-label="agent-harness architecture: main agent, skills, library tiers, per-task folder, workers, tools and the learning pipeline">
+<title>agent-harness architecture</title>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+.h{fill:#e6edf3;font-size:15px;font-weight:600}
+.pt{fill:#8b949e;font-size:11.5px;font-weight:600;letter-spacing:.3px}
+.t{fill:#e6edf3;font-size:12px;font-weight:600;text-anchor:middle}
+.s{fill:#8b949e;font-size:10.5px;text-anchor:middle}
+.l{fill:#c9d1d9;font-size:11.5px}
+.cap{fill:#c9d1d9;font-size:13px;text-anchor:middle;opacity:0}
+.pill{fill:#161b22;stroke:#30363d;stroke-width:1}
+.pl{fill:#e6edf3;font-size:11.5px;text-anchor:middle}
+.pan{fill:#0f141b;stroke:#30363d;stroke-width:1.5}
+.chip{fill:#161b22;stroke:#30363d;stroke-width:1.5}
+.ln{fill:none;stroke:#3b434c;stroke-width:2}
+.dot{opacity:0}
+@keyframes pa1{0%{stroke:#58a6ff;stroke-width:2.2}24.99%{stroke:#58a6ff;stroke-width:2.2}25%{stroke:#30363d;stroke-width:1.5}100%{stroke:#30363d;stroke-width:1.5}}@keyframes ca1{0%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}24.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}25%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes sa1{0%{stroke:#58a6ff;stroke-width:2.6}24.99%{stroke:#58a6ff;stroke-width:2.6}25%{stroke:#3b434c;stroke-width:2}100%{stroke:#3b434c;stroke-width:2}}@keyframes oa1{0%{opacity:1}24.99%{opacity:1}25%{opacity:0}100%{opacity:0}}@keyframes pa2{0%{stroke:#30363d;stroke-width:1.5}24.99%{stroke:#30363d;stroke-width:1.5}25%{stroke:#58a6ff;stroke-width:2.2}49.99%{stroke:#58a6ff;stroke-width:2.2}50%{stroke:#30363d;stroke-width:1.5}100%{stroke:#30363d;stroke-width:1.5}}@keyframes ca2{0%{stroke:#30363d;stroke-width:1.5;fill:#161b22}24.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}25%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}49.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}50%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes sa2{0%{stroke:#3b434c;stroke-width:2}24.99%{stroke:#3b434c;stroke-width:2}25%{stroke:#58a6ff;stroke-width:2.6}49.99%{stroke:#58a6ff;stroke-width:2.6}50%{stroke:#3b434c;stroke-width:2}100%{stroke:#3b434c;stroke-width:2}}@keyframes oa2{0%{opacity:0}24.99%{opacity:0}25%{opacity:1}49.99%{opacity:1}50%{opacity:0}100%{opacity:0}}@keyframes pa3{0%{stroke:#30363d;stroke-width:1.5}49.99%{stroke:#30363d;stroke-width:1.5}50%{stroke:#58a6ff;stroke-width:2.2}74.99%{stroke:#58a6ff;stroke-width:2.2}75%{stroke:#30363d;stroke-width:1.5}100%{stroke:#30363d;stroke-width:1.5}}@keyframes ca3{0%{stroke:#30363d;stroke-width:1.5;fill:#161b22}49.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}50%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}74.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}75%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes sa3{0%{stroke:#3b434c;stroke-width:2}49.99%{stroke:#3b434c;stroke-width:2}50%{stroke:#58a6ff;stroke-width:2.6}74.99%{stroke:#58a6ff;stroke-width:2.6}75%{stroke:#3b434c;stroke-width:2}100%{stroke:#3b434c;stroke-width:2}}@keyframes oa3{0%{opacity:0}49.99%{opacity:0}50%{opacity:1}74.99%{opacity:1}75%{opacity:0}100%{opacity:0}}@keyframes pa4{0%{stroke:#30363d;stroke-width:1.5}74.99%{stroke:#30363d;stroke-width:1.5}75%{stroke:#58a6ff;stroke-width:2.2}99.99%{stroke:#58a6ff;stroke-width:2.2}}@keyframes ca4{0%{stroke:#30363d;stroke-width:1.5;fill:#161b22}74.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}75%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}99.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}}@keyframes sa4{0%{stroke:#3b434c;stroke-width:2}74.99%{stroke:#3b434c;stroke-width:2}75%{stroke:#58a6ff;stroke-width:2.6}99.99%{stroke:#58a6ff;stroke-width:2.6}}@keyframes oa4{0%{opacity:0}74.99%{opacity:0}75%{opacity:1}99.99%{opacity:1}}@keyframes pa123{0%{stroke:#58a6ff;stroke-width:2.2}74.99%{stroke:#58a6ff;stroke-width:2.2}75%{stroke:#30363d;stroke-width:1.5}100%{stroke:#30363d;stroke-width:1.5}}@keyframes ca123{0%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}74.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}75%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes sa123{0%{stroke:#58a6ff;stroke-width:2.6}74.99%{stroke:#58a6ff;stroke-width:2.6}75%{stroke:#3b434c;stroke-width:2}100%{stroke:#3b434c;stroke-width:2}}@keyframes oa123{0%{opacity:1}74.99%{opacity:1}75%{opacity:0}100%{opacity:0}}@keyframes pa23{0%{stroke:#30363d;stroke-width:1.5}24.99%{stroke:#30363d;stroke-width:1.5}25%{stroke:#58a6ff;stroke-width:2.2}74.99%{stroke:#58a6ff;stroke-width:2.2}75%{stroke:#30363d;stroke-width:1.5}100%{stroke:#30363d;stroke-width:1.5}}@keyframes ca23{0%{stroke:#30363d;stroke-width:1.5;fill:#161b22}24.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}25%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}74.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}75%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes sa23{0%{stroke:#3b434c;stroke-width:2}24.99%{stroke:#3b434c;stroke-width:2}25%{stroke:#58a6ff;stroke-width:2.6}74.99%{stroke:#58a6ff;stroke-width:2.6}75%{stroke:#3b434c;stroke-width:2}100%{stroke:#3b434c;stroke-width:2}}@keyframes oa23{0%{opacity:0}24.99%{opacity:0}25%{opacity:1}74.99%{opacity:1}75%{opacity:0}100%{opacity:0}}@keyframes pa14{0%{stroke:#58a6ff;stroke-width:2.2}24.99%{stroke:#58a6ff;stroke-width:2.2}25%{stroke:#30363d;stroke-width:1.5}74.99%{stroke:#30363d;stroke-width:1.5}75%{stroke:#58a6ff;stroke-width:2.2}99.99%{stroke:#58a6ff;stroke-width:2.2}}@keyframes ca14{0%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}24.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}25%{stroke:#30363d;stroke-width:1.5;fill:#161b22}74.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}75%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}99.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}}@keyframes sa14{0%{stroke:#58a6ff;stroke-width:2.6}24.99%{stroke:#58a6ff;stroke-width:2.6}25%{stroke:#3b434c;stroke-width:2}74.99%{stroke:#3b434c;stroke-width:2}75%{stroke:#58a6ff;stroke-width:2.6}99.99%{stroke:#58a6ff;stroke-width:2.6}}@keyframes oa14{0%{opacity:1}24.99%{opacity:1}25%{opacity:0}74.99%{opacity:0}75%{opacity:1}99.99%{opacity:1}}@keyframes pa34{0%{stroke:#30363d;stroke-width:1.5}49.99%{stroke:#30363d;stroke-width:1.5}50%{stroke:#58a6ff;stroke-width:2.2}99.99%{stroke:#58a6ff;stroke-width:2.2}}@keyframes ca34{0%{stroke:#30363d;stroke-width:1.5;fill:#161b22}49.99%{stroke:#30363d;stroke-width:1.5;fill:#161b22}50%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}99.99%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}}@keyframes sa34{0%{stroke:#3b434c;stroke-width:2}49.99%{stroke:#3b434c;stroke-width:2}50%{stroke:#58a6ff;stroke-width:2.6}99.99%{stroke:#58a6ff;stroke-width:2.6}}@keyframes oa34{0%{opacity:0}49.99%{opacity:0}50%{opacity:1}99.99%{opacity:1}}@keyframes pulse{0%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}3.750%{stroke:#58a6ff;stroke-width:2.2;fill:#1c2b44}3.760%{stroke:#30363d;stroke-width:1.5;fill:#161b22}100%{stroke:#30363d;stroke-width:1.5;fill:#161b22}}@keyframes pillon{0%{fill:#1f6feb}25%{fill:#1f6feb}25.01%{fill:#161b22}100%{fill:#161b22}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}.cap{opacity:0}}
+</style>
+<defs>
+<marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#58606a"/></marker>
+<filter id="gl" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<rect x="0.75" y="0.75" width="998.5" height="668.5" rx="14" fill="#0b0f14" stroke="#30363d" stroke-width="1.5"/>
+
+<text x="20" y="30" class="h">agent-harness architecture</text>
+<rect class="pill" x="640" y="12" width="70" height="22" rx="11" style="animation:pillon 24s linear infinite;animation-delay:0s"/>
+<text class="pl" x="675.0" y="27">1 Ask</text>
+<rect class="pill" x="720" y="12" width="100" height="22" rx="11" style="animation:pillon 24s linear infinite;animation-delay:6s"/>
+<text class="pl" x="770.0" y="27">2 Work and log</text>
+<rect class="pill" x="828" y="12" width="72" height="22" rx="11" style="animation:pillon 24s linear infinite;animation-delay:12s"/>
+<text class="pl" x="864.0" y="27">3 Delegate</text>
+<rect class="pill" x="908" y="12" width="72" height="22" rx="11" style="animation:pillon 24s linear infinite;animation-delay:18s"/>
+<text class="pl" x="944.0" y="27">4 Learn</text>
+<rect class="pan" x="564" y="52" width="416" height="84" rx="10" style="animation:pa123 24s linear infinite;"/>
+<text class="pt" x="576" y="70">SKILLS (listed, 6)</text>
+<rect class="pan" x="124" y="56" width="250" height="72" rx="10" style="animation:pa1 24s linear infinite;"/>
+<text class="pt" x="136" y="74">MAIN AGENT (any CLI)</text>
+<rect class="pan" x="20" y="160" width="300" height="200" rx="10" style="animation:pa14 24s linear infinite;"/>
+<text class="pt" x="32" y="178">LIBRARY (shared, read on demand)</text>
+<rect class="pan" x="340" y="160" width="330" height="200" rx="10" style="animation:pa23 24s linear infinite;"/>
+<text class="pt" x="352" y="178">PER TASK: .harness/tasks/ID/</text>
+<text class="s" x="658" y="178" style="text-anchor:end">local, git-ignored</text>
+<rect class="pan" x="690" y="160" width="290" height="200" rx="10" style="animation:pa3 24s linear infinite;"/>
+<text class="pt" x="702" y="178">WORKERS (headless, max 2)</text>
+<rect class="pan" x="20" y="380" width="960" height="64" rx="10" style=""/>
+<text class="pt" x="32" y="398">bin/ TOOLS</text>
+<rect class="pan" x="20" y="470" width="960" height="120" rx="10" style="animation:pa4 24s linear infinite;"/>
+<text class="pt" x="32" y="488">CONTINUAL LEARNING: lessons become library edits, only with your approval</text>
+<path class="ln" d="M104,92 L124,92" marker-end="url(#ar)" style="animation:sa1 24s linear infinite;"/>
+<path class="ln" d="M374,92 L394,92" marker-end="url(#ar)" style="animation:sa1 24s linear infinite;"/>
+<path class="ln" d="M544,92 L564,92" marker-end="url(#ar)" style="animation:sa1 24s linear infinite;"/>
+<path class="ln" d="M600,136 L600,148 L170,148 L170,160" marker-end="url(#ar)" style="animation:sa1 24s linear infinite;"/>
+<path class="ln" d="M700,136 L700,154 L505,154 L505,160" marker-end="url(#ar)" style="animation:sa2 24s linear infinite;"/>
+<path class="ln" d="M900,136 L900,160" marker-end="url(#ar)" style="animation:sa3 24s linear infinite;"/>
+<path class="ln" d="M690,260 L670,260" marker-end="url(#ar)" style="animation:sa3 24s linear infinite;"/>
+<path class="ln" d="M150,531 L167,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<path class="ln" d="M285,531 L302,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<path class="ln" d="M420,531 L437,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<path class="ln" d="M555,531 L572,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<path class="ln" d="M690,531 L707,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<path class="ln" d="M825,531 L842,531" marker-end="url(#ar)" style="animation:sa4 24s linear infinite;"/>
+<circle class="dot" r="9" fill="#58a6ff" filter="url(#gl)" style="animation:oa1 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M104,92 L124,92 M374,92 L394,92 M544,92 L564,92 M600,136 L600,148 L170,148 L170,160" keyTimes="0;0.225;1" keyPoints="0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="4.5" fill="#79c0ff" style="animation:oa1 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M104,92 L124,92 M374,92 L394,92 M544,92 L564,92 M600,136 L600,148 L170,148 L170,160" keyTimes="0;0.225;1" keyPoints="0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="9" fill="#58a6ff" filter="url(#gl)" style="animation:oa2 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M700,136 L700,154 L505,154 L505,160" keyTimes="0;0.25;0.475;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="4.5" fill="#79c0ff" style="animation:oa2 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M700,136 L700,154 L505,154 L505,160" keyTimes="0;0.25;0.475;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="9" fill="#58a6ff" filter="url(#gl)" style="animation:oa3 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M900,136 L900,160 M690,260 L670,260" keyTimes="0;0.5;0.725;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="4.5" fill="#79c0ff" style="animation:oa3 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M900,136 L900,160 M690,260 L670,260" keyTimes="0;0.5;0.725;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="9" fill="#58a6ff" filter="url(#gl)" style="animation:oa4 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M91,531 L901,531" keyTimes="0;0.75;0.975;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<circle class="dot" r="4.5" fill="#79c0ff" style="animation:oa4 24s linear infinite"><animateMotion dur="24s" repeatCount="indefinite" path="M91,531 L901,531" keyTimes="0;0.75;0.975;1" keyPoints="0;0;1;1" calcMode="linear"/></circle>
+<rect class="chip" x="20" y="66" width="84" height="52" rx="8" style="animation:ca1 24s linear infinite;"/><text class="t" x="62" y="88">You</text><text class="s" x="62" y="104">plain words</text>
+<rect class="chip" x="135" y="88" width="72" height="30" rx="7"/><text class="t" x="171" y="107" style="font-size:11px">Claude Code</text>
+<rect class="chip" x="213" y="88" width="72" height="30" rx="7"/><text class="t" x="249" y="107" style="font-size:11px">Codex</text>
+<rect class="chip" x="291" y="88" width="72" height="30" rx="7"/><text class="t" x="327" y="107" style="font-size:11px">OpenCode</text>
+<rect class="chip" x="394" y="66" width="150" height="52" rx="8" style="animation:ca1 24s linear infinite;"/><text class="t" x="469" y="88">AGENTS.md</text><text class="s" x="469" y="104">routes + always-rules</text>
+<rect class="chip" x="574" y="80" width="128" height="24" rx="6"/><text class="t" x="638" y="96" style="font-size:11.5px">dev-feature</text>
+<rect class="chip" x="712" y="80" width="128" height="24" rx="6"/><text class="t" x="776" y="96" style="font-size:11.5px">dev-debug</text>
+<rect class="chip" x="850" y="80" width="128" height="24" rx="6"/><text class="t" x="914" y="96" style="font-size:11.5px">dev-research</text>
+<rect class="chip" x="574" y="108" width="128" height="24" rx="6"/><text class="t" x="638" y="124" style="font-size:11.5px">dev-review</text>
+<rect class="chip" x="712" y="108" width="128" height="24" rx="6"/><text class="t" x="776" y="124" style="font-size:11.5px">dev-spawn</text>
+<rect class="chip" x="850" y="108" width="128" height="24" rx="6"/><text class="t" x="914" y="124" style="font-size:11.5px">dev-learn</text>
+<rect class="chip" x="32" y="186" width="276" height="34" rx="7" style="animation:ca1 24s linear infinite;"/>
+<text class="t" x="170.0" y="201.0">principles.md</text><text class="s" x="170.0" y="215.0">digest, read first (step 0)</text>
+<rect class="chip" x="32" y="228" width="276" height="34" rx="7" style=""/>
+<text class="t" x="170.0" y="243.0">core</text><text class="s" x="170.0" y="257.0">18 how-to files, named by checklist steps</text>
+<rect class="chip" x="32" y="270" width="276" height="34" rx="7" style=""/>
+<text class="t" x="170.0" y="285.0">deep/</text><text class="s" x="170.0" y="299.0">17 long-tail files, loaded on a trigger</text>
+<rect class="chip" x="32" y="312" width="276" height="34" rx="7" style="animation:ca4 24s linear infinite;"/>
+<text class="t" x="170.0" y="327.0">recipes/</text><text class="s" x="170.0" y="341.0">reusable procedures + index</text>
+<rect class="chip" x="352" y="198" width="98" height="40" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="401.0" y="216.0">ledger.tsv</text><text class="s" x="401.0" y="230.0">what happened</text>
+<rect class="chip" x="460" y="198" width="98" height="40" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="509.0" y="216.0">state.md</text><text class="s" x="509.0" y="230.0">current picture</text>
+<rect class="chip" x="568" y="198" width="98" height="40" rx="7" style=""/>
+<text class="t" x="617.0" y="216.0">spec + plan</text><text class="s" x="617.0" y="230.0">goal, slices</text>
+<rect class="chip" x="352" y="246" width="98" height="40" rx="7" style="animation:ca3 24s linear infinite;"/>
+<text class="t" x="401.0" y="264.0">briefs/</text><text class="s" x="401.0" y="278.0">to workers</text>
+<rect class="chip" x="460" y="246" width="98" height="40" rx="7" style="animation:ca3 24s linear infinite;"/>
+<text class="t" x="509.0" y="264.0">handoffs/</text><text class="s" x="509.0" y="278.0">from workers</text>
+<rect class="chip" x="568" y="246" width="98" height="40" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="617.0" y="264.0">runs/</text><text class="s" x="617.0" y="278.0">test logs</text>
+<rect class="chip" x="352" y="298" width="314" height="40" rx="7" style="animation:ca1 24s linear infinite;"/>
+<text class="t" x="509.0" y="316.0">memory.md (project)</text><text class="s" x="509.0" y="330.0">durable notes, read at the start of every task</text>
+<rect class="chip" x="702" y="186" width="86" height="28" rx="7"/><text class="t" x="745" y="205" style="font-size:11.5px">claude</text>
+<rect class="chip" x="794" y="186" width="86" height="28" rx="7"/><text class="t" x="837" y="205" style="font-size:11.5px">codex</text>
+<rect class="chip" x="886" y="186" width="86" height="28" rx="7"/><text class="t" x="929" y="205" style="font-size:11.5px">opencode</text>
+<text class="l" x="706" y="238">&#8226; own worktree per writer</text>
+<text class="l" x="706" y="258">&#8226; push blocked, always</text>
+<text class="l" x="706" y="278">&#8226; timeout 900 s, hung worker killed</text>
+<text class="l" x="706" y="298">&#8226; live tab in herdr (optional)</text>
+<rect class="chip" x="702" y="314" width="266" height="40" rx="7" style=""/>
+<text class="t" x="835.0" y="332.0">handoff report</text><text class="s" x="835.0" y="346.0">PASS / ISSUES / BLOCKED + evidence</text>
+<rect class="chip" x="32" y="406" width="118" height="28" rx="7" style="animation:ca1 24s linear infinite;"/>
+<text class="t" x="91.0" y="424.0">reconcile</text>
+<rect class="chip" x="167" y="406" width="118" height="28" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="226.0" y="424.0">ledger</text>
+<rect class="chip" x="302" y="406" width="118" height="28" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="361.0" y="424.0">state</text>
+<rect class="chip" x="437" y="406" width="118" height="28" rx="7" style="animation:ca2 24s linear infinite;"/>
+<text class="t" x="496.0" y="424.0">run</text>
+<rect class="chip" x="572" y="406" width="118" height="28" rx="7" style="animation:ca3 24s linear infinite;"/>
+<text class="t" x="631.0" y="424.0">spawn</text>
+<rect class="chip" x="707" y="406" width="118" height="28" rx="7" style="animation:ca4 24s linear infinite;"/>
+<text class="t" x="766.0" y="424.0">learn</text>
+<rect class="chip" x="842" y="406" width="118" height="28" rx="7" style=""/>
+<text class="t" x="901.0" y="424.0">lint-budget</text>
+<rect class="chip" x="32" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:17.55s"/>
+<text class="t" x="91.0" y="521.0">state.md</text><text class="s" x="91.0" y="535.0">learnings captured</text>
+<rect class="chip" x="167" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:18.45s"/>
+<text class="t" x="226.0" y="521.0">bin/learn queue</text><text class="s" x="226.0" y="535.0">general + recipe</text>
+<rect class="chip" x="302" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:19.35s"/>
+<text class="t" x="361.0" y="521.0">Inbox</text><text class="s" x="361.0" y="535.0">~/.agents/learnings</text>
+<rect class="chip" x="437" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:20.25s"/>
+<text class="t" x="496.0" y="521.0">dev-learn</text><text class="s" x="496.0" y="535.0">dedupe, generalize</text>
+<rect class="chip" x="572" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:21.15s"/>
+<text class="t" x="631.0" y="521.0">Draft branch</text><text class="s" x="631.0" y="535.0">separate worktree</text>
+<rect class="chip" x="707" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:22.05s"/>
+<text class="t" x="766.0" y="521.0">You approve</text><text class="s" x="766.0" y="535.0">diff shown first</text>
+<rect class="chip" x="842" y="496" width="118" height="54" rx="7" style="animation:pulse 24s linear infinite;animation-delay:22.95s"/>
+<text class="t" x="901.0" y="521.0">Library</text><text class="s" x="901.0" y="535.0">merged, shared</text>
+<text class="s" x="500" y="578" style="font-size:11px">local until you approve; nothing reaches the shared library without a reviewed diff</text>
+<rect x="20" y="606" width="960" height="44" rx="10" fill="#0f141b" stroke="#30363d" stroke-width="1.5"/>
+<text class="cap" x="500" y="634" style="animation:oa1 24s linear infinite">Ask: you describe the work, AGENTS.md routes it to a skill, and the skill skims the principles digest first.</text>
+<text class="cap" x="500" y="634" style="animation:oa2 24s linear infinite">Work and log: every step lands in the ledger, a short state.md keeps the current picture, tests run quietly.</text>
+<text class="cap" x="500" y="634" style="animation:oa3 24s linear infinite">Delegate: big or independent work goes to workers on any CLI; they report back through handoff files.</text>
+<text class="cap" x="500" y="634" style="animation:oa4 24s linear infinite">Learn: lessons are queued locally, dev-learn drafts a library change on a branch, and nothing merges without you.</text>
+</svg>
