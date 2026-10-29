@@ -7,6 +7,7 @@ ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i
 unset HARNESS_DIR HARNESS_TASK
+export HARNESS_LEARN_DIR="$t/empty-inbox"  # never read the real inbox
 
 out=$("$rec"); rc=$?
 ok "no tasks: friendly message, exit 0"    '[ $rc -eq 0 ] && echo "$out" | grep -qi "no tasks"'

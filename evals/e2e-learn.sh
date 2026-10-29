@@ -41,6 +41,6 @@ run "Use the dev-learn skill. For this test the harness repo is $S (use it where
 chk "a learn/* branch exists in the scratch harness"    '[ -n "$(git -C "$S" branch --list "learn/*")" ]'
 chk "the branch holds a commit beyond main"             '[ "$(git -C "$S" rev-list --count main..$(git -C "$S" branch --list "learn/*" | head -1 | tr -d " *+") 2>/dev/null)" -ge 1 ]'
 chk "main was NOT moved (no merge without approval)"    '[ "$(git -C "$S" rev-parse main)" = "$before" ]'
-chk "the learning is still queued (not marked done)"    '[ "$("$here/bin/learn" count)" = "$before_count" ]'
+chk "the duplicate was dropped, the new learning is still queued" '[ "$("$here/bin/learn" count)" = 1 ] && grep -q "	1	dropped" "$W/inbox/done.tsv" && ! grep -q "	2	" "$W/inbox/done.tsv"'
 chk "the live harness repo was not touched"             '[ -z "$(git -C "$here" status --porcelain)" ]'
 echo "dir=$W"; echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
