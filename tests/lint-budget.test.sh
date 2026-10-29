@@ -86,18 +86,18 @@ leak "${DASH}BEGIN RSA PRIV""ATE KEY${DASH}";           expect "private key head
 leak "use ~/.agents/harness and \$HOME/x";        expect "tilde and \$HOME paths are fine" 0 "$t/m"
 
 # --- library total budget: tight, no context bloat
-mut; for n in a b c d e f; do { printf '# big%s\nRecord outcomes with bin/ledger.\n## When to Use\n## Steps\n## Red Flags\n## Verification\n' "$n"; for i in $(seq 1 70); do printf 'padding line %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; } > "$t/m/library/big$n.md"; done
+mut; for n in a b c d e f g h; do { printf '# big%s\nRecord outcomes with bin/ledger.\n## When to Use\n## Steps\n## Red Flags\n## Verification\n' "$n"; for i in $(seq 1 70); do printf 'padding line %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; } > "$t/m/library/big$n.md"; done
 expect "library over the total byte cap fails" 1 "$t/m"
 
 # --- library/deep: on-demand long tail, never auto-loaded
 deepf() { mkdir -p "$t/m/library/deep"; { printf '# %s\n## When to Load\n- trigger\n## Pattern\n1. step\n## Red Flags\n- flag\n' "$1"; [ -n "${2:-}" ] && seq 1 "$2" | sed 's/^/line /'; } > "$t/m/library/deep/$1.md"; }
 mut; deepf ok-one
 expect "a valid deep file passes" 0 "$t/m"
-mut; deepf too-long 30
-expect "deep file over 30 lines fails" 1 "$t/m"
+mut; deepf too-long 45
+expect "deep file over 45 lines fails" 1 "$t/m"
 mut; mkdir -p "$t/m/library/deep"; printf '# x\n## Pattern\n1. a\n## Red Flags\n- b\n' > "$t/m/library/deep/nosec.md"
 expect "deep file missing When to Load fails" 1 "$t/m"
-mut; for n in $(seq 1 25); do deepf "big$n" 20; { printf '# big\n## When to Load\n- t\n## Pattern\n'; for i in $(seq 1 24); do printf 'padding %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; printf '## Red Flags\n- f\n'; } > "$t/m/library/deep/big$n.md"; done
+mut; for n in $(seq 1 40); do deepf "big$n" 20; { printf '# big\n## When to Load\n- t\n## Pattern\n'; for i in $(seq 1 24); do printf 'padding %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; printf '## Red Flags\n- f\n'; } > "$t/m/library/deep/big$n.md"; done
 expect "deep folder over its byte cap fails" 1 "$t/m"
 mut; deepf ok-two; echo "see library/deep/ok-two" >> "$t/m/skills/dev-debug/SKILL.md"
 expect "reference to an existing deep file resolves" 0 "$t/m"

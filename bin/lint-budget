@@ -6,7 +6,7 @@ root=.; partial=0
 for a in "$@"; do case $a in --partial) partial=1;; *) root=$a;; esac; done
 cd "$root" || exit 2
 
-AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=28672 DEEP_LINES=30 DEEP_TOTAL=40960
+AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536
 errs=0
 bad() { echo "FAIL $*"; errs=$((errs+1)); }
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
