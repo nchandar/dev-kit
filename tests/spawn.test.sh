@@ -114,7 +114,7 @@ case "$1" in --version) echo "claude 9.9";; *) echo "-p --permission-mode --allo
 S
 cat > "$stubs/codex" <<'S'
 #!/usr/bin/env bash
-case "$1" in --version) echo "codex 8.8";; *) echo "-C -s --add-dir --skip-git-repo-check -o -m --dangerously-bypass-approvals-and-sandbox $CODEX_STUB_EXTRA";; esac
+case "$1" in --version) echo "WARNING: could not create PATH aliases" >&2; echo "codex 8.8";; *) echo "-C -s --add-dir --skip-git-repo-check -o -m --dangerously-bypass-approvals-and-sandbox $CODEX_STUB_EXTRA";; esac
 S
 cat > "$stubs/opencode" <<'S'
 #!/usr/bin/env bash

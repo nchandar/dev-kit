@@ -14,7 +14,7 @@ here=$(dirname "$0")
 doctor() { local bad=0 cli v h f need
   for cli in claude codex opencode; do
     if ! command -v $cli >/dev/null 2>&1; then printf '%-9s not installed\n' $cli; continue; fi
-    v=$($cli --version 2>&1 | head -1 | tr -d '\r')
+    v=$($cli --version 2>/dev/null | head -1 | tr -d '\r')
     case $cli in
       claude)   h=$(claude --help 2>&1);        need="-p --permission-mode --allowedTools --add-dir --no-session-persistence --model --dangerously-skip-permissions";;
       codex)    h=$(codex exec --help 2>&1);    need="-C -s --add-dir --skip-git-repo-check --ephemeral -o -m --dangerously-bypass-approvals-and-sandbox";;
