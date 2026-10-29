@@ -16,6 +16,8 @@ you ask  ->  agent picks a skill by task type  ->  copies its checklist into its
 - **Ledger** is an append-only TSV per task. A killed session resumes from its last `next` row.
 - **Workers** are headless one-shots with their own briefs and handoff files, so the main context stays clean.
 
+An animated walkthrough of the ledger and the automation, with a why for every step, is in `docs/architecture.html`. Open it in a browser; GitHub only shows the source.
+
 ## Requirements
 - bash 3.2 or newer (macOS `/bin/bash` 3.2.57 passes a syntax check on every tool)
 - git 2.31 or newer (the push guard uses `GIT_CONFIG_COUNT`); tested with 2.56

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-harness architecture</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#d9d9d2;--acc:#2f6fed;--ok:#1f9d55;--warn:#c77d0a;--node:#fff;--hl:#e8f0ff}
+@media (prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ecece8;--mut:#9a9a94;--card:#1f1f22;--line:#3a3a3f;--acc:#6ea0ff;--ok:#4cc38a;--warn:#e5a23a;--node:#26262a;--hl:#22314f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 8px}
+.sub{color:var(--mut);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+svg{width:100%;height:auto;display:block}
+.node rect{fill:var(--node);stroke:var(--line);stroke-width:1.5;rx:8}
+.node text{fill:var(--fg);font-size:13px;text-anchor:middle}
+.node .t{font-weight:600}.node .s{fill:var(--mut);font-size:11px}
+.node{cursor:pointer}.node:focus{outline:none}
+.node.on rect,.node:focus rect{stroke:var(--acc);stroke-width:2.5;fill:var(--hl)}
+.edge{fill:none;stroke:var(--line);stroke-width:2}.edge.on{stroke:var(--acc);stroke-width:3}
+.lbl{fill:var(--mut);font-size:11px;text-anchor:middle}
+#dot{fill:var(--acc)}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--acc)}
+#panel{min-height:96px}
+#panel .n{color:var(--acc);font-weight:700}
+#panel .why{color:var(--ok);font-weight:600}
+#panel .file{color:var(--mut);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.row td:first-child{white-space:nowrap}
+#static{display:none}
+@media (prefers-reduced-motion:reduce){#dot{display:none}#static{display:block}}
+.tablewrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>How agent-harness works</h1>
+<p class="sub">One task, from your request to a closed ledger. Press play, step, or click any box.</p>
+
+<div class="card">
+<svg id="diagram" viewBox="0 0 860 420" role="img" aria-label="Architecture: you, main agent, skills and library, ledger, spawn, worker, handoff, reconcile">
+  <path id="e1" class="edge" d="M150,68 L210,68"/>
+  <path id="e2" class="edge" d="M340,68 L420,68"/>
+  <path id="e3" class="edge" d="M275,96 L275,190"/>
+  <path id="e5" class="edge" d="M340,96 L340,150 L560,150 L560,190"/>
+  <path id="e6" class="edge" d="M650,225 L700,225"/>
+  <path id="e7" class="edge" d="M765,260 L765,330"/>
+  <path id="e8" class="edge" d="M470,240 L400,240"/>
+  <path id="e10" class="edge" d="M275,330 L275,260"/>
+  <path id="e11" class="edge" d="M700,358 L400,358"/>
+  <text class="lbl" x="180" y="60">plain words</text>
+  <text class="lbl" x="380" y="60">checklist</text>
+  <text class="lbl" x="237" y="150">rows</text>
+  <text class="lbl" x="450" y="142">brief</text>
+  <text class="lbl" x="675" y="216">run</text>
+  <text class="lbl" x="798" y="300">PASS / ISSUES</text>
+  <text class="lbl" x="435" y="256">status row</text>
+  <text class="lbl" x="237" y="300">read</text>
+  <text class="lbl" x="550" y="350">read</text>
+
+  <g class="node" id="n-you" tabindex="0"><rect x="20" y="40" width="130" height="56"/><text class="t" x="85" y="64">You</text><text class="s" x="85" y="82">ask in plain words</text></g>
+  <g class="node" id="n-main" tabindex="0"><rect x="210" y="40" width="130" height="56"/><text class="t" x="275" y="64">Main agent</text><text class="s" x="275" y="82">claude, codex, opencode</text></g>
+  <g class="node" id="n-skill" tabindex="0"><rect x="420" y="40" width="190" height="56"/><text class="t" x="515" y="64">Skill + library</text><text class="s" x="515" y="82">checklist, deeper steps on demand</text></g>
+  <g class="node" id="n-ledger" tabindex="0"><rect x="210" y="190" width="190" height="70"/><text class="t" x="305" y="218">Ledger</text><text class="s" x="305" y="236">tasks/&lt;id&gt;/ledger.tsv</text><text class="s" x="305" y="251">append-only</text></g>
+  <g class="node" id="n-spawn" tabindex="0"><rect x="470" y="190" width="180" height="70"/><text class="t" x="560" y="218">bin/spawn</text><text class="s" x="560" y="236">slot, guard, timeout</text><text class="s" x="560" y="251">herdr tab (optional)</text></g>
+  <g class="node" id="n-worker" tabindex="0"><rect x="700" y="190" width="130" height="70"/><text class="t" x="765" y="218">Worker</text><text class="s" x="765" y="236">headless CLI</text><text class="s" x="765" y="251">own worktree</text></g>
+  <g class="node" id="n-handoff" tabindex="0"><rect x="700" y="330" width="130" height="56"/><text class="t" x="765" y="354">Handoff</text><text class="s" x="765" y="372">&lt;id&gt;.md + status</text></g>
+  <g class="node" id="n-recon" tabindex="0"><rect x="210" y="330" width="190" height="56"/><text class="t" x="305" y="354">bin/reconcile</text><text class="s" x="305" y="372">rebuilds state from disk</text></g>
+  <circle id="dot" r="6" cx="-20" cy="-20"/>
+</svg>
+<div class="ctl">
+  <button id="play">Play</button><button id="pause">Pause</button><button id="step">Step</button><button id="replay">Replay</button>
+</div>
+<div id="panel" class="card" aria-live="polite"></div>
+</div>
+
+<div id="static" class="card"><ol id="staticlist"></ol></div>
+
+<h2>One ledger row</h2>
+<div class="card tablewrap">
+<table>
+<tr><th>time</th><th>phase</th><th>decision</th><th>reason</th><th>evidence</th><th>result</th></tr>
+<tr class="row"><td>2026-10-29T08:14:02Z</td><td>verify</td><td>retry fix works</td><td>original repro now passes</td><td>run 003.log, exit=0</td><td>pass</td></tr>
+</table>
+<p class="sub" style="margin:8px 0 0">Tab separated, one line per decision. Tabs and newlines inside a cell become spaces, cells are cut at 400 characters, and each row is a single append, so several writers can share one file safely.</p>
+</div>
+
+<h2>Components</h2>
+<div class="card tablewrap">
+<table>
+<tr><th>Piece</th><th>Job</th><th>Owns</th></tr>
+<tr><td><code>bin/ledger</code></td><td>starts tasks, appends rows, closes tasks</td><td><code>.harness/tasks/&lt;id&gt;/ledger.tsv</code></td></tr>
+<tr><td><code>bin/spawn</code></td><td>runs a worker headless on any CLI, enforces the guards</td><td>slots, status files, handoff fallback</td></tr>
+<tr><td><code>bin/reconcile</code></td><td>shows open tasks, the resume point and worker states</td><td>nothing; it only reads</td></tr>
+<tr><td><code>bin/run</code></td><td>runs a command, keeps the full output in a log, returns a short summary</td><td><code>runs/NNN.log</code></td></tr>
+<tr><td>skills + library</td><td>the workflows and the deeper how-to</td><td>checklists, nothing at runtime</td></tr>
+</table>
+</div>
+
+<h2>Why it is built this way</h2>
+<div class="card tablewrap">
+<table>
+<tr><th>Choice</th><th>Why</th><th>Rejected</th></tr>
+<tr><td>Append-only TSV ledger</td><td>agents read it with grep and awk; one append is atomic</td><td>Markdown or JSON that must be rewritten</td></tr>
+<tr><td>One task folder per session, random id</td><td>parallel sessions on one repo never collide</td><td>one shared ledger file</td></tr>
+<tr><td>Headless workers; herdr only watches</td><td>runs the same everywhere, easy to time out and test</td><td>interactive agents in tmux</td></tr>
+<tr><td>Dead push URL on every remote for workers</td><td>blocks pushes on all three CLIs, even with permissions skipped</td><td>relying on a prompt rule alone</td></tr>
+<tr><td>Workers report through handoff files only</td><td>no cross-talk, nothing to coordinate</td><td>workers messaging each other</td></tr>
+<tr><td>Two live workers per repo</td><td>keeps memory predictable</td><td>unlimited fan-out</td></tr>
+</table>
+</div>
+</main>
+
+<script>
+(function(){
+var steps=[
+ {e:'e1',n:['n-you','n-main'],t:'You ask in plain words',w:'The task arrives as normal chat. No special syntax.',y:'Agents route by task type, so you never need to remember skill names.',f:'global AGENTS.md'},
+ {e:'e2',n:['n-main','n-skill'],t:'The agent picks a skill and copies its checklist',w:'Feature, debug, research, review or spawn. The checklist goes into its task list; skipped steps stay listed with a reason.',y:'A checklist survives context loss; an intention does not.',f:'skills/dev-*/SKILL.md'},
+ {e:'e3',n:['n-main','n-ledger'],t:'ledger start creates the task',w:'A folder tasks/&lt;slug&gt;-&lt;date&gt;-&lt;rand&gt;/ with a header row and a start row.',y:'The random suffix and atomic mkdir mean two sessions can never share a task by accident.',f:'bin/ledger (start)'},
+ {e:'e3',n:['n-main','n-ledger'],t:'Every step appends one row',w:'phase, decision, reason, evidence, result. Library files are read only when a step names them.',y:'If the session dies, the ledger already holds everything that happened.',f:'bin/ledger'},
+ {e:'e5',n:['n-main','n-spawn'],t:'Bulk or independent work goes to spawn',w:'A standalone brief file (or --prompt) naming the goal, scope and done-check.',y:'Keeps the main context clean; reading and review do not belong in it.',f:'bin/spawn'},
+ {e:'e6',n:['n-spawn','n-worker'],t:'spawn claims a slot and runs the worker',w:'Slot taken with an atomic mkdir (max 2 per repo), stdin closed, push URLs disabled, timeout armed, worktree if asked.',y:'Workers skip permissions so they never stall, yet they cannot push or hang a slot.',f:'bin/spawn'},
+ {e:'e7',n:['n-worker','n-handoff'],t:'The worker writes a handoff',w:'PASS, ISSUES or BLOCKED with evidence, files changed, open questions, next step.',y:'This is the only channel upward. No evidence means the report is rejected.',f:'handoffs/&lt;id&gt;.md'},
+ {e:'e8',n:['n-spawn','n-ledger'],t:'spawn records the outcome',w:'A spawn row: done, failed, timeout or violation. A missing handoff gets an auto-written fallback.',y:'A scout that changed code is flagged; a hung worker is visible, not silent.',f:'bin/spawn'},
+ {e:'e3',n:['n-main','n-ledger'],t:'The agent closes the task',w:'ledger done with a summary, or a next row with the first runnable step if work remains.',y:'The next session resumes from that row.',f:'bin/ledger (done)'},
+ {e:'e10',n:['n-recon','n-ledger'],t:'Later: reconcile reads the ledger',w:'In a new terminal it lists open tasks, the next row and each worker (running, killed or done).',y:'Status is rebuilt from disk and git, so there is no daemon to keep alive.',f:'bin/reconcile'},
+ {e:'e11',n:['n-recon','n-handoff'],t:'...and the handoffs and status files',w:'Dead worker pids show as killed. Branches harness/&lt;task&gt;-&lt;id&gt; show unmerged work.',y:'A killed session can be resumed without remembering anything.',f:'bin/reconcile'}
+];
+var info={
+ 'n-you':['You','Ask for what you want.','The harness starts from natural language.','Nothing starts.'],
+ 'n-main':['Main agent','Any of claude, codex, opencode. Follows the checklist and decides when to delegate.','The same flow works under every CLI.','No orchestration; just a chat.'],
+ 'n-skill':['Skill + library','Five workflows and 17 small how-to files.','Only what a step needs is loaded, so context stays small.','The agent improvises each time.'],
+ 'n-ledger':['Ledger','One TSV per task. Rows: time, phase, decision, reason, evidence, result.','Resume, audit and parallel safety all come from this one file.','A killed session loses its place.'],
+ 'n-spawn':['bin/spawn','Runs claude, codex or opencode headless with guards and an optional herdr tab.','One command for every CLI, with the same safety.','Each CLI needs its own fragile launch recipe.'],
+ 'n-worker':['Worker','A headless agent with its own brief, in the repo or a git worktree.','Does bulk work without touching the main context.','Main context fills with output.'],
+ 'n-handoff':['Handoff','The worker report plus a status file.','The single upward channel; evidence is mandatory.','Results arrive as unverifiable prose.'],
+ 'n-recon':['bin/reconcile','Reads ledger, status files and git; writes nothing.','Resume with no running service.','You must remember what was running.']
+};
+var svg=document.getElementById('diagram'),dot=document.getElementById('dot'),panel=document.getElementById('panel');
+var i=-1,timer=null,raf=null,reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function clearOn(){svg.querySelectorAll('.on').forEach(function(x){x.classList.remove('on')});}
+function show(k){
+ var s=steps[k];clearOn();
+ document.getElementById(s.e).classList.add('on');
+ s.n.forEach(function(id){document.getElementById(id).classList.add('on')});
+ panel.innerHTML='<div><span class="n">Step '+(k+1)+' of '+steps.length+'</span> &middot; <b>'+s.t+'</b></div><div>'+s.w+'</div><div class="why">Why: '+s.y+'</div><div class="file">'+s.f+'</div>';
+}
+function move(k,done){
+ var p=document.getElementById(steps[k].e),len=p.getTotalLength(),t0=null,dur=1100;
+ if(reduced){done();return;}
+ function f(ts){if(t0===null)t0=ts;var u=Math.min((ts-t0)/dur,1),pt=p.getPointAtLength(len*u);dot.setAttribute('cx',pt.x);dot.setAttribute('cy',pt.y);if(u<1){raf=requestAnimationFrame(f)}else{done()}}
+ raf=requestAnimationFrame(f);
+}
+function go(k){i=k;show(k);move(k,function(){})}
+function next(){go((i+1)%steps.length)}
+function stop(){if(timer){clearTimeout(timer);timer=null}if(raf){cancelAnimationFrame(raf);raf=null}}
+function play(){stop();(function loop(){next();timer=setTimeout(loop,2600)})()}
+document.getElementById('play').onclick=play;
+document.getElementById('pause').onclick=stop;
+document.getElementById('step').onclick=function(){stop();next()};
+document.getElementById('replay').onclick=function(){stop();i=-1;play()};
+svg.querySelectorAll('.node').forEach(function(g){
+ function pick(){stop();clearOn();g.classList.add('on');var d=info[g.id];panel.innerHTML='<div><b>'+d[0]+'</b></div><div>'+d[1]+'</div><div class="why">Why it exists: '+d[2]+'</div><div>Without it: '+d[3]+'</div>';}
+ g.addEventListener('click',pick);
+ g.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}});
+});
+var sl=document.getElementById('staticlist');
+steps.forEach(function(s,k){var li=document.createElement('li');li.innerHTML='<b>'+s.t+'</b>. '+s.w+' <i>Why: '+s.y+'</i>';sl.appendChild(li)});
+if(reduced){panel.textContent='Reduced motion is on: see the numbered steps below.'}else{go(0)}
+})();
+</script>
+</body>
+</html>
