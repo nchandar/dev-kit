@@ -18,7 +18,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 1. Pick the shape: scout (report only, no code change) or ship (edits code).
 - [ ] 2. Write the brief to `<task>/briefs/<id>.md`, standalone, max 40 lines: goal and why, in-scope files, non-goals, facts already known, the output wanted, the done-check command.
 - [ ] 3. Parallel writers each get `--worktree` (branch `harness/<id>`). Scouts need none.
-- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md &`, then `wait`. Short ask? `--prompt "text"` instead of a brief file. At most 2 live workers; extras queue; a hung worker is killed after `HARNESS_TIMEOUT` (900 s).
+- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md`, each worker as its OWN background command so every finish notifies you (never wait on a group: the slowest hides the rest). When one finishes, read its handoff and check its output exists before trusting PASS. Short ask? `--prompt "text"` instead of a brief file. At most 2 live workers; extras queue; a hung worker is killed after `HARNESS_TIMEOUT` (900 s).
 - [ ] 5. Read only `<task>/handoffs/<id>.md`; open the `.log` only if it failed.
 - [ ] 6. Accept a report only if it ends `PASS`, `ISSUES` or `BLOCKED` with evidence (command, file:line). No evidence: reject and respawn once; a second miss is a gap, and a gap is not a pass.
 - [ ] 7. Dropout: continue with the others and note it. Run `bin/reconcile` to see all states.
