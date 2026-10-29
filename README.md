@@ -1,4 +1,4 @@
-# agent-harness
+# dev-kit
 
 Skills and small bash tools that make **Claude Code, Codex and OpenCode** work the same way: grill, plan, build test-first, prove it, learn from it. No Node, no Python, no tmux.
 
@@ -6,8 +6,8 @@ Skills and small bash tools that make **Claude Code, Codex and OpenCode** work t
 
 ## Install
 ```sh
-git clone https://github.com/nchandar/agent-harness ~/agent-harness
-~/agent-harness/install.sh
+git clone https://github.com/nchandar/dev-kit ~/dev-kit
+~/dev-kit/install.sh
 ~/.agents/harness/bin/spawn --doctor      # checks your CLIs
 ```
 Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.

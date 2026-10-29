@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 262" width="920" height="262" role="img" aria-label="agent-harness flow: you, skill, ledger, workers, handoff, learn, library">
-  <title>agent-harness: one task, start to finish</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 262" width="920" height="262" role="img" aria-label="dev-kit flow: you, skill, ledger, workers, handoff, learn, library">
+  <title>dev-kit: one task, start to finish</title>
   <style>
     text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
     .t{fill:#e6edf3;font-size:14px;font-weight:600;text-anchor:middle}
