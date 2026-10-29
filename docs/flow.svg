@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 262" width="920" height="262" role="img" aria-label="agent-harness flow: you, skill, ledger, workers, handoff, learn, library">
+  <title>agent-harness: one task, start to finish</title>
+  <style>
+    text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+    .t{fill:#e6edf3;font-size:14px;font-weight:600;text-anchor:middle}
+    .s{fill:#8b949e;font-size:10.5px;text-anchor:middle}
+    .h{fill:#e6edf3;font-size:15px;font-weight:600}
+    .m{fill:#6e7681;font-size:11px}
+    .box{fill:#161b22;stroke:#30363d;stroke-width:1.5}
+    .rail{stroke:#30363d;stroke-width:2;fill:none}
+    .cap{fill:#c9d1d9;font-size:14px;text-anchor:middle;opacity:0}
+    .n .box{animation:glow 16s linear infinite}
+    .cap{animation:show 16s linear infinite}
+    @keyframes glow{0%,12.5%{stroke:#58a6ff;fill:#1c2b44}12.51%,100%{stroke:#30363d;fill:#161b22}}
+    @keyframes show{0%,12.5%{opacity:1}12.51%,100%{opacity:0}}
+    @media (prefers-reduced-motion:reduce){.n .box,.cap{animation:none}}
+  </style>
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#484f58"/></marker>
+    <filter id="gl" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <rect x="0.75" y="0.75" width="918.5" height="260.5" rx="14" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+  <text x="28" y="40" class="h">One task, start to finish</text>
+  <text x="892" y="40" class="m" text-anchor="end">everything stays local and git-ignored</text>
+
+  <!-- rail and arrows -->
+  <path class="rail" d="M136,120 L149,120" marker-end="url(#ar)"/>
+  <path class="rail" d="M261,120 L274,120" marker-end="url(#ar)"/>
+  <path class="rail" d="M386,120 L399,120" marker-end="url(#ar)"/>
+  <path class="rail" d="M511,120 L524,120" marker-end="url(#ar)"/>
+  <path class="rail" d="M636,120 L649,120" marker-end="url(#ar)"/>
+  <path class="rail" d="M761,120 L774,120" marker-end="url(#ar)"/>
+
+  <!-- the travelling dot runs behind the boxes, so it appears on the arrows -->
+  <circle r="9" fill="#58a6ff" opacity="0.45" filter="url(#gl)"><animateMotion dur="16s" repeatCount="indefinite" path="M80,120 L830,120" keyPoints="0;1;1" keyTimes="0;0.825;1" calcMode="linear"/></circle>
+  <circle r="5" fill="#79c0ff"><animateMotion dur="16s" repeatCount="indefinite" path="M80,120 L830,120" keyPoints="0;1;1" keyTimes="0;0.825;1" calcMode="linear"/></circle>
+
+  <g class="n" style="animation-delay:-1s"><rect class="box" style="animation-delay:-1s" x="24" y="84" width="112" height="72" rx="10"/><text class="t" x="80" y="112">You</text><text class="s" x="80" y="132">ask in</text><text class="s" x="80" y="145">plain words</text></g>
+  <g class="n"><rect class="box" style="animation-delay:1.2s" x="149" y="84" width="112" height="72" rx="10"/><text class="t" x="205" y="112">Skill</text><text class="s" x="205" y="132">grill, plan,</text><text class="s" x="205" y="145">build, prove</text></g>
+  <g class="n"><rect class="box" style="animation-delay:3.4s" x="274" y="84" width="112" height="72" rx="10"/><text class="t" x="330" y="112">Ledger</text><text class="s" x="330" y="132">every step logged,</text><text class="s" x="330" y="145">state.md kept</text></g>
+  <g class="n"><rect class="box" style="animation-delay:5.6s" x="399" y="84" width="112" height="72" rx="10"/><text class="t" x="455" y="112">Workers</text><text class="s" x="455" y="132">claude, codex,</text><text class="s" x="455" y="145">opencode</text></g>
+  <g class="n"><rect class="box" style="animation-delay:7.8s" x="524" y="84" width="112" height="72" rx="10"/><text class="t" x="580" y="112">Handoff</text><text class="s" x="580" y="132">report with</text><text class="s" x="580" y="145">evidence</text></g>
+  <g class="n"><rect class="box" style="animation-delay:10s" x="649" y="84" width="112" height="72" rx="10"/><text class="t" x="705" y="112">Learn</text><text class="s" x="705" y="132">lessons queued</text><text class="s" x="705" y="145">locally</text></g>
+  <g class="n"><rect class="box" style="animation-delay:12.2s" x="774" y="84" width="112" height="72" rx="10"/><text class="t" x="830" y="112">Library</text><text class="s" x="830" y="132">you approve,</text><text class="s" x="830" y="145">it improves</text></g>
+
+  <!-- one caption per stage, same timing as the boxes -->
+  <text class="cap" style="animation-delay:-1s" x="460" y="228">You describe the work in plain words.</text>
+  <text class="cap" style="animation-delay:1.2s" x="460" y="228">The matching skill runs: grill, plan, build test-first, prove it.</text>
+  <text class="cap" style="animation-delay:3.4s" x="460" y="228">Every step is logged; a short state.md keeps the current picture.</text>
+  <text class="cap" style="animation-delay:5.6s" x="460" y="228">Big or independent work goes to workers on any CLI, in parallel.</text>
+  <text class="cap" style="animation-delay:7.8s" x="460" y="228">Workers report back with evidence; only the report enters context.</text>
+  <text class="cap" style="animation-delay:10s" x="460" y="228">At closeout, lessons are queued locally for review.</text>
+  <text class="cap" style="animation-delay:12.2s" x="460" y="228">dev-learn drafts library edits; nothing merges without your approval.</text>
+</svg>
