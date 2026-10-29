@@ -54,8 +54,19 @@ Try: "review my branch against main".
 Checklist: choose scout (report only) or ship (edits code) > write a standalone brief > worktree per parallel writer > run on claude, codex or opencode > read only the handoff > accept it only with evidence.
 Try: "open a codex instance and run the migration check", "have opencode review this diff", "run these two in parallel on claude and codex".
 
+### dev-learn: turn learnings into library improvements
+Checklist: list the queued learnings > dedupe against the library > classify (principle, recipe or project-specific) > generalize and scrub > draft on a branch in a separate worktree > lint and tests > show you the diff and ask > merge only after you approve. The live library is never touched before that.
+Try: "learn from this", or when `reconcile` says learnings are queued.
+
+## State, memory and learning
+- **Ledger** (`ledger.tsv`): what happened and why. Append-only, never deleted.
+- **`state.md`** (per task): the current picture: findings, decisions that shape direction, direction, open questions, learnings. Rewritten at checkpoints. Pointers only, never copies; `bin/state check` enforces it.
+- **`.harness/memory.md`** (per project): durable how-to-build, gotchas and architecture notes. Updated at closeout.
+- **Learnings** are captured as they appear (`- [ ] lesson | scope: project|general|recipe | ref: pointer`). At closeout, project ones go to `memory.md`; general and recipe ones go to a local inbox (`bin/learn queue`). `dev-learn` then drafts library changes on a branch and merges only after you approve.
+- All of it is local and git-ignored: `ledger start` adds `.harness/` to the repo's `info/exclude`. The inbox lives outside any repo.
+
 ## Library
-Read on demand by checklist steps.
+Read on demand by checklist steps. Three tiers: the digest `principles.md` (read first), `deep/` (long tail, loaded on a trigger), and `recipes/` (reusable procedures, with an index).
 - **Define and plan:** `grill`, `spec`, `plan`
 - **Build:** `tdd`, `architecture`, `simplify`, `quality-bar`, `docs-grounding`, `ui-browser`
 - **Prove it:** `verify`, `doubt`, `debug-method`
@@ -72,8 +83,10 @@ Read on demand by checklist steps.
 | Tool | Use |
 |---|---|
 | `ledger` | `start <slug>` a task; `-t <id> <phase> <decision> <reason> [evidence] [result]` a row; `done` to close |
-| `reconcile` | `reconcile` open tasks; `reconcile <id>` resume point, recent rows, workers |
+| `reconcile` | `reconcile` open tasks and queued learnings; `reconcile <id>` resume point, direction, open questions, workers |
 | `spawn` | `spawn [--shape scout\|ship] [--worktree] [--model M] <id> <claude\|codex\|opencode> <brief>` or `--prompt "text"`; `--doctor`; `--close-views` |
+| `state` | `state check` validates `state.md` and `memory.md` (pointers, size, no copied text) |
+| `learn` | `learn queue\|list\|count\|done`: the local learning inbox |
 | `run` | `run <cmd>` full output to a log, short summary back |
 | `lint-budget` | size caps, `dev-` names, resolvable references, public-safety scan |
 
