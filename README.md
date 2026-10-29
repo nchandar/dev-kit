@@ -117,6 +117,7 @@ Read on demand by checklist steps. Three tiers: the digest `principles.md` (read
 ## Tests and evals
 - `tests/run-all.sh`: every script suite with a fake CLI, no tokens.
 - `evals/e2e.sh <claude|codex|opencode>`: real scenario with that CLI as the main agent opening two others.
+- `evals/e2e-learn.sh <claude|codex|opencode>`: a real agent fixes a broken build with the harness (state, memory, closeout), then `dev-learn` drafts a library change on a branch and must stop at the approval gate.
 
 ## Measured
 - Always loaded: about 3 KB (global rules plus five skill descriptions). A route adds one skill (2 to 3 KB) and the library files it names.
