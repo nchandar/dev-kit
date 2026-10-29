@@ -88,6 +88,7 @@ ok "dry-run codex: exec, bypass approvals+sandbox, -m m2" 'echo "$d" | grep -q "
 d=$(HARNESS_MODEL=prov/m3 HARNESS_DRYRUN=1 "$spawn" d3 opencode "$t/brief.md" | tr '\n' ' ')
 ok "dry-run opencode: run --auto, -m from HARNESS_MODEL" 'echo "$d" | grep -q "run" && echo "$d" | grep -q -- "--auto" && echo "$d" | grep -q -- "-m prov/m3"'
 d=$(HARNESS_DRYRUN=1 "$spawn" d4 claude "$t/brief.md" | tr '\n' ' ')
+ok "worker prompt asks for learnings in the handoff" 'echo "$d" | grep -q "learnings"'
 ok "worker prompt forbids pushing" 'echo "$d" | grep -q "Never git push"'
 d=$(HARNESS_SAFE=1 HARNESS_DRYRUN=1 "$spawn" d5 claude "$t/brief.md" | tr '\n' ' '); d6=$(HARNESS_SAFE=1 HARNESS_DRYRUN=1 "$spawn" d6 codex "$t/brief.md" | tr '\n' ' ')
 ok "HARNESS_SAFE=1 restores restricted modes" 'echo "$d" | grep -q -- "--permission-mode acceptEdits" && ! echo "$d" | grep -q -- "--dangerously" && echo "$d6" | grep -q -- "-s workspace-write" && ! echo "$d6" | grep -q -- "--dangerously"'

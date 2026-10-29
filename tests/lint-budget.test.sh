@@ -7,7 +7,7 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
 skill() { # root name description [extra-lines] [folder]
   local d=${5:-$2}; mkdir -p "$1/skills/$d"
-  { printf -- '---\nname: %s\ndescription: %s\n---\n# T\nRun bin/ledger at each step. Read library/tdd.\n' "$2" "$3"
+  { printf -- '---\nname: %s\ndescription: %s\n---\n# T\nRun bin/ledger at each step. Read library/tdd. Closeout: library/state.\n' "$2" "$3"
     printf '## When to Use\n## Checklist\n## Rationalizations\n## Red Flags\n## Verification\n'
     [ -n "${4:-}" ] && seq 1 "$4" | sed 's/^/line /'; } > "$1/skills/$d/SKILL.md"
 }
@@ -23,7 +23,7 @@ good() {
   skill "$r" dev-research "investigate sources write report"
   skill "$r" dev-review "standards spec reviewers merged"
   skill "$r" dev-spawn "delegate headless worker briefs"
-  lib "$r" tdd; lib "$r" verify
+  lib "$r" tdd; lib "$r" verify; lib "$r" state
   echo "# router" > "$r/AGENTS.md"
 }
 expect() { # name want root [args]
@@ -123,5 +123,15 @@ mut; recipe good-one; index good-one; echo "see library/recipes/good-one" >> "$t
 expect "reference to an existing recipe resolves" 0 "$t/m"
 mut; echo "see library/recipes/missing-one" >> "$t/m/skills/dev-debug/SKILL.md"
 expect "reference to a missing recipe fails" 1 "$t/m"
+
+# --- naming the deep or recipes folder in prose is not a reference to a file
+mut; echo "edit a library/deep/ file or add one to library/recipes/ when it fits" >> "$t/m/skills/dev-debug/SKILL.md"
+expect "mentioning the deep and recipes folders in prose is fine" 0 "$t/m"
+
+# --- every skill except dev-learn must carry the closeout reference to library/state
+mut; sed -i.bak 's/ Closeout: library\/state\.//' "$t/m/skills/dev-debug/SKILL.md"; rm "$t/m/skills/dev-debug/SKILL.md.bak"
+expect "a skill without a library/state reference fails" 1 "$t/m"
+mut; skill "$t/m" dev-learn "queued lessons become library edits after approval"; sed -i.bak 's/ Closeout: library\/state\.//' "$t/m/skills/dev-learn/SKILL.md"; rm "$t/m/skills/dev-learn/SKILL.md.bak"
+expect "dev-learn is exempt from the library/state reference" 0 "$t/m"
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

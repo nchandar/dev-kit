@@ -6,7 +6,7 @@ description: Build a feature or refactor end to end: clarify, spec, thin slices,
 
 Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
 
-Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else.
+Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.harness/memory.md` if it exists.
 
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=feature).
 
@@ -15,17 +15,17 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - Not for a bug (use dev-debug) or a question (use dev-research).
 
 ## Checklist
-- [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
-- [ ] 1. Clarify: first read any research report (the path the user names, else the newest `report.md` under `.harness/tasks/*/` that matches this request) and grill only on what it leaves open. No report is fine: go straight to library/grill until goal, non-goals and acceptance check are approved.
+- [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
+- [ ] 1. Clarify: first read any research report (the path the user names, else the newest `report.md` under `.harness/tasks/*/` that matches this request) and grill only on what it leaves open. No report is fine: go straight to library/grill until goal, non-goals and acceptance check are approved. Then refresh `<task>/state.md` (library/state).
 - [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture.
 - [ ] 3. Quality bar: no `CONSTRAINTS.md`? follow library/quality-bar; run the baseline.
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.
-- [ ] 5. Per slice, in order: follow library/tdd (red, green), then run the slice check. Ledger red and green.
+- [ ] 5. Per slice, in order: follow library/tdd (red, green), then run the slice check. Ledger red and green. Refresh state.md at each plan checkpoint.
 - [ ] 6. Independent slices: run in parallel worktrees via dev-spawn (ship shape); you merge, workers never do.
 - [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding.
 - [ ] 8. Review: run dev-review on the full diff; fix blockers.
 - [ ] 9. Verify: follow library/verify against the spec's acceptance criteria.
-- [ ] 10. Ship: follow library/git-ship. Ask before any push. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Refactor variant
 Replace steps 1 to 2 with: state the structural goal and the invariant. Save baseline output of the real artifact first. Characterization tests where coverage is thin. Small steps, tests green after each, one commit per step. Migrate all callers, then delete the old path. At step 9 the output must equal the baseline (also library/simplify).

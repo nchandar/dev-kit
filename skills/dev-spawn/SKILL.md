@@ -6,7 +6,7 @@ description: Delegate bulk or independent work to headless sub-agents so the mai
 
 Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
 
-Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else.
+Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.harness/memory.md` if it exists.
 
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=spawn).
 
@@ -18,11 +18,11 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 1. Pick the shape: scout (report only, no code change) or ship (edits code).
 - [ ] 2. Write the brief to `<task>/briefs/<id>.md`, standalone, max 40 lines: goal and why, in-scope files, non-goals, facts already known, the output wanted, the done-check command.
 - [ ] 3. Parallel writers each get `--worktree` (branch `harness/<id>`). Scouts need none.
-- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md`, each worker as its OWN background command so every finish notifies you (never wait on a group: the slowest hides the rest). When one finishes, read its handoff and check its output exists before trusting PASS. Short ask? `--prompt "text"` instead of a brief file. At most 2 live workers; extras queue; a hung worker is killed after `HARNESS_TIMEOUT` (900 s).
+- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md`, each worker as its OWN background command so every finish notifies you (never wait on a group: the slowest hides the rest). When one finishes, read its handoff and check its output exists before trusting PASS. Copy any `learnings` from accepted handoffs into `state.md` (library/state). Short ask? `--prompt "text"` instead of a brief file. At most 2 live workers; extras queue; a hung worker is killed after `HARNESS_TIMEOUT` (900 s).
 - [ ] 5. Read only `<task>/handoffs/<id>.md`; open the `.log` only if it failed.
 - [ ] 6. Accept a report only if it ends `PASS`, `ISSUES` or `BLOCKED` with evidence (command, file:line). No evidence: reject and respawn once; a second miss is a gap, and a gap is not a pass.
 - [ ] 7. Dropout: continue with the others and note it. Run `bin/reconcile` to see all states.
-- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Phrases to commands
 Any CLI can be the main agent and any CLI the worker; it is always the same bash command. If the user does not name a CLI, use the one you are running in.
@@ -37,7 +37,7 @@ Any CLI can be the main agent and any CLI the worker; it is always the same bash
 Workers are headless one-shots, not windows. Edits stay inside the worktree; wider access is the user's call.
 
 ## Worker rules (put in every brief)
-Do not spawn agents. Do not contact other workers. Write your report to the handoff path with: result (PASS|ISSUES|BLOCKED), evidence, files changed, open questions, next step. Run `bin/ledger` for your own decisions.
+Do not spawn agents. Do not contact other workers. Write your report to the handoff path with: result (PASS|ISSUES|BLOCKED), evidence, files changed, open questions, next step, learnings (reusable lessons, each with a pointer). Run `bin/ledger` for your own decisions.
 
 ## Rationalizations
 | Excuse | Rebuttal |

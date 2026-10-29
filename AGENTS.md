@@ -8,6 +8,7 @@ Lean, agent-agnostic. Installed at `~/.agents/harness/`; the `bin/` tools and `l
 - dev-research: question or spike; report as .md/.html; changes no code.
 - dev-review: Standards + Spec scouts in parallel, blast radius.
 - dev-spawn: delegate to headless sub-agents (max 2, depth 1).
+- dev-learn: queued learnings into library edits, merged only with the user's approval.
 If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first.
 
 ## Session start (every new terminal; workers skip it, HARNESS_TASK is already set)
@@ -17,6 +18,7 @@ If a route matches, you MUST use it; never implement directly. Unclear request: 
 
 ## Always
 - Ledger: `bin/ledger <phase> <decision> <reason> [evidence] [result]` after every step. One append-only TSV file per task at `<task>/ledger.tsv` (columns: time phase decision reason evidence result), never edited or deleted; a wrong call gets a new row that supersedes it. `HARNESS_LEDGER_MIRROR` also reports to a supervisor. Before stopping write a `next` row with the first runnable step; when finished `bin/ledger done "<summary>"`.
+- State: `<task>/state.md` is the current picture (pointers, never copies; `bin/state check`). Durable project facts go in `.harness/memory.md`. Both stay local, git-ignored. Closeout: `library/state`.
 - Context guard: bulk output stays out of your context. Commands: `bin/run <cmd>` (log + short summary, no agent). Reading, review, independent work: a dev-spawn worker on any CLI ("open a codex instance and run X"). Take back summaries and paths only.
 - Done means `library/verify` evidence, never "it builds".
 - State assumptions; stop and ask on conflicting requirements; push back on bad ideas; keep it simple; touch only what was asked.

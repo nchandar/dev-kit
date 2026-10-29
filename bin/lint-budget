@@ -13,7 +13,7 @@ section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
 common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
   grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
   grep -Eq '\.\./|references/' "$1" && bad "$1: references files outside the tree"
-  local r; for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$1" | sort -u); do
+  local r; for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$1" | grep -v -x -E 'library/(deep|recipes)' | sort -u); do
     [ -f "$r.md" ] || bad "$1: unresolved reference $r"; done; }
 
 sz=$(wc -c < AGENTS.md 2>/dev/null || echo 0)
@@ -41,6 +41,7 @@ for f in "${skills[@]}"; do
     total=$((total + ${#d} + 1)); descs+="$f	$d"$'\n'
   fi
   common "$f"
+  [ "$nm" = dev-learn ] || grep -q 'library/state' "$f" || bad "$f: must reference library/state (closeout)"
   for h in "When to Use" "Checklist" "Rationalizations" "Red Flags" "Verification"; do section "$f" "$h"; done
 done
 [ "$total" -le $DESC_MAX ] || bad "descriptions total $total B (max $DESC_MAX)"
@@ -60,7 +61,7 @@ for f in ${deepf[@]+"${deepf[@]}"}; do
   [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Red Flags"; do section "$f" "$h"; done
-  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
+  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | grep -v -x -E 'library/(deep|recipes)' | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
 done
 [ "$deepbytes" -le $DEEP_TOTAL ] || bad "library/deep totals $deepbytes B (max $DEEP_TOTAL)"
 
@@ -72,7 +73,7 @@ for f in ${recf[@]+"${recf[@]}"}; do
   [ "$lines" -le $RECIPE_LINES ] || bad "$f has $lines lines (max $RECIPE_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Steps" "Gotchas" "Verified"; do section "$f" "$h"; done
-  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
+  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | grep -v -x -E 'library/(deep|recipes)' | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
   grep -q "^$name:" library/recipes/index.md 2>/dev/null || bad "$f: not listed in library/recipes/index.md"
 done
 if [ -f library/recipes/index.md ]; then

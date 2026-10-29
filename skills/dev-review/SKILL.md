@@ -6,7 +6,7 @@ description: Review a diff on two independent axes, Standards and Spec, with par
 
 Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
 
-Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else.
+Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.harness/memory.md` if it exists.
 
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=review).
 
@@ -25,7 +25,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 5. Blast radius: for each changed contract, find callers and dependents beyond the diff; prove one "safe because" fact by running code.
 - [ ] 6. Merge: dedupe, order by severity (bug, regression, standards, nit), drop anything without file:line.
 - [ ] 7. Risky change? library/doubt on your merged conclusion.
-- [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Rationalizations
 | Excuse | Rebuttal |

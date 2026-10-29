@@ -62,7 +62,7 @@ build_cmd() { # $1=workdir $2=prompt
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
     fake)     cmd=("$HARNESS_FAKE" "$2" "$hf");;
   esac; }
-make_prompt() { echo "You are harness sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (HARNESS_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step) to this absolute path: $hf
+make_prompt() { echo "You are harness sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (HARNESS_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
 
 --- BRIEF ---
 $1"; }
