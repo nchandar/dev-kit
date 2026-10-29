@@ -8,8 +8,9 @@ Record the bar and any change to it with bin/ledger (phase=quality-bar).
 1. Write `CONSTRAINTS.md` (max 30 lines): the dimensions that matter (tests, types, lint, coverage floor, perf budget, security) with thresholds and the command that checks each.
 2. Interview the user on which dimensions matter; propose sane defaults; do not invent thresholds silently.
 3. Run the commands as the baseline and ledger the numbers.
-4. Any diff that touches thresholds, skips, ignores, `--no-verify`, `@ts-ignore`, disabled lint rules or deleted tests is flagged and needs the user's approval.
+4. Any diff that touches thresholds, skips, ignores, `--no-verify`, `@ts-ignore`, disabled lint rules, loosened assertions or deleted tests is flagged and needs the user's approval.
 5. Re-run the baseline after each slice; the bar may only move up.
+6. An instruction you keep repeating becomes a check, lint rule or script, not more prose.
 
 ## Red Flags
 - Getting green by lowering the bar: a skipped test, loosened assertion, raised timeout or suppressed warning.

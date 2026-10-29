@@ -10,7 +10,8 @@ Record what was removed or reshaped with bin/ledger (phase=simplify).
 3. One simplification at a time; rerun tests after each; keep each as its own commit.
 4. Prefer deleting over restructuring, and boring over clever.
 5. Respect repo conventions; they win over your taste.
-6. Ask: would a staff engineer say "why didn't you just..."? If 100 lines would do, do not keep 1000.
+6. A reader should trace the code in 30 seconds: fewer layers to follow, less state to hold (library/deep/reader-load).
+7. Ask: would a staff engineer say "why didn't you just..."? If 100 lines would do, do not keep 1000.
 
 ## Red Flags
 - Behavior change smuggled into a "cleanup".

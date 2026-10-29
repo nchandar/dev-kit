@@ -11,7 +11,8 @@ Record repro, root cause and guard with bin/ledger (phase=debug).
 4. Ask "why" until the answer is a wrong decision in the code, not a consequence of an earlier one. Is the state that triggered the symptom legitimate? If the system may be in that state, handling it is the fix.
 5. Restart-only failures: suspect persisted state first (config, caches, locks).
 6. Write the root cause as one sentence with file:line in the ledger. Check for the same fault elsewhere and fix all instances.
-7. Guard: a regression test (see library/tdd), then the fix, then resume.
+7. Two fixes failed the same check? Write the premise both assume and test it directly (library/deep/attack-the-premise).
+8. Guard: a regression test (see library/tdd), then the fix, then resume.
 
 ## Red Flags
 - Fixing where the symptom surfaced, or wrapping it in a try/catch.

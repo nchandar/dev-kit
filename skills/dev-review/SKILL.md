@@ -15,6 +15,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - Tiny diff: self-review with the same axes and ledger that you did.
 
 ## Checklist
+- [ ] 0. Skim library/principles (about 500 tokens); open a deep file only when its trigger matches.
 - [ ] 1. Pin the fixed point: `git merge-base HEAD <base>`; confirm the diff is non-empty before spawning.
 - [ ] 2. Find the spec (issue, `<task>/spec.md`, docs) and the standards (CONTRIBUTING, lint config, AGENTS.md).
 - [ ] 3. Brief two scouts, each with the diff command and only its own sources:

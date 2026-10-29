@@ -9,7 +9,8 @@ Record each fact you relied on, with its source, using bin/ledger (phase=docs).
 2. Read the official docs or the tool's own `--help` for that version. Do not guess flags or signatures from memory.
 3. Check for deprecations and breaking changes between your assumed and actual version.
 4. Implement from what you read; cite the doc URL or help line in a code comment only when non-obvious.
-5. Conflict between docs and observed behavior: trust a minimal run you executed, ledger it, and say so.
+5. Mark anything you could not verify as UNVERIFIED in the ledger.
+6. Conflict between docs and observed behavior: trust a minimal run you executed, ledger it, and say so.
 
 ## Red Flags
 - "I remember the API" for a fast-moving library; copying a Stack Overflow answer of unknown version.
