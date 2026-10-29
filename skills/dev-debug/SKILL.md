@@ -15,7 +15,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - Not for new behavior (use dev-feature).
 
 ## Checklist
-- [ ] 0. Skim library/principles (about 500 tokens); open a deep file only when its trigger matches.
+- [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
 - [ ] 1. Restate the bug: expected vs actual, two lines. Unclear? library/grill.
 - [ ] 2. Reproduce with a command, via library/debug-method (stop-the-line, preserve evidence). No repro, no fix.
 - [ ] 3. Localize and find the root cause at file:line (library/debug-method). Check the same fault elsewhere.
