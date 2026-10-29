@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Run a command without flooding your context. Full output goes to a log; you get a short summary.
+# Usage: bin/run [-n TAIL_LINES] <command> [args...]    (default tail 15). Exit code = the command's.
+# Output: line 1 "exit=<rc> secs=<n> log=<path>", then on failure up to 20 error-looking lines and the tail.
+set -u
+here=$(dirname "$0"); tail_n=15
+[ "${1:-}" = -n ] && { tail_n=${2:-15}; shift 2; }
+[ $# -ge 1 ] || { echo "usage: run [-n N] <command> [args...]" >&2; exit 2; }
+task=${HARNESS_TASK:-}; [ -n "$task" ] || { echo "run: no task. Run: ledger start <slug>; set HARNESS_TASK" >&2; exit 2; }
+D=$("$here/ledger" -t "$task" path) || exit 2
+mkdir -p "$D/runs"
+n=$(printf '%03d' $(( $(ls "$D/runs" | wc -l) + 1 ))); log=$D/runs/$n.log
+s=$(date +%s); "$@" > "$log" 2>&1 < /dev/null; rc=$?; e=$(date +%s)
+printf 'exit=%s secs=%s log=%s\n' "$rc" "$((e-s))" "$log"
+if [ $rc -ne 0 ]; then
+  grep -n -i -E 'fail|error|panic|assert|exception|traceback|✗|not ok' "$log" | cut -c1-200 | head -20
+  echo "--- last $tail_n lines:"; tail -n "$tail_n" "$log" | cut -c1-200
+fi
+"$here/ledger" -t "$task" run "$(printf '%s ' "$@" | cut -c1-80)" "exit $rc in $((e-s))s" "$log" "$([ $rc -eq 0 ] && echo pass || echo fail)" 2>/dev/null || true
+exit $rc

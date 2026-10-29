@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
+#   ledger start <slug> [note]                          create a task, print its id
+#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]
+#   ledger [-t id] done [summary]                       mark the task finished
+#   ledger [-t id] path | ledger base                   print task dir | .harness dir
+# Task: -t id, else $HARNESS_TASK. No task is an error: there is no shared fallback ledger.
+# $HARNESS_DIR overrides the .harness location. $HARNESS_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
+set -u
+die() { echo "ledger: $*" >&2; exit 2; }
+base() { local d
+  if [ -n "${HARNESS_DIR:-}" ]; then echo "$HARNESS_DIR"; return; fi
+  if d=$(git rev-parse --git-common-dir 2>/dev/null) && d=$(cd "$d" && pwd) && [ "$(basename "$d")" = .git ]; then echo "$(dirname "$d")/.harness"
+  else echo "$PWD/.harness"; fi; }
+clean() { printf '%s' "$1" | tr '\n\t' '  ' | cut -c1-400; }
+HEADER='time\tphase\tdecision\treason\tevidence\tresult\n'
+append() { # file phase decision reason evidence result
+  ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1"
+  [ -z "${HARNESS_LEDGER_MIRROR:-}" ] || sh -c "$HARNESS_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }
+
+B=$(base)
+[ "${1:-}" = base ] && { echo "$B"; exit 0; }
+if [ "${1:-}" = start ]; then
+  slug=$(printf '%s' "${2:-task}" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | cut -c1-30)
+  mkdir -p "$B/tasks"
+  until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do :; done
+  append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "" open
+  echo "$id"; exit 0
+fi
+task=${HARNESS_TASK:-}
+if [ "${1:-}" = path ] && [ "${2:-}" = -t ]; then task=${3:-}; set -- path
+elif [ "${1:-}" = -t ]; then task=${2:-}; shift 2; fi
+[ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set HARNESS_TASK"
+D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
+case ${1:-} in
+  path) echo "$D"; exit 0;;
+  done) append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done; exit 0;;
+esac
+[ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result]"
+append "$D/ledger.tsv" "$@"
+exit 0

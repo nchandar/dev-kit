@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Run one sub-agent to completion on any CLI. Brief in, handoff out. Blocks; caller may background with &.
+# Usage: bin/spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>
+#        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
+#        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
+# Needs HARNESS_TASK (from `ledger start`). Per-task files live in .harness/tasks/<task>/; worker slots are repo-wide.
+# Workers skip permissions (HARNESS_SAFE=1 for restricted modes) but can never push. Env: HARNESS_MAX_WORKERS (2), HARNESS_TIMEOUT secs (900, 0=off), HARNESS_MODEL, HARNESS_DRYRUN=1 (print command only), HARNESS_DIR
+set -u
+here=$(dirname "$0")
+
+# flags each adapter relies on, checked against the CLI's own --help (catches version drift on a new machine)
+doctor() { local bad=0 cli v h f need
+  for cli in claude codex opencode; do
+    if ! command -v $cli >/dev/null 2>&1; then printf '%-9s not installed\n' $cli; continue; fi
+    v=$($cli --version 2>&1 | head -1 | tr -d '\r')
+    case $cli in
+      claude)   h=$(claude --help 2>&1);        need="-p --permission-mode --allowedTools --add-dir --no-session-persistence --model --dangerously-skip-permissions";;
+      codex)    h=$(codex exec --help 2>&1);    need="-C -s --add-dir --skip-git-repo-check --ephemeral -o -m --dangerously-bypass-approvals-and-sandbox";;
+      opencode) h=$(opencode run --help 2>&1);  need="--auto -m";;
+    esac
+    miss=""; for f in $need; do printf '%s\n' "$h" | grep -qE -- "(^|[[:space:],])$f([[:space:],=]|\$)" || miss="$miss $f"; done
+    if [ -n "$miss" ]; then printf '%-9s %-22s MISSING%s\n' $cli "$v" "$miss"; bad=1; else printf '%-9s %-22s ok\n' $cli "$v"; fi
+    if [ $cli = opencode ]; then opencode service status 2>&1 | grep -q '^http' || echo "          WARN opencode v2 needs its background service: run 'opencode service start' once in a normal terminal"; fi
+  done; return $bad; }
+[ "${1:-}" = --doctor ] && { doctor; exit $?; }
+
+shape=ship; wt=0; model=${HARNESS_MODEL:-}; inline=
+while [ $# -gt 0 ]; do case $1 in
+  --shape) shape=$2; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
+want=3; [ -n "$inline" ] && want=2
+[ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
+id=$1 cli=$2 brief=${3:-}
+[ -z "${HARNESS_DEPTH:-}" ] || { echo "spawn: sub-agents must not spawn (depth 1)" >&2; exit 3; }
+case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
+[ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
+case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
+
+root=$PWD; CAP=${HARNESS_MAX_WORKERS:-2}; TMO=${HARNESS_TIMEOUT:-900}
+H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
+task=${HARNESS_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set HARNESS_TASK" >&2; exit 2; }
+T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
+hf=$T/handoffs/$id.md; log=$T/handoffs/$id.log; st=$T/run/$id.status
+
+# the exact command per CLI, as an array so it can be dry-run tested; stdin is closed at launch (codex waits on it)
+build_cmd() { # $1=workdir $2=prompt
+  case $cli in
+    claude)   perm=(--dangerously-skip-permissions)
+              [ -z "${HARNESS_SAFE:-}" ] || perm=(--permission-mode acceptEdits --allowedTools Bash Read Edit Write Grep Glob --add-dir "$T")
+              cmd=(claude -p "$2" "${perm[@]}" --no-session-persistence)
+              [ -z "$model" ] || cmd+=(--model "$model");;
+    codex)    perm=(--dangerously-bypass-approvals-and-sandbox)
+              [ -z "${HARNESS_SAFE:-}" ] || perm=(-s workspace-write --add-dir "$T")
+              cmd=(codex exec -C "$1" "${perm[@]}" --skip-git-repo-check --ephemeral -o "$T/handoffs/$id.last")
+              [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
+    opencode) cmd=(opencode run --auto)
+              [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
+    fake)     cmd=("$HARNESS_FAKE" "$2" "$hf");;
+  esac; }
+make_prompt() { echo "You are harness sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (HARNESS_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step) to this absolute path: $hf
+
+--- BRIEF ---
+$1"; }
+brieftext() { if [ -n "$inline" ]; then printf '%s' "$inline"; else cat "$brief"; fi; }
+
+if [ -n "${HARNESS_DRYRUN:-}" ]; then build_cmd "$root" "$(make_prompt "$(brieftext)")"; printf '%s\n' "${cmd[@]}"; exit 0; fi
+
+mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
+[ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
+
+# concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead pid) are reclaimed
+slot=
+claim() { local n d p
+  for n in $(seq 1 "$CAP"); do d=$H/run/slot.$n
+    if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
+    p=$(cat "$d/pid" 2>/dev/null); if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
+  done; return 1; }
+trap '[ -n "$slot" ] && rm -rf "$slot"' EXIT
+until claim; do sleep 1; done
+
+wd=$root
+if [ $wt = 1 ]; then
+  wd=$T/wt/$id; mkdir -p "$T/wt"; br="harness/$task-$id"
+  git worktree add -q "$wd" -b "$br" 2>/dev/null || git worktree add -q "$wd" "$br" || { echo "spawn: worktree failed" >&2; exit 1; }
+fi
+rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
+before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.harness/')
+
+build_cmd "$wd" "$(make_prompt "$(brieftext)")"
+export HARNESS_DEPTH=1 HARNESS_DIR=$H HARNESS_TASK=$task
+# workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote
+gn=${GIT_CONFIG_COUNT:-0}
+for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-harness"; gn=$((gn+1)); done
+[ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn
+( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
+wpid=$!
+guard=
+if [ "$TMO" -gt 0 ] 2>/dev/null; then
+  ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
+  guard=$!
+fi
+wait "$wpid"; rc=$?
+if [ -n "$guard" ]; then pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; fi
+
+state=done; [ $rc -eq 0 ] || state=failed
+[ -f "$T/run/$id.timedout" ] && state=timeout
+if [ ! -s "$hf" ]; then
+  [ $state = done ] && state=failed
+  { echo "# $id (auto-generated)"
+    if [ $state = timeout ]; then echo "status: timed out after ${TMO}s (no handoff written). Last output:"; else echo "status: no handoff written (exit $rc). Last output:"; fi
+    tail -n 20 "$log"; } > "$hf"
+fi
+after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.harness/')
+if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then state=violation; fi
+echo "$state $rc $(date +%s)" > "$st"
+"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
+[ $state = done ]

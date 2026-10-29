@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Rebuild status from disk + git. No watcher, no state of its own.
+#   reconcile            one line per OPEN task in this repo (use at session start)
+#   reconcile --all      include finished tasks
+#   reconcile <task-id>  detail: resume point, recent ledger rows, workers, branches
+set -u
+here=$(dirname "$0"); B=$("$here/ledger" base); TD=$B/tasks
+cut_() { printf '%s' "$1" | cut -c1-"$2"; }
+workers() { # task dir -> "running killed done failed" counts, or per-worker lines with -v
+  local d=$1 mode=${2:-count} r=0 k=0 f=0 s st pid id
+  for s in "$d"/run/*.status; do [ -f "$s" ] || continue; id=$(basename "$s" .status); read -r st pid _ < "$s"
+    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then st=running; r=$((r+1)); else st=killed; k=$((k+1)); fi; else f=$((f+1)); fi
+    [ "$mode" = -v ] && printf '  %-14s %-9s %s\n' "$id" "$st" "$([ -s "$d/handoffs/$id.md" ] && echo "handoff: handoffs/$id.md" || echo "no handoff")"
+  done
+  [ "$mode" = count ] && echo "$r running, $k killed, $f finished"; }
+rows() { tail -n +2 "$1/ledger.tsv"; }
+lastrow() { rows "$1" | tail -1; }
+
+case ${1:-} in
+  ""|--all)
+    [ -d "$TD" ] && ls "$TD"/*/ledger.tsv >/dev/null 2>&1 || { echo "no tasks in this repo. Start one: bin/ledger start <slug>"; exit 0; }
+    for d in "$TD"/*/; do d=${d%/}; id=$(basename "$d"); [ -f "$d/ledger.tsv" ] || continue
+      row=$(lastrow "$d"); ph=$(printf '%s' "$row" | cut -f2); dec=$(printf '%s' "$row" | cut -f3)
+      if [ "$ph" = done ]; then [ "${1:-}" = --all ] || continue; state=done; else state=open; fi
+      printf '%s  %s  %s: %s  [%s]\n' "$id" "$state" "$ph" "$(cut_ "$dec" 60)" "$(workers "$d")"
+    done;;
+  *)
+    d=$TD/$1; [ -d "$d" ] || { echo "reconcile: unknown task '$1'" >&2; exit 2; }
+    echo "task $1"
+    nx=$(rows "$d" | awk -F'\t' '$2=="next"' | tail -1)
+    [ -n "$nx" ] && echo "resume: $(printf '%s' "$nx" | cut -f3)"
+    echo "recent:"; rows "$d" | tail -5 | awk -F'\t' '{printf "  %s %s: %s\n", substr($1,3), $2, substr($3,1,70)}'
+    echo "workers:"; workers "$d" -v
+    [ -f "$d/plan.json" ] && echo "plan: $(grep -c '"id"' "$d/plan.json") slices in plan.json"
+    br=$(git branch --list "harness/$1-*" 2>/dev/null | tr -d ' *+'); [ -n "$br" ] && echo "branches: $(echo $br)";;
+esac

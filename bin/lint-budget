@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Enforce the harness context budget. Usage: bin/lint-budget [root] [--partial]
+# --partial skips the minimum-skill-count check (use while building up).
+set -u
+root=.; partial=0
+for a in "$@"; do case $a in --partial) partial=1;; *) root=$a;; esac; done
+cd "$root" || exit 2
+
+AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5
+errs=0
+bad() { echo "FAIL $*"; errs=$((errs+1)); }
+section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
+common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
+  grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
+  grep -Eq '\.\./|references/' "$1" && bad "$1: references files outside the tree"
+  local r; for r in $(grep -oE 'library/[a-z0-9-]+' "$1" | sort -u); do
+    [ -f "$r.md" ] || bad "$1: unresolved reference $r"; done; }
+
+sz=$(wc -c < AGENTS.md 2>/dev/null || echo 0)
+[ "$sz" -le $AGENTS_MAX ] || bad "AGENTS.md is $sz B (max $AGENTS_MAX)"
+
+shopt -s nullglob
+skills=(skills/*/SKILL.md); n=${#skills[@]}
+[ "$n" -le $SKILLS_MAX ] || bad "$n skills (max $SKILLS_MAX)"
+[ "$partial" = 1 ] || [ "$n" -ge $SKILLS_MIN ] || bad "$n skills (min $SKILLS_MIN)"
+
+total=0; descs=""
+for f in "${skills[@]}"; do
+  lines=$(wc -l < "$f")
+  [ "$lines" -le $SKILL_LINES ] || bad "$f has $lines lines (max $SKILL_LINES)"
+  fm=$(awk 'NR==1&&$0!="---"{exit} NR>1&&$0=="---"{exit} NR>1{print}' "$f")
+  nm=$(printf '%s\n' "$fm" | sed -n 's/^name:[[:space:]]*//p' | head -1)
+  folder=$(basename "$(dirname "$f")")
+  [[ $nm =~ ^dev-[a-z0-9-]+$ ]] || bad "$f: name '$nm' must start with dev-"
+  [ "$nm" = "$folder" ] || bad "$f: name '$nm' must equal folder '$folder'"
+  d=$(printf '%s\n' "$fm" | grep -m1 '^description:' | sed 's/^description:[[:space:]]*//')
+  if [ -z "$d" ] || [[ $d == ">"* ]] || [[ $d == "|"* ]]; then bad "$f: description must be one non-empty line"
+  else
+    nxt=$(printf '%s\n' "$fm" | awk '/^description:/{f=1;next} f{print;exit}')
+    [[ $nxt == [[:space:]]* ]] && bad "$f: description spans multiple lines"
+    total=$((total + ${#d} + 1)); descs+="$f	$d"$'\n'
+  fi
+  common "$f"
+  for h in "When to Use" "Checklist" "Rationalizations" "Red Flags" "Verification"; do section "$f" "$h"; done
+done
+[ "$total" -le $DESC_MAX ] || bad "descriptions total $total B (max $DESC_MAX)"
+
+libs=(library/*.md); ln=${#libs[@]}; libbytes=0
+for f in "${libs[@]}"; do
+  lines=$(wc -l < "$f"); libbytes=$((libbytes + $(wc -c < "$f")))
+  [ "$lines" -le $LIB_LINES ] || bad "$f has $lines lines (max $LIB_LINES)"
+  common "$f"
+  for h in "When to Use" "Steps" "Red Flags" "Verification"; do section "$f" "$h"; done
+done
+
+# trigger collision: Jaccard over content words of each listed description pair
+if [ -n "$descs" ]; then
+  printf '%s' "$descs" | awk -F'\t' -v thr=$JACCARD '
+    BEGIN{split("the and for with when use that this from into your are not any all can has have its then than will you them they what which while where been being were these those also only each such over after before",s," "); for(i in s)stop[s[i]]=1}
+    { names[NR]=$1; k=split(tolower($2),w,/[^a-z0-9]+/)
+      for(i=1;i<=k;i++) if(length(w[i])>=4 && !(w[i] in stop)) set[NR,w[i]]=1 }
+    END{ for(a=1;a<=NR;a++) for(b=a+1;b<=NR;b++){ inter=0; ua=0; ub=0
+        for(key in set){ split(key,p,SUBSEP); if(p[1]==a){ua++; if((b SUBSEP p[2]) in set) inter++} else if(p[1]==b) ub++ }
+        un=ua+ub-inter; if(un>0 && inter/un>=thr){ printf "FAIL trigger collision %.2f: %s <-> %s\n", inter/un, names[a], names[b]; c++ } }
+      exit c>0 }' || errs=$((errs+1))
+fi
+
+if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B, on demand)"; exit 0; fi
+exit 1
