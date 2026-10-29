@@ -6,14 +6,14 @@ root=.; partial=0
 for a in "$@"; do case $a in --partial) partial=1;; *) root=$a;; esac; done
 cd "$root" || exit 2
 
-AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536
+AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536 RECIPE_LINES=45 RECIPE_TOTAL=49152
 errs=0
 bad() { echo "FAIL $*"; errs=$((errs+1)); }
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
 common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
   grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
   grep -Eq '\.\./|references/' "$1" && bad "$1: references files outside the tree"
-  local r; for r in $(grep -oE 'library/(deep/)?[a-z0-9-]+' "$1" | sort -u); do
+  local r; for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$1" | sort -u); do
     [ -f "$r.md" ] || bad "$1: unresolved reference $r"; done; }
 
 sz=$(wc -c < AGENTS.md 2>/dev/null || echo 0)
@@ -60,9 +60,25 @@ for f in ${deepf[@]+"${deepf[@]}"}; do
   [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Red Flags"; do section "$f" "$h"; done
-  for r in $(grep -oE 'library/(deep/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
+  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
 done
 [ "$deepbytes" -le $DEEP_TOTAL ] || bad "library/deep totals $deepbytes B (max $DEEP_TOTAL)"
+
+# library/recipes: reusable procedures learned in real work. On demand, indexed, never auto-loaded.
+recf=(library/recipes/*.md); rn=0; recbytes=0
+for f in ${recf[@]+"${recf[@]}"}; do
+  name=$(basename "$f" .md); [ "$name" = index ] && continue
+  rn=$((rn + 1)); lines=$(wc -l < "$f"); recbytes=$((recbytes + $(wc -c < "$f")))
+  [ "$lines" -le $RECIPE_LINES ] || bad "$f has $lines lines (max $RECIPE_LINES)"
+  grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
+  for h in "When to Load" "Steps" "Gotchas" "Verified"; do section "$f" "$h"; done
+  for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
+  grep -q "^$name:" library/recipes/index.md 2>/dev/null || bad "$f: not listed in library/recipes/index.md"
+done
+if [ -f library/recipes/index.md ]; then
+  for e in $(grep -oE '^[a-z0-9-]+:' library/recipes/index.md | tr -d ':'); do [ -f "library/recipes/$e.md" ] || bad "library/recipes/index.md lists $e but the file is missing"; done
+fi
+[ "$recbytes" -le $RECIPE_TOTAL ] || bad "library/recipes totals $recbytes B (max $RECIPE_TOTAL)"
 
 [ "$libbytes" -le $LIB_TOTAL ] || bad "library totals $libbytes B (max $LIB_TOTAL): compress before adding"
 
@@ -83,5 +99,5 @@ LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk
 leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude-dir=.harness --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
 [ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); }
 
-if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B), on demand"; exit 0; fi
+if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi
 exit 1

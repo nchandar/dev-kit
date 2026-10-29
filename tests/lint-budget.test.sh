@@ -104,4 +104,24 @@ expect "reference to an existing deep file resolves" 0 "$t/m"
 mut; echo "see library/deep/missing-one" >> "$t/m/skills/dev-debug/SKILL.md"
 expect "reference to a missing deep file fails" 1 "$t/m"
 
+# --- library/recipes: reusable procedures learned in real work, loaded on demand, indexed
+recipe() { mkdir -p "$t/m/library/recipes"; { printf '# %s\n## When to Load\n- trigger\n## Steps\n1. do it\n## Gotchas\n- careful\n## Verified\n- 2026-01-01 tool 1.0\n' "$1"; [ -n "${2:-}" ] && seq 1 "$2" | sed 's/^/line /'; } > "$t/m/library/recipes/$1.md"; }
+index() { mkdir -p "$t/m/library/recipes"; : > "$t/m/library/recipes/index.md"; for n in "$@"; do printf '%s: when you need it\n' "$n" >> "$t/m/library/recipes/index.md"; done; }
+mut; recipe build-app; index build-app
+expect "a valid recipe with an index passes" 0 "$t/m"
+mut; recipe long-one 45; index long-one
+expect "recipe over 45 lines fails" 1 "$t/m"
+mut; mkdir -p "$t/m/library/recipes"; printf '# x\n## When to Load\n- t\n## Steps\n1. a\n## Verified\n- d\n' > "$t/m/library/recipes/nogot.md"; index nogot
+expect "recipe missing Gotchas fails" 1 "$t/m"
+mut; recipe unlisted; index
+expect "recipe missing from the index fails" 1 "$t/m"
+mut; recipe real-one; index real-one ghost-one
+expect "index entry with no file fails" 1 "$t/m"
+mut; for n in $(seq 1 30); do { printf '# big%s\n## When to Load\n- t\n## Steps\n' "$n"; for i in $(seq 1 30); do printf 'padding %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; printf '## Gotchas\n- g\n## Verified\n- v\n'; } > "$t/m/library/recipes/big$n.md"; done; index $(for n in $(seq 1 30); do echo big$n; done)
+expect "recipes folder over its byte cap fails" 1 "$t/m"
+mut; recipe good-one; index good-one; echo "see library/recipes/good-one" >> "$t/m/skills/dev-debug/SKILL.md"
+expect "reference to an existing recipe resolves" 0 "$t/m"
+mut; echo "see library/recipes/missing-one" >> "$t/m/skills/dev-debug/SKILL.md"
+expect "reference to a missing recipe fails" 1 "$t/m"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
