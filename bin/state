@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Check a task's state.md and the project's memory.md against the no-redundancy rules.
+#   state check [-t id]     0 ok, 1 violations (printed), 2 usage or unknown task
+# state.md: 5 sections, at most 60 lines, no Next section (the ledger next row owns it), Direction at most 3 lines,
+#   every bullet at most 140 chars, every Findings/Decisions/Learnings bullet carries a pointer, no 40-char run copied
+#   from a ledger row, learnings as "- [ ] lesson | scope: project|general|recipe | ref: pointer" (box: space ~ x -).
+# memory.md (<base>/memory.md): at most 80 lines; each bullet has a pointer or a `command`.
+set -u
+here=$(dirname "$0")
+[ "${1:-}" = check ] || { echo "usage: state check [-t id]" >&2; exit 2; }
+shift; task=${HARNESS_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
+[ -n "$task" ] || { echo "state: no task (set HARNESS_TASK or pass -t)" >&2; exit 2; }
+D=$("$here/ledger" -t "$task" path 2>/dev/null) || { echo "state: unknown task '$task'" >&2; exit 2; }
+M=$("$here/ledger" base)/memory.md
+PTR='(^|[^A-Za-z0-9])L[0-9]+([^A-Za-z0-9]|$)|ledger@[0-9TZ:-]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+|[A-Za-z0-9_-]+\.(md|html|tsv|json|log|sh):?[0-9]*|https?://'
+errs=0
+cells=$(mktemp); trap 'rm -f "$cells"' EXIT
+tail -n +2 "$D/ledger.tsv" | cut -f3,4 | tr '\t' '\n' > "$cells"
+
+out=$(awk -v ptr="$PTR" -v f="$D/state.md" '
+  FNR==NR { blob = blob "\n" $0; next }
+  { n++ }
+  /^## / { sec = substr($0, 4); seen[sec] = 1; if (sec == "Next") print "FAIL " f ":" FNR ": a Next section is not allowed (the ledger next row owns it)"; next }
+  sec == "Direction" && $0 != "" { dir++ }
+  /^- / {
+    if (length($0) > 140) print "FAIL " f ":" FNR ": bullet over 140 chars, shorten or point to the source"
+    if ((sec == "Findings" || sec == "Decisions" || sec == "Learnings") && $0 !~ ptr) print "FAIL " f ":" FNR ": no pointer (ledger row, handoff, report or path)"
+    if (sec == "Learnings" && $0 !~ /^- \[[ ~x-]\] .+ \| scope: (project|general|recipe) \| ref: .+$/) print "FAIL " f ":" FNR ": learning must read - [ ] lesson | scope: project|general|recipe | ref: pointer"
+    t = $0; sub(/^- (\[[ ~x-]\] )?/, "", t)
+    for (i = 1; i + 39 <= length(t); i++) if (index(blob, substr(t, i, 40)) > 0) { print "FAIL " f ":" FNR ": 40+ chars copied from a ledger row, point to it instead"; break }
+  }
+  END {
+    split("Findings Decisions Direction Open questions Learnings", req, " ")
+    if (!("Findings" in seen)) print "FAIL " f ": missing section Findings"
+    if (!("Decisions" in seen)) print "FAIL " f ": missing section Decisions"
+    if (!("Direction" in seen)) print "FAIL " f ": missing section Direction"
+    if (!("Open questions" in seen)) print "FAIL " f ": missing section Open questions"
+    if (!("Learnings" in seen)) print "FAIL " f ": missing section Learnings"
+    if (n > 60) print "FAIL " f ": " n " lines (max 60)"
+    if (dir > 3) print "FAIL " f ": Direction has " dir " lines (max 3)"
+  }' "$cells" "$D/state.md")
+[ -z "$out" ] || { printf '%s\n' "$out"; errs=1; }
+
+if [ -f "$M" ]; then
+  out=$(awk -v ptr="$PTR" -v f="$M" '
+    { n++ }
+    /^- / {
+      if (length($0) > 140) print "FAIL " f ":" FNR ": bullet over 140 chars"
+      if ($0 !~ ptr && $0 !~ /`[^`]+`/) print "FAIL " f ":" FNR ": needs a pointer or a `command`"
+    }
+    END { if (n > 80) print "FAIL " f ": " n " lines (max 80)" }' "$M")
+  [ -z "$out" ] || { printf '%s\n' "$out"; errs=1; }
+fi
+[ $errs -eq 0 ] && { echo "OK: state.md$( [ -f "$M" ] && echo ' and memory.md')"; exit 0; }
+exit 1
