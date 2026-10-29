@@ -51,4 +51,18 @@ HARNESS_LEDGER_MIRROR='exit 9' "$ledger" -t "$A" a b c; rc=$?
 ok "failing mirror does not fail ledger"    '[ $rc -eq 0 ] && awk -F"\t" "\$2==\"a\" && \$3==\"b\"{f=1} END{exit !f}" .harness/tasks/$A/ledger.tsv'
 "$ledger" -t "$A" onlytwo 2>/dev/null; rc=$?
 ok "too few args exits 2"                   '[ $rc -eq 2 ]'
+# --- local-only: .harness never shows up in git status, and state.md starts from a template
+G=$(mktemp -d); ( cd "$G" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+LA=$(cd "$G" && "$ledger" start local-test "x")
+ok "start keeps .harness out of git status"      '[ -z "$(git -C "$G" status --porcelain)" ]'
+ok "exclude holds .harness/ exactly once"        '[ "$(grep -cxF ".harness/" "$G/.git/info/exclude")" -eq 1 ]'
+( cd "$G" && "$ledger" start again "y" >/dev/null )
+ok "a second start adds no duplicate exclude"    '[ "$(grep -cxF ".harness/" "$G/.git/info/exclude")" -eq 1 ]'
+ok "start creates state.md from the template"    'grep -q "^## Findings" "$G/.harness/tasks/$LA/state.md" && grep -q "^## Learnings" "$G/.harness/tasks/$LA/state.md" && ! grep -q "^## Next" "$G/.harness/tasks/$LA/state.md"'
+ok "state.md does not copy the ledger start row" '! grep -q "local-test" "$G/.harness/tasks/$LA/state.md"'
+W=$(mktemp -d); ( cd "$G" && git worktree add -q "$W/wt" -b wtb2 2>/dev/null ); ( cd "$W/wt" && "$ledger" start from-wt "z" >/dev/null )
+ok "start from a linked worktree is clean too"   '[ -z "$(git -C "$G" status --porcelain)" ] && [ -z "$(git -C "$W/wt" status --porcelain)" ]'
+N=$(mktemp -d); ( cd "$N" && "$ledger" start nongit "q" >/dev/null ); rc=$?
+ok "outside git: no error, no exclude attempted" '[ $rc -eq 0 ] && [ -d "$N/.harness/tasks" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

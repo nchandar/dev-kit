@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
-#   ledger start <slug> [note]                          create a task, print its id
+#   ledger start <slug> [note]                          create a task (ledger + state.md), keep .harness out of git, print its id
 #   ledger [-t id] <phase> <decision> <reason> [evidence] [result]
 #   ledger [-t id] done [summary]                       mark the task finished
 #   ledger [-t id] path | ledger base                   print task dir | .harness dir
@@ -13,6 +13,14 @@ base() { local d
   if d=$(git rev-parse --git-common-dir 2>/dev/null) && d=$(cd "$d" && pwd) && [ "$(basename "$d")" = .git ]; then echo "$(dirname "$d")/.harness"
   else echo "$PWD/.harness"; fi; }
 clean() { printf '%s' "$1" | tr '\n\t' '  ' | cut -c1-400; }
+exclude_local() { # keep .harness out of git without touching any tracked file (common dir covers worktrees)
+  local cd root ex rel
+  cd=$(git rev-parse --git-common-dir 2>/dev/null) && cd=$(cd "$cd" && pwd) || return 0
+  [ "$(basename "$cd")" = .git ] || return 0
+  root=$(dirname "$cd"); case "$1" in "$root"/*) ;; *) return 0;; esac
+  ex=$cd/info/exclude; rel="${1#$root/}/"; mkdir -p "$cd/info"
+  grep -qxF "$rel" "$ex" 2>/dev/null || printf '%s\n' "$rel" >> "$ex"; }
+STATE_TEMPLATE='# state\ngoal: (one line, or see spec.md)\n\n## Findings\n\n## Decisions\n\n## Direction\n\n## Open questions\n\n## Learnings\n'
 HEADER='time\tphase\tdecision\treason\tevidence\tresult\n'
 append() { # file phase decision reason evidence result
   ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
@@ -26,6 +34,7 @@ if [ "${1:-}" = start ]; then
   mkdir -p "$B/tasks"
   until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do :; done
   append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "" open
+  printf "$STATE_TEMPLATE" > "$B/tasks/$id/state.md"; exclude_local "$B"
   echo "$id"; exit 0
 fi
 task=${HARNESS_TASK:-}
