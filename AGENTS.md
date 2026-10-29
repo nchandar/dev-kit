@@ -1,6 +1,6 @@
 # Harness
 
-Lean, agent-agnostic. Installed at `~/.agents/harness/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
+Lean, agent-agnostic. Installed at `~/.agents/harness/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (your tool's todo list, or ledger rows if it has none; skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
 
 ## Routes
 - dev-feature: build or refactor: clarify, spec, slices, test-first, review, verify, ship.

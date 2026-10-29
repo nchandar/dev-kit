@@ -22,7 +22,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 5. Read only `<task>/handoffs/<id>.md`; open the `.log` only if it failed.
 - [ ] 6. Accept a report only if it ends `PASS`, `ISSUES` or `BLOCKED` with evidence (command, file:line). No evidence: reject and respawn once; a second miss is a gap, and a gap is not a pass.
 - [ ] 7. Dropout: continue with the others and note it. Run `bin/reconcile` to see all states.
-- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Phrases to commands
 Any CLI can be the main agent and any CLI the worker; it is always the same bash command. If the user does not name a CLI, use the one you are running in.

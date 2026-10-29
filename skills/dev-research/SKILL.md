@@ -24,7 +24,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 7. Checkpoint: share the findings and your recommendation in a few lines and ask where I agree or disagree. A disagreement or new unknown means grill again, research more, and checkpoint again (up to 3 rounds, then carry the open points into the report). Skip only if I said no questions. Refresh `<task>/state.md` each round (library/state).
 - [ ] 8. Write `<task>/report.md`: question, answer in 3 lines, evidence, options with tradeoffs, recommendation, open questions, and a closing `## Build handoff` (scope, non-goals, acceptance check, first slice) that dev-feature can start from.
 - [ ] 9. A system, architecture or data flow involved? Also write `<task>/report.html` with library/explain-html: animated flow, a short why per step, small tables; open it. Skip with a reason if there is no system to show.
-- [ ] 10. Confirm `git status` shows no project code changes. Ledger the conclusion, and offer the next step: grill me on the open questions, then dev-feature from the report. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 10. Confirm `git status` shows no project code changes. Ledger the conclusion, and offer the next step: grill me on the open questions, then dev-feature from the report. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Rationalizations
 | Excuse | Rebuttal |

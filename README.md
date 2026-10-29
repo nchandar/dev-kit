@@ -60,7 +60,7 @@ Try: "learn from this", or when `reconcile` says learnings are queued.
 
 ## State, memory and learning
 - **Ledger** (`ledger.tsv`): what happened and why. Append-only, never deleted.
-- **`state.md`** (per task): the current picture: findings, decisions that shape direction, direction, open questions, learnings. Rewritten at checkpoints. Pointers only, never copies; `bin/state check` enforces it.
+- **`state.md`** (per task): the current picture: findings, decisions that shape direction, direction, open questions, learnings. Rewritten at checkpoints. Pointers, not copies: `bin/state check` flags bullets with no pointer and text copied from ledger rows.
 - **`.harness/memory.md`** (per project): durable how-to-build, gotchas and architecture notes. Updated at closeout.
 - **Learnings** are captured as they appear (`- [ ] lesson | scope: project|general|recipe | ref: pointer`). At closeout, project ones go to `memory.md`; general and recipe ones go to a local inbox (`bin/learn queue`). `dev-learn` then drafts library changes on a branch and merges only after you approve.
 - All of it is local and git-ignored: `ledger start` adds `.harness/` to the repo's `info/exclude`. The inbox lives outside any repo.

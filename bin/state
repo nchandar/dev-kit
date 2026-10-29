@@ -19,7 +19,7 @@ tail -n +2 "$D/ledger.tsv" | cut -f3,4 | tr '\t' '\n' > "$cells"
 
 out=$(awk -v ptr="$PTR" -v f="$D/state.md" '
   FNR==NR { blob = blob "\n" $0; next }
-  { n++ }
+  { n++; if (index($0, "\t") || index($0, "\r")) print "FAIL " f ":" FNR ": tab or CR character (it corrupts the learning inbox), remove it" }
   /^## / { sec = substr($0, 4); seen[sec] = 1; if (sec == "Next") print "FAIL " f ":" FNR ": a Next section is not allowed (the ledger next row owns it)"; next }
   sec == "Direction" && $0 != "" { dir++ }
   /^- / {
@@ -43,7 +43,7 @@ out=$(awk -v ptr="$PTR" -v f="$D/state.md" '
 
 if [ -f "$M" ]; then
   out=$(awk -v ptr="$PTR" -v f="$M" '
-    { n++ }
+    { n++; if (index($0, "\t") || index($0, "\r")) print "FAIL " f ":" FNR ": tab or CR character, remove it" }
     /^- / {
       if (length($0) > 140) print "FAIL " f ":" FNR ": bullet over 140 chars"
       if ($0 !~ ptr && $0 !~ /`[^`]+`/) print "FAIL " f ":" FNR ": needs a pointer or a `command`"

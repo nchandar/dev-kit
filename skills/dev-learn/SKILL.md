@@ -18,7 +18,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 1. List: `~/.agents/harness/bin/learn list`. Nothing queued: stop and say so.
 - [ ] 2. Dedupe: search the library (`principles.md`, `deep/`, `recipes/`, core files) for each lesson. Already covered: `learn done <id> dropped`, naming the covering file in the ledger row.
 - [ ] 3. Classify each: a principle or discipline (a line in `library/principles.md` or a new or edited `library/deep/` file), a procedure with commands (a recipe in `library/recipes/` plus its index line), or project-specific (drop).
-- [ ] 4. Generalize and scrub: remove project and org names, paths, emails, tokens, hostnames; keep commands, flags, versions and the reason. A lesson that cannot be generalized is dropped.
+- [ ] 4. Generalize and scrub: remove project and org names, paths, emails, tokens, hostnames; keep commands, flags, versions and the reason. The inbox `from` column is a local path: never copy it into a draft. A lesson that cannot be generalized is dropped.
 - [ ] 5. Draft on a branch in a separate worktree, so the live library is untouched: `W=$(mktemp -d)/learn; git -C ~/.agents/harness worktree add -b learn/<slug> "$W"`. Stay within the caps (recipe at most 45 lines with When to Load, Steps, Gotchas, Verified; one digest line at most). Prefer extending an existing file to adding a new one.
 - [ ] 6. Check in `$W`: `bin/lint-budget` and `tests/run-all.sh` pass.
 - [ ] 7. Commit on the branch (conventional message, no AI trailer). Show the user `git -C ~/.agents/harness diff main..learn/<slug>` and ask before applying. They may edit or reject.

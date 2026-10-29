@@ -65,4 +65,10 @@ ok "start from a linked worktree is clean too"   '[ -z "$(git -C "$G" status --p
 N=$(mktemp -d); ( cd "$N" && "$ledger" start nongit "q" >/dev/null ); rc=$?
 ok "outside git: no error, no exclude attempted" '[ $rc -eq 0 ] && [ -d "$N/.harness/tasks" ]'
 
+# --- truncation is visible, not silent
+err=$("$ledger" -t "$A" big "$(head -c 500 /dev/zero | tr '\0' z)" r 2>&1 >/dev/null)
+ok "a field over 400 chars warns on stderr"        'echo "$err" | grep -qi "truncated"'
+err=$("$ledger" -t "$A" small "short" r 2>&1 >/dev/null)
+ok "a short field stays silent"                    '[ -z "$err" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

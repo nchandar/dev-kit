@@ -59,4 +59,12 @@ ok "memory.md over 80 lines fails"                 '[ $rc -ne 0 ] && echo "$out"
 rm -f "$M"
 "$state" check -t nosuch >/dev/null 2>&1; rc=$?
 ok "unknown task exits 2"                          '[ $rc -eq 2 ]'
+# --- characters that corrupt the learning inbox
+put Findings "$(printf -- '- has a tab\there (handoffs/a.md)')"
+out=$(chk); rc=$?
+ok "a tab in state.md fails"                       '[ $rc -ne 0 ] && echo "$out" | grep -qi "tab"'
+put Findings "$(printf -- '- crlf line (handoffs/a.md)\r')"
+out=$(chk); rc=$?
+ok "a carriage return in state.md fails"           '[ $rc -ne 0 ] && echo "$out" | grep -qi "tab or"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

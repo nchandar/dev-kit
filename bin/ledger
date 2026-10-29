@@ -23,6 +23,7 @@ exclude_local() { # keep .harness out of git without touching any tracked file (
 STATE_TEMPLATE='# state\ngoal: (one line, or see spec.md)\n\n## Findings\n\n## Decisions\n\n## Direction\n\n## Open questions\n\n## Learnings\n'
 HEADER='time\tphase\tdecision\treason\tevidence\tresult\n'
 append() { # file phase decision reason evidence result
+  local x; for x in "$2" "$3" "$4" "${5:-}" "${6:-}"; do [ "${#x}" -le 400 ] || { echo "ledger: a field was truncated to 400 chars; keep long evidence in a file and point to it" >&2; break; }; done
   ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1"
   [ -z "${HARNESS_LEDGER_MIRROR:-}" ] || sh -c "$HARNESS_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }

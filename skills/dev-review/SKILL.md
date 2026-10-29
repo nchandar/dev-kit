@@ -25,7 +25,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 5. Blast radius: for each changed contract, find callers and dependents beyond the diff; prove one "safe because" fact by running code.
 - [ ] 6. Merge: dedupe, order by severity (bug, regression, standards, nit), drop anything without file:line.
 - [ ] 7. Risky change? library/doubt on your merged conclusion.
-- [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Closeout (library/state: final state.md, project memory, `bin/learn queue`). Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Rationalizations
 | Excuse | Rebuttal |
