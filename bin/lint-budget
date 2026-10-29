@@ -6,14 +6,14 @@ root=.; partial=0
 for a in "$@"; do case $a in --partial) partial=1;; *) root=$a;; esac; done
 cd "$root" || exit 2
 
-AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=24576
+AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=6 JACCARD=0.5 LIB_TOTAL=24576 DEEP_LINES=30 DEEP_TOTAL=40960
 errs=0
 bad() { echo "FAIL $*"; errs=$((errs+1)); }
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
 common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
   grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
   grep -Eq '\.\./|references/' "$1" && bad "$1: references files outside the tree"
-  local r; for r in $(grep -oE 'library/[a-z0-9-]+' "$1" | sort -u); do
+  local r; for r in $(grep -oE 'library/(deep/)?[a-z0-9-]+' "$1" | sort -u); do
     [ -f "$r.md" ] || bad "$1: unresolved reference $r"; done; }
 
 sz=$(wc -c < AGENTS.md 2>/dev/null || echo 0)
@@ -53,6 +53,17 @@ for f in "${libs[@]}"; do
   for h in "When to Use" "Steps" "Red Flags" "Verification"; do section "$f" "$h"; done
 done
 
+# library/deep: the on-demand long tail. Never auto-loaded, so it gets its own caps and lighter sections.
+deepf=(library/deep/*.md); dn=${#deepf[@]}; deepbytes=0
+for f in ${deepf[@]+"${deepf[@]}"}; do
+  lines=$(wc -l < "$f"); deepbytes=$((deepbytes + $(wc -c < "$f")))
+  [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)"
+  grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
+  for h in "When to Load" "Red Flags"; do section "$f" "$h"; done
+  for r in $(grep -oE 'library/(deep/)?[a-z0-9-]+' "$f" | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
+done
+[ "$deepbytes" -le $DEEP_TOTAL ] || bad "library/deep totals $deepbytes B (max $DEEP_TOTAL)"
+
 [ "$libbytes" -le $LIB_TOTAL ] || bad "library totals $libbytes B (max $LIB_TOTAL): compress before adding"
 
 # trigger collision: Jaccard over content words of each listed description pair
@@ -72,5 +83,5 @@ LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk
 leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude-dir=.harness --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
 [ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); }
 
-if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B, on demand)"; exit 0; fi
+if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B), on demand"; exit 0; fi
 exit 1
