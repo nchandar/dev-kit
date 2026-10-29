@@ -9,6 +9,16 @@ Skills and small bash tools that work the same under Claude Code, Codex and Open
 4. `~/.agents/harness/bin/spawn --doctor` shows which CLIs are installed and still accept our flags.
 5. Optional: a global rules file (`AGENTS.md` in `~/.agents/`, `~/.codex/`, `~/.config/opencode/`, and `~/.claude/CLAUDE.md`). Mine lives in my dotfiles; the skills work without it.
 
+## Requirements
+- bash 3.2 or newer (macOS /bin/bash 3.2.57 passes a syntax check on every tool)
+- git 2.31 or newer (the push guard uses GIT_CONFIG_COUNT); tested with 2.56
+- standard Unix tools only: awk, sed, grep, cut, tr, seq, mktemp, ps, pkill, readlink
+- at least one agent CLI; tested versions: claude 2.1.308, codex 0.165.0, opencode 2.2.1
+- optional: herdr for worker tabs; OpenCode v2 needs `opencode service start` once
+- not needed: Python, Node, jq, tmux, gh, timeout
+
+Check a new machine with `~/.agents/harness/bin/spawn --doctor`; it names any missing CLI or flag.
+
 ## Skills
 | Skill | Use it for |
 |---|---|
