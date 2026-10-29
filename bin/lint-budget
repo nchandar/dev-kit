@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce the harness context budget. Usage: bin/lint-budget [root] [--partial]
+# Enforce dev-kit context budget. Usage: bin/lint-budget [root] [--partial]
 # --partial skips the minimum-skill-count check (use while building up).
 set -u
 root=.; partial=0
@@ -97,7 +97,7 @@ fi
 
 # public-safety: this repo is public, so no home paths, emails or secret-shaped strings anywhere in it
 LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
-leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude-dir=.harness --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
+leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude-dir=.devkit --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
 [ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); }
 
 if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi

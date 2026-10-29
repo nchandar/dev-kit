@@ -39,7 +39,7 @@ text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
 <rect class="pan" x="20" y="160" width="300" height="200" rx="10" style="animation:pa14 24s linear infinite;"/>
 <text class="pt" x="32" y="178">LIBRARY (shared, read on demand)</text>
 <rect class="pan" x="340" y="160" width="330" height="200" rx="10" style="animation:pa23 24s linear infinite;"/>
-<text class="pt" x="352" y="178">PER TASK: .harness/tasks/ID/</text>
+<text class="pt" x="352" y="178">PER TASK: .devkit/tasks/ID/</text>
 <text class="s" x="658" y="178" style="text-anchor:end">local, git-ignored</text>
 <rect class="pan" x="690" y="160" width="290" height="200" rx="10" style="animation:pa3 24s linear infinite;"/>
 <text class="pt" x="702" y="178">WORKERS (headless, max 2)</text>

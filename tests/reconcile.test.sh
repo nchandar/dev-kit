@@ -6,8 +6,8 @@ pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i
-unset HARNESS_DIR HARNESS_TASK
-export HARNESS_LEARN_DIR="$t/empty-inbox"  # never read the real inbox
+unset DEVKIT_DIR DEVKIT_TASK
+export DEVKIT_LEARN_DIR="$t/empty-inbox"  # never read the real inbox
 
 out=$("$rec"); rc=$?
 ok "no tasks: friendly message, exit 0"    '[ $rc -eq 0 ] && echo "$out" | grep -qi "no tasks"'
@@ -22,7 +22,7 @@ ok "--all includes finished tasks"         '"$rec" --all | grep -q "$C"'
 ok "--all marks finished as done"          '"$rec" --all | grep "$C" | grep -q "done"'
 
 "$ledger" -t "$A" next "run slice s2: bin/run tests/s2" "resume point"
-D=$(.harness/../bin/ledger base 2>/dev/null || "$ledger" base)/tasks/$A
+D=$(.devkit/../bin/ledger base 2>/dev/null || "$ledger" base)/tasks/$A
 mkdir -p "$D/run" "$D/handoffs"
 echo "running 999999 100" > "$D/run/dead.status"
 echo "running $$ 100" > "$D/run/live.status"
@@ -36,7 +36,7 @@ ok "list line counts running/killed"       '"$rec" | grep "$A" | grep -q "1 runn
 "$rec" nosuch >/dev/null 2>&1; rc=$?
 ok "unknown task exits 2"                  '[ $rc -eq 2 ]'
 # --- state.md and the learning inbox are visible from reconcile
-export HARNESS_LEARN_DIR="$t/inbox"
+export DEVKIT_LEARN_DIR="$t/inbox"
 S="$("$ledger" base)/tasks/$A/state.md"
 cat > "$S" <<'S2'
 # state

@@ -29,13 +29,13 @@ secs=$(( $(date +%s)-s )); kill $sampler 2>/dev/null; [ -s "$PK" ] && peak=$(cat
 
 pass=0; fail=0
 chk() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1"; fi; }
-T=$(ls .harness/tasks 2>/dev/null | head -1)
+T=$(ls .devkit/tasks 2>/dev/null | head -1)
 chk "main agent answered with the count (2)"            'echo "$out" | grep -q "2"'
 chk "main agent answered with the README title"         'echo "$out" | grep -qi "Demo project"'
-chk "exactly one task created (workers did not start their own)" '[ "$(ls .harness/tasks 2>/dev/null | wc -l)" -eq 1 ]'
-chk "two workers ran, both finished done"               '[ "$(cat .harness/tasks/$T/run/*.status 2>/dev/null | grep -c "^done")" -eq 2 ]'
-chk "each worker wrote a handoff"                       '[ "$(ls .harness/tasks/$T/handoffs/*.md 2>/dev/null | wc -l)" -ge 2 ]'
-chk "ledger has spawn rows and a closing row"           '[ "$(cut -f2 .harness/tasks/$T/ledger.tsv | grep -c "^spawn")" -ge 2 ] && cut -f2 .harness/tasks/$T/ledger.tsv | grep -qE "^(next|done)$"'
-chk "project files untouched by scouts"                 '[ -z "$(git status --porcelain | grep -v "\.harness")" ]'
+chk "exactly one task created (workers did not start their own)" '[ "$(ls .devkit/tasks 2>/dev/null | wc -l)" -eq 1 ]'
+chk "two workers ran, both finished done"               '[ "$(cat .devkit/tasks/$T/run/*.status 2>/dev/null | grep -c "^done")" -eq 2 ]'
+chk "each worker wrote a handoff"                       '[ "$(ls .devkit/tasks/$T/handoffs/*.md 2>/dev/null | wc -l)" -ge 2 ]'
+chk "ledger has spawn rows and a closing row"           '[ "$(cut -f2 .devkit/tasks/$T/ledger.tsv | grep -c "^spawn")" -ge 2 ] && cut -f2 .devkit/tasks/$T/ledger.tsv | grep -qE "^(next|done)$"'
+chk "project files untouched by scouts"                 '[ -z "$(git status --porcelain | grep -v "\.devkit")" ]'
 echo "main=$main workers=$a,$b  secs=$secs  rss base=${base}MB peak=${peak}MB delta=$((peak-base))MB  dir=$D"
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

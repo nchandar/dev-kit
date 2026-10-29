@@ -1,6 +1,6 @@
 # Contributing
 
-For people and AI agents. Goal: change the harness without breaking it. Overview and install: `README.md`.
+For people and AI agents. Goal: change dev-kit without breaking it. Overview and install: `README.md`.
 
 ## 1. Before you change anything
 Both must pass before every commit:
@@ -93,7 +93,7 @@ Real-agent evals cost a few cents each. Run them after changing skills, `spawn` 
 
 ## 8. Keep it public-safe
 - Never commit secrets, tokens, keys, personal paths, emails or machine config.
-- `.harness/` stays ignored: ledgers and briefs hold paths and prompts.
+- `.devkit/` stays ignored: ledgers and briefs hold paths and prompts.
 - The lint fails on home paths, emails (except `example.com`) and secret-shaped strings.
 - Build test fixtures for those patterns at runtime; never store them in files.
 

@@ -6,7 +6,7 @@ set -u
 here=$(dirname "$0"); tail_n=15
 [ "${1:-}" = -n ] && { tail_n=${2:-15}; shift 2; }
 [ $# -ge 1 ] || { echo "usage: run [-n N] <command> [args...]" >&2; exit 2; }
-task=${HARNESS_TASK:-}; [ -n "$task" ] || { echo "run: no task. Run: ledger start <slug>; set HARNESS_TASK" >&2; exit 2; }
+task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "run: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 D=$("$here/ledger" -t "$task" path) || exit 2
 mkdir -p "$D/runs"
 n=$(printf '%03d' $(( $(ls "$D/runs" | wc -l) + 1 ))); log=$D/runs/$n.log

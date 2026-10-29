@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
-#   ledger start <slug> [note]                          create a task (ledger + state.md), keep .harness out of git, print its id
+#   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id
 #   ledger [-t id] <phase> <decision> <reason> [evidence] [result]
 #   ledger [-t id] done [summary]                       mark the task finished
-#   ledger [-t id] path | ledger base                   print task dir | .harness dir
-# Task: -t id, else $HARNESS_TASK. No task is an error: there is no shared fallback ledger.
-# $HARNESS_DIR overrides the .harness location. $HARNESS_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
+#   ledger [-t id] path | ledger base                   print task dir | .devkit dir
+# Task: -t id, else $DEVKIT_TASK. No task is an error: there is no shared fallback ledger.
+# $DEVKIT_DIR overrides the .devkit location. $DEVKIT_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
 set -u
 die() { echo "ledger: $*" >&2; exit 2; }
 base() { local d
-  if [ -n "${HARNESS_DIR:-}" ]; then echo "$HARNESS_DIR"; return; fi
-  if d=$(git rev-parse --git-common-dir 2>/dev/null) && d=$(cd "$d" && pwd) && [ "$(basename "$d")" = .git ]; then echo "$(dirname "$d")/.harness"
-  else echo "$PWD/.harness"; fi; }
+  if [ -n "${DEVKIT_DIR:-}" ]; then echo "$DEVKIT_DIR"; return; fi
+  if d=$(git rev-parse --git-common-dir 2>/dev/null) && d=$(cd "$d" && pwd) && [ "$(basename "$d")" = .git ]; then echo "$(dirname "$d")/.devkit"
+  else echo "$PWD/.devkit"; fi; }
 clean() { printf '%s' "$1" | tr '\n\t' '  ' | cut -c1-400; }
-exclude_local() { # keep .harness out of git without touching any tracked file (common dir covers worktrees)
+exclude_local() { # keep .devkit out of git without touching any tracked file (common dir covers worktrees)
   local cd root ex rel
   cd=$(git rev-parse --git-common-dir 2>/dev/null) && cd=$(cd "$cd" && pwd) || return 0
   [ "$(basename "$cd")" = .git ] || return 0
@@ -26,7 +26,7 @@ append() { # file phase decision reason evidence result
   local x; for x in "$2" "$3" "$4" "${5:-}" "${6:-}"; do [ "${#x}" -le 400 ] || { echo "ledger: a field was truncated to 400 chars; keep long evidence in a file and point to it" >&2; break; }; done
   ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1"
-  [ -z "${HARNESS_LEDGER_MIRROR:-}" ] || sh -c "$HARNESS_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }
+  [ -z "${DEVKIT_LEDGER_MIRROR:-}" ] || sh -c "$DEVKIT_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }
 
 B=$(base)
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }
@@ -38,10 +38,10 @@ if [ "${1:-}" = start ]; then
   printf "$STATE_TEMPLATE" > "$B/tasks/$id/state.md"; exclude_local "$B"
   echo "$id"; exit 0
 fi
-task=${HARNESS_TASK:-}
+task=${DEVKIT_TASK:-}
 if [ "${1:-}" = path ] && [ "${2:-}" = -t ]; then task=${3:-}; set -- path
 elif [ "${1:-}" = -t ]; then task=${2:-}; shift 2; fi
-[ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set HARNESS_TASK"
+[ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set DEVKIT_TASK"
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;

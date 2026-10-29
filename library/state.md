@@ -13,9 +13,9 @@ Ask yourself one thing: what would a cold-start agent need to continue that the 
 5. Run `bin/state check` and fix what it reports. It enforces: state.md at most 60 lines, bullets at most 140 characters, Direction at most 3 lines, no Next section, no tabs or carriage returns.
 Closeout, before `bin/ledger done`:
 6. Final pass: drop stale Findings, keep Open questions honest.
-7. Project learnings go into `.harness/memory.md` (suggested headings: Build and run, Gotchas, Architecture notes; at most 80 lines; each bullet a pointer or a `command`), then mark them `[x]`.
+7. Project learnings go into `.devkit/memory.md` (suggested headings: Build and run, Gotchas, Architecture notes; at most 80 lines; each bullet a pointer or a `command`), then mark them `[x]`.
 8. `bin/learn queue` sends general and recipe learnings to the local inbox. Tell the user "N learnings queued, run dev-learn". The shared library changes only with their approval.
-9. A new session reads `.harness/memory.md` first; rewrite a line when you find it stale.
+9. A new session reads `.devkit/memory.md` first; rewrite a line when you find it stale.
 
 ## Red Flags
 - state.md turning into a diary. It is the current picture, not a log.

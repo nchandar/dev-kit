@@ -3,10 +3,10 @@
 # Usage: bin/spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
-# Needs HARNESS_TASK (from `ledger start`). Per-task files live in .harness/tasks/<task>/; worker slots are repo-wide.
-# Herdr view (default when herdr is up): HARNESS_VIEW=off disables, HARNESS_VIEW_KEEP=1 keeps tabs, HARNESS_VIEW_NOTIFY=all notifies on success,
+# Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
+# Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs, DEVKIT_VIEW_NOTIFY=all notifies on success,
 #   spawn --close-views closes tabs kept for failed workers.
-# Workers skip permissions (HARNESS_SAFE=1 for restricted modes) but can never push. Env: HARNESS_MAX_WORKERS (2), HARNESS_TIMEOUT secs (900, 0=off), HARNESS_MODEL, HARNESS_DRYRUN=1 (print command only), HARNESS_DIR
+# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env: DEVKIT_MAX_WORKERS (2), DEVKIT_TIMEOUT secs (900, 0=off), DEVKIT_MODEL, DEVKIT_DRYRUN=1 (print command only), DEVKIT_DIR
 set -u
 here=$(dirname "$0")
 
@@ -26,24 +26,24 @@ doctor() { local bad=0 cli v h f need
   done; return $bad; }
 [ "${1:-}" = --doctor ] && { doctor; exit $?; }
 if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open for failed workers
-  [ -n "${HARNESS_TASK:-}" ] || { echo "spawn: no task. Set HARNESS_TASK" >&2; exit 2; }
-  for f in "$("$here/ledger" -t "$HARNESS_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
+  [ -n "${DEVKIT_TASK:-}" ] || { echo "spawn: no task. Set DEVKIT_TASK" >&2; exit 2; }
+  for f in "$("$here/ledger" -t "$DEVKIT_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
 fi
 
-shape=ship; wt=0; model=${HARNESS_MODEL:-}; inline=
+shape=ship; wt=0; model=${DEVKIT_MODEL:-}; inline=
 while [ $# -gt 0 ]; do case $1 in
   --shape) shape=$2; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
 want=3; [ -n "$inline" ] && want=2
 [ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
-[ -z "${HARNESS_DEPTH:-}" ] || { echo "spawn: sub-agents must not spawn (depth 1)" >&2; exit 3; }
+[ -z "${DEVKIT_DEPTH:-}" ] || { echo "spawn: sub-agents must not spawn (depth 1)" >&2; exit 3; }
 case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
 case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
-root=$PWD; CAP=${HARNESS_MAX_WORKERS:-2}; TMO=${HARNESS_TIMEOUT:-900}
+root=$PWD; CAP=${DEVKIT_MAX_WORKERS:-2}; TMO=${DEVKIT_TIMEOUT:-900}
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
-task=${HARNESS_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set HARNESS_TASK" >&2; exit 2; }
+task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
 hf=$T/handoffs/$id.md; log=$T/handoffs/$id.log; st=$T/run/$id.status
 
@@ -51,24 +51,24 @@ hf=$T/handoffs/$id.md; log=$T/handoffs/$id.log; st=$T/run/$id.status
 build_cmd() { # $1=workdir $2=prompt
   case $cli in
     claude)   perm=(--dangerously-skip-permissions)
-              [ -z "${HARNESS_SAFE:-}" ] || perm=(--permission-mode acceptEdits --allowedTools Bash Read Edit Write Grep Glob --add-dir "$T")
+              [ -z "${DEVKIT_SAFE:-}" ] || perm=(--permission-mode acceptEdits --allowedTools Bash Read Edit Write Grep Glob --add-dir "$T")
               cmd=(claude -p "$2" "${perm[@]}" --no-session-persistence)
               [ -z "$model" ] || cmd+=(--model "$model");;
     codex)    perm=(--dangerously-bypass-approvals-and-sandbox)
-              [ -z "${HARNESS_SAFE:-}" ] || perm=(-s workspace-write --add-dir "$T")
+              [ -z "${DEVKIT_SAFE:-}" ] || perm=(-s workspace-write --add-dir "$T")
               cmd=(codex exec -C "$1" "${perm[@]}" --skip-git-repo-check --ephemeral -o "$T/handoffs/$id.last")
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
     opencode) cmd=(opencode run --auto)
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
-    fake)     cmd=("$HARNESS_FAKE" "$2" "$hf");;
+    fake)     cmd=("$DEVKIT_FAKE" "$2" "$hf");;
   esac; }
-make_prompt() { echo "You are harness sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (HARNESS_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
+make_prompt() { echo "You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
 
 --- BRIEF ---
 $1"; }
 brieftext() { if [ -n "$inline" ]; then printf '%s' "$inline"; else cat "$brief"; fi; }
 
-if [ -n "${HARNESS_DRYRUN:-}" ]; then build_cmd "$root" "$(make_prompt "$(brieftext)")"; printf '%s\n' "${cmd[@]}"; exit 0; fi
+if [ -n "${DEVKIT_DRYRUN:-}" ]; then build_cmd "$root" "$(make_prompt "$(brieftext)")"; printf '%s\n' "${cmd[@]}"; exit 0; fi
 
 mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 [ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
@@ -85,22 +85,22 @@ until claim; do sleep 1; done
 
 wd=$root
 if [ $wt = 1 ]; then
-  wd=$T/wt/$id; mkdir -p "$T/wt"; br="harness/$task-$id"
+  wd=$T/wt/$id; mkdir -p "$T/wt"; br="devkit/$task-$id"
   git worktree add -q "$wd" -b "$br" 2>/dev/null || git worktree add -q "$wd" "$br" || { echo "spawn: worktree failed" >&2; exit 1; }
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
-before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.harness/')
+before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
 
 build_cmd "$wd" "$(make_prompt "$(brieftext)")"
-export HARNESS_DEPTH=1 HARNESS_DIR=$H HARNESS_TASK=$task
+export DEVKIT_DEPTH=1 DEVKIT_DIR=$H DEVKIT_TASK=$task
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote
 gn=${GIT_CONFIG_COUNT:-0}
-for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-harness"; gn=$((gn+1)); done
+for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done
 [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn
 # herdr view: a tab tails the worker log and the pane is reported as an agent. Execution below is unchanged.
 view=0; vtab=""; vpane=""
-case "${HARNESS_VIEW:-herdr}" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
-vreport() { herdr pane report-agent --source harness --agent "$cli" --state "$1" --message "$id: $2" "$vpane" >/dev/null 2>&1; }
+case "${DEVKIT_VIEW:-herdr}" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
+vreport() { herdr pane report-agent --source dev-kit --agent "$cli" --state "$1" --message "$id: $2" "$vpane" >/dev/null 2>&1; }
 if [ $view = 1 ]; then
   : > "$log"
   vj=$(herdr tab create --label "$id · $cli · $shape" --cwd "$wd" --no-focus 2>/dev/null)
@@ -108,7 +108,7 @@ if [ $view = 1 ]; then
   vpane=$(printf '%s' "$vj" | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   if [ -n "$vpane" ]; then
     herdr pane run "$vpane" "tail -n +1 -f '$log'" >/dev/null 2>&1
-    herdr pane report-metadata --source harness --agent "$cli" --title "$id: $(brieftext | head -1 | cut -c1-50)" --display-agent "$cli $shape" "$vpane" >/dev/null 2>&1
+    herdr pane report-metadata --source dev-kit --agent "$cli" --title "$id: $(brieftext | head -1 | cut -c1-50)" --display-agent "$cli $shape" "$vpane" >/dev/null 2>&1
     vreport working running
   else view=0; fi
 fi
@@ -130,15 +130,15 @@ if [ ! -s "$hf" ]; then
     if [ $state = timeout ]; then echo "status: timed out after ${TMO}s (no handoff written). Last output:"; else echo "status: no handoff written (exit $rc). Last output:"; fi
     tail -n 20 "$log"; } > "$hf"
 fi
-after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.harness/')
+after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
 if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then state=violation; fi
 echo "$state $rc $(date +%s)" > "$st"
 if [ $view = 1 ]; then
   if [ $state = done ]; then
     vreport idle done
-    [ "${HARNESS_VIEW_NOTIFY:-}" != all ] || herdr notification show "$id done" --body "$cli $shape: $hf" --sound done >/dev/null 2>&1
-    if [ -n "${HARNESS_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
-    else sleep "${HARNESS_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
+    [ "${DEVKIT_VIEW_NOTIFY:-}" != all ] || herdr notification show "$id done" --body "$cli $shape: $hf" --sound done >/dev/null 2>&1
+    if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
+    else sleep "${DEVKIT_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
   else
     vreport blocked "$state"; echo "$vtab" > "$T/run/$id.tab"
     herdr notification show "$id $state" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1

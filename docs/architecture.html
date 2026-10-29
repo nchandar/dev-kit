@@ -96,7 +96,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
 <div class="card tablewrap">
 <table>
 <tr><th>Piece</th><th>Job</th><th>Owns</th></tr>
-<tr><td><code>bin/ledger</code></td><td>starts tasks, appends rows, closes tasks</td><td><code>.harness/tasks/&lt;id&gt;/ledger.tsv</code></td></tr>
+<tr><td><code>bin/ledger</code></td><td>starts tasks, appends rows, closes tasks</td><td><code>.devkit/tasks/&lt;id&gt;/ledger.tsv</code></td></tr>
 <tr><td><code>bin/spawn</code></td><td>runs a worker headless on any CLI, enforces the guards</td><td>slots, status files, handoff fallback</td></tr>
 <tr><td><code>bin/reconcile</code></td><td>shows open tasks, the resume point and worker states</td><td>nothing; it only reads</td></tr>
 <tr><td><code>bin/run</code></td><td>runs a command, keeps the full output in a log, returns a short summary</td><td><code>runs/NNN.log</code></td></tr>
@@ -131,7 +131,7 @@ var steps=[
  {e:'e8',n:['n-spawn','n-ledger'],t:'spawn records the outcome',w:'A spawn row: done, failed, timeout or violation. A missing handoff gets an auto-written fallback.',y:'A scout that changed code is flagged; a hung worker is visible, not silent.',f:'bin/spawn'},
  {e:'e3',n:['n-main','n-ledger'],t:'The agent closes the task',w:'ledger done with a summary, or a next row with the first runnable step if work remains.',y:'The next session resumes from that row.',f:'bin/ledger (done)'},
  {e:'e10',n:['n-recon','n-ledger'],t:'Later: reconcile reads the ledger',w:'In a new terminal it lists open tasks, the next row and each worker (running, killed or done).',y:'Status is rebuilt from disk and git, so there is no daemon to keep alive.',f:'bin/reconcile'},
- {e:'e11',n:['n-recon','n-handoff'],t:'...and the handoffs and status files',w:'Dead worker pids show as killed. Branches harness/&lt;task&gt;-&lt;id&gt; show unmerged work.',y:'A killed session can be resumed without remembering anything.',f:'bin/reconcile'}
+ {e:'e11',n:['n-recon','n-handoff'],t:'...and the handoffs and status files',w:'Dead worker pids show as killed. Branches devkit/&lt;task&gt;-&lt;id&gt; show unmerged work.',y:'A killed session can be resumed without remembering anything.',f:'bin/reconcile'}
 ];
 var info={
  'n-you':['You','Ask for what you want.','dev-kit starts from natural language.','Nothing starts.'],

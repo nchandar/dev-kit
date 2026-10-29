@@ -5,9 +5,9 @@ here=$(cd "$(dirname "$0")/.." && pwd); ledger="$here/bin/ledger"; learn="$here/
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && unset HARNESS_DIR HARNESS_TASK
-export HARNESS_LEARN_DIR="$t/inbox"
-T=$("$ledger" start lt "x"); export HARNESS_TASK=$T; S=".harness/tasks/$T/state.md"
+cd "$t" && git init -q && unset DEVKIT_DIR DEVKIT_TASK
+export DEVKIT_LEARN_DIR="$t/inbox"
+T=$("$ledger" start lt "x"); export DEVKIT_TASK=$T; S=".devkit/tasks/$T/state.md"
 cat > "$S" <<'S2'
 # state
 goal: see spec.md
@@ -52,6 +52,6 @@ ok "unknown id exits 2"                            '[ $rc -eq 2 ]'
 ok "bad outcome exits 2"                           '[ $rc -eq 2 ]'
 out=$("$learn" list)
 ok "list with nothing queued says so"              'echo "$out" | grep -qi "no learnings queued"'
-env -u HARNESS_TASK "$learn" queue >/dev/null 2>&1; rc=$?
+env -u DEVKIT_TASK "$learn" queue >/dev/null 2>&1; rc=$?
 ok "queue without a task exits 2"                  '[ $rc -eq 2 ]'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

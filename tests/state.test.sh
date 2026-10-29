@@ -5,8 +5,8 @@ here=$(cd "$(dirname "$0")/.." && pwd); ledger="$here/bin/ledger"; state="$here/
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && unset HARNESS_DIR HARNESS_TASK
-T=$("$ledger" start st "x"); D=".harness/tasks/$T"; S="$D/state.md"
+cd "$t" && git init -q && unset DEVKIT_DIR DEVKIT_TASK
+T=$("$ledger" start st "x"); D=".devkit/tasks/$T"; S="$D/state.md"
 chk() { "$state" check -t "$T" 2>&1; }
 reset() { printf '# state\ngoal: see spec.md\n\n## Findings\n\n## Decisions\n\n## Direction\n\n## Open questions\n\n## Learnings\n' > "$S"; }
 put() { reset; awk -v sec="$1" -v line="$2" '{print} $0=="## " sec {print line}' "$S" > "$S.new" && mv "$S.new" "$S"; }
@@ -49,7 +49,7 @@ ok "learning with a bad checkbox fails"            '! chk >/dev/null'
 put Learnings '- [x] lesson without ref | scope: project'
 ok "learning without ref fails"                    '! chk >/dev/null'
 
-reset; M=".harness/memory.md"; printf '# memory\n## Build\n- run `make test` before commit\n- release steps in docs/release.md\n' > "$M"
+reset; M=".devkit/memory.md"; printf '# memory\n## Build\n- run `make test` before commit\n- release steps in docs/release.md\n' > "$M"
 ok "valid memory.md passes"                        'chk >/dev/null'
 printf -- '- a claim with neither command nor pointer\n' >> "$M"
 ok "memory bullet with no pointer or command fails" '! chk >/dev/null'

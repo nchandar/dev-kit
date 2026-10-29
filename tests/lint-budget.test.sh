@@ -83,7 +83,7 @@ leak "token ghp_$(printf 'a%.0s' $(seq 1 36))";   expect "GitHub token shape fai
 leak "key sk-$(printf 'b%.0s' $(seq 1 30))";      expect "sk- key shape fails" 1 "$t/m"
 leak "aws AKIA$(printf 'C%.0s' $(seq 1 16))";     expect "AWS key id shape fails" 1 "$t/m"
 leak "${DASH}BEGIN RSA PRIV""ATE KEY${DASH}";           expect "private key header fails" 1 "$t/m"
-leak "use ~/.agents/harness and \$HOME/x";        expect "tilde and \$HOME paths are fine" 0 "$t/m"
+leak "use ~/.agents/dev-kit and \$HOME/x";        expect "tilde and \$HOME paths are fine" 0 "$t/m"
 
 # --- library total budget: tight, no context bloat
 mut; for n in a b c d e f g h; do { printf '# big%s\nRecord outcomes with bin/ledger.\n## When to Use\n## Steps\n## Red Flags\n## Verification\n' "$n"; for i in $(seq 1 70); do printf 'padding line %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; } > "$t/m/library/big$n.md"; done

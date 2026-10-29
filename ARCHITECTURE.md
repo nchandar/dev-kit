@@ -25,26 +25,26 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Skills | `skills/dev-*/SKILL.md`: six routes, each a checklist | Main agent, one per task |
 | Library | `library/`: principles, core, deep, recipes | Main agent or workers, on demand |
 | Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, lint-budget | Agents run them; people can too |
-| Per-task files | `.harness/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |
+| Per-task files | `.devkit/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |
 | Learning inbox | `~/.agents/learnings/` (local, outside any repo) | `learn`, then the dev-learn skill |
 | Install links | `install.sh` symlinks into each CLI's skills folder | The CLIs |
 
 ## 3. Components
 
-All tools are bash. `<task>` means `.harness/tasks/<id>`. The task comes from `-t <id>` or `HARNESS_TASK`; with neither, tools exit 2 (no shared fallback).
+All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t <id>` or `DEVKIT_TASK`; with neither, tools exit 2 (no shared fallback).
 
 ### 3.1 ledger (`bin/ledger`)
 - Purpose: append-only record of every step of one task.
 - Commands: `start <slug> [note]` (prints the id), `[-t id] <phase> <decision> <reason> [evidence] [result]`, `done [summary]`, `path`, `base`.
-- Owns: `<task>/ledger.tsv`, a `state.md` template, and a line in `.git/info/exclude` that hides `.harness/`.
+- Owns: `<task>/ledger.tsv`, a `state.md` template, and a line in `.git/info/exclude` that hides `.devkit/`.
 - Behaviors:
   - Id is `<slug>-<yymmdd-HHMMSS>-<4 hex>`; the directory is created with atomic `mkdir`, retried on collision.
   - Tabs and newlines in fields become spaces; each field is cut to 400 chars with a warning.
-  - `HARNESS_LEDGER_MIRROR="<cmd>"` runs with the row text as `$1`; `HARNESS_DIR` overrides the `.harness` location.
-  - Inside a git worktree the base resolves to the main repo, so workers share one `.harness`.
+  - `DEVKIT_LEDGER_MIRROR="<cmd>"` runs with the row text as `$1`; `DEVKIT_DIR` overrides the `.devkit` location.
+  - Inside a git worktree the base resolves to the main repo, so workers share one `.devkit`.
 
 ### 3.2 state (`bin/state`)
-- Purpose: lint a task's `state.md` and the project's `.harness/memory.md` against the no-redundancy rules.
+- Purpose: lint a task's `state.md` and the project's `.devkit/memory.md` against the no-redundancy rules.
 - Command: `state check [-t id]`. Exit 0 ok, 1 violations (printed as `FAIL file:line: why`), 2 usage.
 - Rules for `state.md`:
   - Exactly five sections, at most 60 lines, no Next section (the ledger `next` row owns it).
@@ -56,7 +56,7 @@ All tools are bash. `<task>` means `.harness/tasks/<id>`. The task comes from `-
 ### 3.3 reconcile (`bin/reconcile`)
 - Purpose: rebuild status from disk and git. No watcher, no state of its own.
 - Commands: no args (open tasks, one line each), `--all` (include finished), `<id>` (detail).
-- Detail view shows: resume point (last `next` row), direction, open questions, learning counts, last 5 rows, workers, `plan.json` slice count, branches `harness/<id>-*`.
+- Detail view shows: resume point (last `next` row), direction, open questions, learning counts, last 5 rows, workers, `plan.json` slice count, branches `devkit/<id>-*`.
 - A worker whose status says `running` but whose pid is dead is shown as `killed`.
 - Footer line `learnings queued: N (run dev-learn)` when the inbox is non-empty.
 
@@ -64,7 +64,7 @@ All tools are bash. `<task>` means `.harness/tasks/<id>`. The task comes from `-
 - Purpose: run one headless sub-agent on any CLI, brief in, handoff out. Blocks; the caller backgrounds it.
 - Usage: `spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
 - Also: `--doctor` (CLIs installed, adapter flags still valid), `--close-views` (close kept herdr tabs).
-- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/run/<id>.{status,timedout,tab}`, `<task>/wt/<id>/`, repo-wide `.harness/run/slot.N/`.
+- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/run/<id>.{status,timedout,tab}`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
   participant L as Ledger
   M->>S: spawn id cli brief (background)
   S->>S: claim slot (atomic mkdir, max 2)
-  S->>S: optional git worktree harness/task-id
+  S->>S: optional git worktree devkit/task-id
   S->>S: push guard (dead pushurl), build CLI command, status=running
   S->>W: launch headless, stdin closed, log to handoffs/id.log
   S-->>S: timeout guard (TERM, then KILL after 5 s)
@@ -85,22 +85,22 @@ sequenceDiagram
   S-->>M: exit 0 only if state is done
 ```
 
-- States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed files outside `.harness/`).
+- States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed files outside `.devkit/`).
 - Failure modes: nested `spawn` exits 3; unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1.
 
 | Flag or env | Default | Effect |
 |---|---|---|
 | `--shape` | `ship` | `scout` adds "change NO code" to the prompt and checks the tree after |
-| `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `harness/<task>-<id>` |
-| `--model`, `HARNESS_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
-| `HARNESS_MAX_WORKERS` | 2 | Slot count; extras wait, stale slots (dead pid) are reclaimed |
-| `HARNESS_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
-| `HARNESS_SAFE` | unset | Restricted permissions instead of skipping them |
-| `HARNESS_DRYRUN` | unset | Print the CLI command and exit |
-| `HARNESS_VIEW` | herdr | `off` disables the tab; `HARNESS_VIEW_KEEP=1` keeps it; `HARNESS_VIEW_NOTIFY=all` notifies on success |
-| `HARNESS_DEPTH` | set to 1 in workers | Makes nested `spawn` refuse |
+| `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `devkit/<task>-<id>` |
+| `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
+| `DEVKIT_MAX_WORKERS` | 2 | Slot count; extras wait, stale slots (dead pid) are reclaimed |
+| `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
+| `DEVKIT_SAFE` | unset | Restricted permissions instead of skipping them |
+| `DEVKIT_DRYRUN` | unset | Print the CLI command and exit |
+| `DEVKIT_VIEW` | herdr | `off` disables the tab; `DEVKIT_VIEW_KEEP=1` keeps it; `DEVKIT_VIEW_NOTIFY=all` notifies on success |
+| `DEVKIT_DEPTH` | set to 1 in workers | Makes nested `spawn` refuse |
 
-| CLI | Command built | Restricted mode (`HARNESS_SAFE`) |
+| CLI | Command built | Restricted mode (`DEVKIT_SAFE`) |
 |---|---|---|
 | claude | `claude -p <prompt> --dangerously-skip-permissions --no-session-persistence` | `--permission-mode acceptEdits --allowedTools Bash Read Edit Write Grep Glob --add-dir <task>` |
 | codex | `codex exec -C <dir> --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -o <task>/handoffs/<id>.last` | `-s workspace-write --add-dir <task>` |
@@ -115,7 +115,7 @@ sequenceDiagram
 ### 3.6 learn (`bin/learn`)
 - Purpose: move reusable lessons from a task toward the shared library, with approval.
 - Commands: `queue [-t id]`, `list`, `count`, `done <id> promoted|dropped`.
-- Owns: `${HARNESS_LEARN_DIR:-~/.agents/learnings}/inbox.tsv` and `done.tsv`. Append-only, local.
+- Owns: `${DEVKIT_LEARN_DIR:-~/.agents/learnings}/inbox.tsv` and `done.tsv`. Append-only, local.
 - Behaviors:
   - `queue` takes only open `[ ]` learnings with scope `general` or `recipe`, and flips them to `[~]`.
   - `done` appends an outcome row and flips the task's box to `[x]` or `[-]`.
@@ -131,12 +131,12 @@ sequenceDiagram
   - Every `library/...` reference resolves; skill descriptions do not collide (Jaccard 0.5); no home paths, emails or secrets anywhere.
 
 ### 3.8 install (`install.sh`)
-- Symlinks the repo to `~/.agents/harness` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.
+- Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.
 
 ## 4. Data model
 
 ```
-.harness/                      git-ignored via .git/info/exclude
+.devkit/                      git-ignored via .git/info/exclude
   memory.md                    durable project facts (agent, max 80 lines)
   run/slot.N/pid               repo-wide worker slots (spawn)
   tasks/<id>/
@@ -161,7 +161,7 @@ sequenceDiagram
 
 ## 5. Skills
 
-All six start with the same preamble: start or resume a task, read `.harness/memory.md`, copy the checklist into the task list, ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
+All six start with the same preamble: start or resume a task, read `.devkit/memory.md`, copy the checklist into the task list, ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
 
 ### dev-feature
 - Triggers: new behavior, behavior change, refactor.
@@ -239,7 +239,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 3. The skill starts or resumes a task and skims `principles.md`.
 
 **Work and log**
-1. `bin/ledger start <slug>` creates the task folder; the agent sets `HARNESS_TASK`.
+1. `bin/ledger start <slug>` creates the task folder; the agent sets `DEVKIT_TASK`.
 2. Each step appends a ledger row; commands go through `bin/run`. `state.md` is refreshed at checkpoints and checked with `bin/state check`.
 3. Before stopping: a `next` row. When finished: `bin/ledger done`. A new session resumes via `bin/reconcile <id>`.
 
@@ -265,7 +265,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 | Push guard on every remote | Workers skip permissions, so a dead push URL makes pushing impossible | Trusting the prompt not to push |
 | Handoff files only | Workers never talk to each other; the main agent holds the picture | Peer messaging, shared scratch files |
 | Two live workers, depth 1 | Bounded cost and merge load; no runaway fan-out | Unbounded or recursive spawning |
-| Local-only state | `.harness/` is git-ignored; no secrets or noise in history | Committing run files |
+| Local-only state | `.devkit/` is git-ignored; no secrets or noise in history | Committing run files |
 | Approval gate for library edits | The library is shared and public; each edit is reviewed | Auto-merging learnings |
 | Tiered library | A 700-token digest first; depth only on a matching trigger | One large always-loaded file |
 | Bash only | No build step, no dependencies, works on any agent | A Python or Node CLI |
@@ -273,7 +273,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 ## 9. Limits and known gaps
 
 - The agent must follow the checklists. Only the tools' own rules (lint, state check, push guard, depth, caps) are enforced mechanically.
-- Workers run with permissions skipped by default; `HARNESS_SAFE=1` narrows this for claude and codex only. OpenCode has no restricted mode here.
+- Workers run with permissions skipped by default; `DEVKIT_SAFE=1` narrows this for claude and codex only. OpenCode has no restricted mode here.
 - The push guard blocks pushes via git remotes; it does not stop other network access.
 - Adapter flags track CLI versions; run `bin/spawn --doctor` after upgrades. OpenCode needs `opencode service start` once.
 - Tests: `tests/run-all.sh` runs the bash suites and lint with no agents; `evals/e2e*.sh` use real agents and cost tokens.

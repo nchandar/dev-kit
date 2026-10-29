@@ -4,9 +4,9 @@ description: Review a diff on two independent axes, Standards and Spec, with par
 ---
 # dev-review
 
-Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
+Paths: the `bin/` tools and the `library/` folder live in `~/.agents/dev-kit/`; run tools by that path.
 
-Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.harness/memory.md` if it exists.
+Task: no `DEVKIT_TASK` set? Run `~/.agents/dev-kit/bin/ledger start <slug>` first (it prints your id) and prefix dev-kit commands with `DEVKIT_TASK=<id>`. `<task>` below is `.devkit/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.devkit/memory.md` if it exists.
 
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=review).
 

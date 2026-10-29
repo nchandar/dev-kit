@@ -4,10 +4,10 @@
 #   learn list                        queued learnings not yet promoted or dropped, with ids
 #   learn count                       how many are waiting
 #   learn done <id> promoted|dropped  record the outcome and flip the box in the task's state.md ([x] or [-])
-# Inbox: ${HARNESS_LEARN_DIR:-~/.agents/learnings}/inbox.tsv and done.tsv. Append-only, local, never inside any repo.
+# Inbox: ${DEVKIT_LEARN_DIR:-~/.agents/learnings}/inbox.tsv and done.tsv. Append-only, local, never inside any repo.
 set -u
 here=$(dirname "$0")
-L=${HARNESS_LEARN_DIR:-$HOME/.agents/learnings}; IN=$L/inbox.tsv; DN=$L/done.tsv
+L=${DEVKIT_LEARN_DIR:-$HOME/.agents/learnings}; IN=$L/inbox.tsv; DN=$L/done.tsv
 die() { echo "learn: $*" >&2; exit 2; }
 pending() { # "<id>\t<inbox row>" for rows with no outcome yet
   [ -s "$IN" ] || return 0
@@ -21,8 +21,8 @@ case $cmd in
     p=$(pending); [ -n "$p" ] || { echo "no learnings queued"; exit 0; }
     printf '%s\n' "$p" | awk -F'\t' '{ printf "%s  %-7s %s (%s) [%s]\n", $1, $5, $6, $7, $3 }';;
   queue)
-    task=${HARNESS_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
-    [ -n "$task" ] || die "no task (set HARNESS_TASK or pass -t)"
+    task=${DEVKIT_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
+    [ -n "$task" ] || die "no task (set DEVKIT_TASK or pass -t)"
     D=$("$here/ledger" -t "$task" path 2>/dev/null) || die "unknown task '$task'"
     S=$D/state.md; [ -f "$S" ] || die "no state.md in $task"
     base=$("$here/ledger" base); project=$(basename "$(dirname "$base")")

@@ -5,8 +5,8 @@ here=$(cd "$(dirname "$0")/.." && pwd); run="$here/bin/run"; ledger="$here/bin/l
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && unset HARNESS_DIR
-export HARNESS_TASK=$("$ledger" start run-test x); TD=".harness/tasks/$HARNESS_TASK"
+cd "$t" && git init -q && unset DEVKIT_DIR
+export DEVKIT_TASK=$("$ledger" start run-test x); TD=".devkit/tasks/$DEVKIT_TASK"
 
 out=$("$run" true); rc=$?
 ok "passing command: exit 0, one summary line" '[ $rc -eq 0 ] && [ "$(echo "$out" | wc -l)" -le 3 ] && echo "$out" | head -1 | grep -q "^exit=0 "'
@@ -33,7 +33,7 @@ out=$("$run" sh -c 'echo "$1"' _ "a b")
 ok "arguments with spaces survive"         'log=$(echo "$out" | head -1 | sed "s/.*log=//"); grep -q "^a b$" "$log"'
 ok "logs are numbered per task"            '[ "$(ls $TD/runs | wc -l)" -ge 5 ] && ls $TD/runs | head -1 | grep -q "^001"'
 
-env -u HARNESS_TASK "$run" true >/dev/null 2>&1; rc=$?
+env -u DEVKIT_TASK "$run" true >/dev/null 2>&1; rc=$?
 ok "no task: exit 2"                       '[ $rc -eq 2 ]'
 "$run" >/dev/null 2>&1; rc=$?
 ok "no command: exit 2"                    '[ $rc -eq 2 ]'

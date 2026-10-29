@@ -1,6 +1,6 @@
-# Harness
+# dev-kit
 
-Lean, agent-agnostic. Installed at `~/.agents/harness/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (your tool's todo list, or ledger rows if it has none; skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
+Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (your tool's todo list, or ledger rows if it has none; skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
 
 ## Routes
 - dev-feature: build or refactor: clarify, spec, slices, test-first, review, verify, ship.
@@ -11,14 +11,14 @@ Lean, agent-agnostic. Installed at `~/.agents/harness/`; the `bin/` tools and `l
 - dev-learn: queued learnings into library edits, merged only with the user's approval.
 If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first.
 
-## Session start (every new terminal; workers skip it, HARNESS_TASK is already set)
+## Session start (every new terminal; workers skip it, DEVKIT_TASK is already set)
 1. `bin/reconcile` lists this repo's open tasks, one line each. Never share a task with another live session.
 2. Resume one (read its `next` row via `bin/reconcile <id>`, write a `start` row) or begin new work: `bin/ledger start <slug>` prints your task id.
-3. Keep the id. Prefix every harness command with `HARNESS_TASK=<id>` (or pass `-t <id>`). `<task>` below means `.harness/tasks/<id>`; all run files (spec, plan, briefs, handoffs, reports) live there, so parallel sessions and repos never collide.
+3. Keep the id. Prefix every dev-kit command with `DEVKIT_TASK=<id>` (or pass `-t <id>`). `<task>` below means `.devkit/tasks/<id>`; all run files (spec, plan, briefs, handoffs, reports) live there, so parallel sessions and repos never collide.
 
 ## Always
-- Ledger: `bin/ledger <phase> <decision> <reason> [evidence] [result]` after every step. One append-only TSV file per task at `<task>/ledger.tsv` (columns: time phase decision reason evidence result), never edited or deleted; a wrong call gets a new row that supersedes it. `HARNESS_LEDGER_MIRROR` also reports to a supervisor. Before stopping write a `next` row with the first runnable step; when finished `bin/ledger done "<summary>"`.
-- State: `<task>/state.md` is the current picture (pointers, never copies; `bin/state check`). Durable project facts go in `.harness/memory.md`. Both stay local, git-ignored. Closeout: `library/state`.
+- Ledger: `bin/ledger <phase> <decision> <reason> [evidence] [result]` after every step. One append-only TSV file per task at `<task>/ledger.tsv` (columns: time phase decision reason evidence result), never edited or deleted; a wrong call gets a new row that supersedes it. `DEVKIT_LEDGER_MIRROR` also reports to a supervisor. Before stopping write a `next` row with the first runnable step; when finished `bin/ledger done "<summary>"`.
+- State: `<task>/state.md` is the current picture (pointers, never copies; `bin/state check`). Durable project facts go in `.devkit/memory.md`. Both stay local, git-ignored. Closeout: `library/state`.
 - Context guard: bulk output stays out of your context. Commands: `bin/run <cmd>` (log + short summary, no agent). Reading, review, independent work: a dev-spawn worker on any CLI ("open a codex instance and run X"). Take back summaries and paths only.
 - Done means `library/verify` evidence, never "it builds".
 - State assumptions; stop and ask on conflicting requirements; push back on bad ideas; keep it simple; touch only what was asked.

@@ -9,7 +9,7 @@ skills="dev-debug dev-feature dev-research dev-review dev-spawn"
 
 HOME="$t" "$inst" >/dev/null 2>&1; rc=$?
 ok "fresh machine: exits 0"                     '[ $rc -eq 0 ]'
-ok "harness dir linked to the repo"             '[ "$(readlink "$t/.agents/harness")" = "$here" ]'
+ok "dev-kit dir linked to the repo"             '[ "$(readlink "$t/.agents/dev-kit")" = "$here" ]'
 allok=1; for r in .claude/skills .codex/skills .agents/skills; do for n in $skills; do [ -f "$t/$r/$n/SKILL.md" ] || allok=0; done; done
 ok "5 skills resolve in all 3 skill dirs"       '[ $allok -eq 1 ]'
 

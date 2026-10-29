@@ -8,7 +8,7 @@ Skills and small bash tools that make **Claude Code, Codex and OpenCode** work t
 ```sh
 git clone https://github.com/nchandar/dev-kit ~/dev-kit
 ~/dev-kit/install.sh
-~/.agents/harness/bin/spawn --doctor      # checks your CLIs
+~/.agents/dev-kit/bin/spawn --doctor      # checks your CLIs
 ```
 Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.
 
@@ -32,18 +32,18 @@ flowchart LR
 ```
 
 ## Where things live
-All local and git-ignored: `ledger start` adds `.harness/` to the repo's own exclude file.
+All local and git-ignored: `ledger start` adds `.devkit/` to the repo's own exclude file.
 
 | Thing | Where | Kept |
 |---|---|---|
-| Ledger: what happened and why | `.harness/tasks/<id>/ledger.tsv` | forever, append-only |
+| Ledger: what happened and why | `.devkit/tasks/<id>/ledger.tsv` | forever, append-only |
 | `state.md`: the current picture | same folder | rewritten at checkpoints |
 | Briefs, handoffs, logs | same folder | per task |
-| `memory.md`: durable project notes | `.harness/memory.md` | per project |
+| `memory.md`: durable project notes | `.devkit/memory.md` | per project |
 | Learning inbox | `~/.agents/learnings/` | until promoted or dropped |
 
 ## Everyday commands
-Tools live in `~/.agents/harness/bin/`.
+Tools live in `~/.agents/dev-kit/bin/`.
 
 | I want to | Run |
 |---|---|
@@ -58,10 +58,10 @@ Workers skip permission prompts but can never push.
 
 | Variable | Effect |
 |---|---|
-| `HARNESS_VIEW=off` | no herdr tabs for workers |
-| `HARNESS_MODEL` | model name for workers (cheaper runs) |
-| `HARNESS_SAFE=1` | restricted worker permissions |
-| `HARNESS_TIMEOUT` / `HARNESS_MAX_WORKERS` | kill a hung worker (900 s) / live workers (2) |
+| `DEVKIT_VIEW=off` | no herdr tabs for workers |
+| `DEVKIT_MODEL` | model name for workers (cheaper runs) |
+| `DEVKIT_SAFE=1` | restricted worker permissions |
+| `DEVKIT_TIMEOUT` / `DEVKIT_MAX_WORKERS` | kill a hung worker (900 s) / live workers (2) |
 
 ## Under the hood
 ![Detailed architecture](docs/architecture.svg)
