@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for bin/spawn using a fake agent CLI (no tokens). Usage: tests/spawn.test.sh
 set -u
+unset HARNESS_DEPTH  # these suites must pass when run from inside a worker too
 here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
