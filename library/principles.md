@@ -8,7 +8,7 @@ Name the principle behind any non-obvious choice in bin/ledger (phase=principle)
 Think before building
 1. Make every requirement checkable before you build. If you cannot say how you would know it works, ask; do not guess (library/deep/spec-driven).
 2. Weigh two or three real designs and pick on evidence, not on the first idea (library/deep/design-options).
-3. Write down the premise behind a plan. When two fixes fail the same check, the premise is wrong, so test it directly (library/deep/attack-the-premise).
+3. Write down the premise behind a plan. When two fixes fail the same check, the premise is suspect, so test it directly (library/deep/attack-the-premise).
 
 Architecture defaults
 4. Shape the data first: the right model deletes branches and invalid states (library/deep/model-the-domain).
@@ -21,12 +21,12 @@ Architecture defaults
 
 Test and prove
 11. Red first, for the right reason. Test behavior at the public seam, then break the behavior on purpose and watch the test fail (library/tdd, library/deep/test-strategy).
-12. Verify the real artifact, never a proxy. A script you cite is a file in the diff (library/deep/build-the-lever).
+12. Verify the real artifact, never a proxy. A script you cite is a file in the diff (library/verify, library/deep/build-the-lever).
 13. Before trusting a number, name its limiter and its noise floor (library/deep/explain-the-number).
 14. Done is the task's acceptance criteria plus the standing bar (library/deep/definition-of-done).
 
 Work with discipline
-15. One change, one check: small units that each end verifiable.
+15. One change, one check: small units that each end verifiable (library/plan).
 16. Never lower the bar to get green. An instruction you keep repeating becomes a check (library/deep/encode-lessons).
 17. Keep bulk output out of your context; log it or delegate it (library/deep/context-guard).
 18. Review correctness, clarity, architecture, security and performance, starting from the tests (library/deep/five-axis-review).

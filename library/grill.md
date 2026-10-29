@@ -11,7 +11,7 @@ Record each resolved decision with bin/ledger (phase=grill).
 3. Ask ONE question per turn, most blocking first. Attach your recommended answer and its tradeoff so the user can reply "yes".
 4. Use the project's own words (GLOSSARY.md or domain terms). If a term is overloaded, pin its meaning before moving on.
 5. Stop when every unknown is resolved or explicitly deferred: goal in one sentence, non-goals listed, a command or observation that proves done.
-6. Play back the plan in at most 10 lines; get an explicit ok before any edit.
+6. Play back the plan in at most 10 lines and get an ok before you start building (a small, clear edit needs none).
 
 ## Red Flags
 - Questions the codebase could answer, or with no recommendation attached.

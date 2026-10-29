@@ -16,7 +16,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
-- [ ] 1. Clarify: first read any research report (the path the user names, else the newest `report.md` under `.harness/tasks/*/`) and grill only on what it leaves open. No report is fine: go straight to library/grill until goal, non-goals and acceptance check are approved.
+- [ ] 1. Clarify: first read any research report (the path the user names, else the newest `report.md` under `.harness/tasks/*/` that matches this request) and grill only on what it leaves open. No report is fine: go straight to library/grill until goal, non-goals and acceptance check are approved.
 - [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture.
 - [ ] 3. Quality bar: no `CONSTRAINTS.md`? follow library/quality-bar; run the baseline.
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.

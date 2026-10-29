@@ -9,7 +9,7 @@ Record the approved spec path with bin/ledger (phase=spec).
 2. Make each requirement testable: "given X, when Y, then Z" or a command with expected output.
 3. Name the interfaces touched (API, CLI, data shape, UI) and what must not change.
 4. List assumptions explicitly; the user can veto any.
-5. Get approval, then freeze it. Changes later go through the ledger as a decision, not a silent edit.
+5. Get approval, then freeze it. A later detail change goes through the ledger as a decision; a change to scope or acceptance criteria needs re-approval.
 
 ## Red Flags
 - Requirements phrased as implementation ("use Redis") without a reason.

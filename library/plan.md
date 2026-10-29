@@ -8,7 +8,7 @@ Record the plan and each slice's completion with bin/ledger (phase=plan).
 1. Read-only first: spec, relevant code, existing patterns, risks. No code during planning.
 2. Map the dependency graph; build the foundation before what depends on it.
 3. Cut into thin VERTICAL slices (UI + logic + data for one behavior), not horizontal layers. Each slice: one behavior, touches few files, ends in a state you can check, has its own acceptance check.
-4. Write slices as one JSON object per line in `<task>/plan.json` inside an array: `{"id":"s1","goal":"...","check":"cmd","depends":[]}`.
+4. Write slices to `<task>/plan.json` as a valid JSON array, one object per line, comma-separated: `{"id":"s1","goal":"...","check":"cmd","depends":[]},` (no comma after the last).
 5. Mark independent slices; they can run in parallel worktrees via dev-spawn. Dependent ones run in order.
 6. Order for risk: hardest unknown first. Checkpoint after every 2 to 3 slices (full suite green).
 7. Do not advance until the current slice is green; commit per slice.

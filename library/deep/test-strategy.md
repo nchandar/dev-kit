@@ -14,7 +14,7 @@
 7. Keep tests DAMP, not DRY: each test shows its own setup and expected value in full, so the reader needs no helper hunt. Share only noise (a builder with sane defaults), and override just the fields the test cares about.
 8. Use literal expected values, never ones recomputed with the code's own logic.
 9. Isolate: each test builds and cleans its own state; no order dependence.
-10. Flaky test policy: a flake is a bug. Quarantine it the same day with an owner and a ledger row, find the cause (shared state, real clock, async race, ordering), fix or delete. Never retry-until-green; it hides real races.
+10. Flaky test policy: a flake is a bug. Quarantine it the same day, with the user's approval, an owner and a ledger row, find the cause (shared state, real clock, async race, ordering), fix or delete. Never retry-until-green; it hides real races.
 
 ## Red Flags
 - Mocks of internal classes, or assertions on call counts.

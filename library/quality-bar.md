@@ -5,8 +5,8 @@ Record the bar and any change to it with bin/ledger (phase=quality-bar).
 - Project start, or when output quality drifts, or when a change touches test, lint or CI config.
 
 ## Steps
-1. Write `CONSTRAINTS.md` (max 30 lines): the dimensions that matter (tests, types, lint, coverage floor, perf budget, security) with thresholds and the command that checks each.
-2. Interview the user on which dimensions matter; propose sane defaults; do not invent thresholds silently.
+1. Interview the user on which dimensions matter (tests, types, lint, coverage floor, perf budget, security); propose sane defaults; do not invent thresholds silently.
+2. Write `CONSTRAINTS.md` (max 30 lines) with the agreed thresholds and the command that checks each.
 3. Run the commands as the baseline and ledger the numbers.
 4. Any diff that touches thresholds, skips, ignores, `--no-verify`, `@ts-ignore`, disabled lint rules, loosened assertions or deleted tests is flagged and needs the user's approval.
 5. Re-run the baseline after each slice; the bar may only move up.

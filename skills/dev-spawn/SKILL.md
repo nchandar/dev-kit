@@ -30,7 +30,7 @@ Any CLI can be the main agent and any CLI the worker; it is always the same bash
 |---|---|
 | "open a codex instance and run X" | `bin/spawn --prompt "X" <id> codex` |
 | "have opencode review this diff" | scout brief naming the diff command, then `bin/spawn --shape scout <id> opencode <brief>` |
-| "run these two in parallel on claude and codex" | two spawns with `&`, then `wait` (cap 2) |
+| "run these two in parallel on claude and codex" | two spawns, each as its own background command (cap 2) |
 | "use a cheap model for this" | add `--model <name>` (name as that CLI expects it) |
 | "run the tests" | `bin/run <cmd>`: no agent; full output to a log, you read the summary |
 | a CLI misbehaves or is new | `bin/spawn --doctor` (installed, flags still valid; OpenCode v2 needs `opencode service start` once) |

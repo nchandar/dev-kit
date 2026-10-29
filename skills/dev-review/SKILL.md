@@ -16,7 +16,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
-- [ ] 1. Pin the fixed point: `git merge-base HEAD <base>`; confirm the diff is non-empty before spawning.
+- [ ] 1. Pin the base: `B=$(git merge-base HEAD <base>)`. The diff is `git diff $B` (tracked changes, staged or not) plus untracked files from `git status -s`. Confirm it is non-empty before spawning.
 - [ ] 2. Find the spec (issue, `<task>/spec.md`, docs) and the standards (CONTRIBUTING, lint config, AGENTS.md).
 - [ ] 3. Brief two scouts, each with the diff command and only its own sources:
   - Standards: repo conventions, then smells (duplication, mystery names, speculative generality, feature envy, shotgun changes). Repo rules override smells. Skip what tooling enforces. Also library/simplify, and library/security or library/performance when the diff touches those.

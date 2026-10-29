@@ -9,7 +9,7 @@
 2. Scattered flags or phases: one state machine or tagged union, with explicit transitions.
 3. Branching on kind across files: a lookup table or registry keyed by kind.
 4. Loose params passed around: one typed model, built once.
-5. Organize modules around one body of domain knowledge, not around steps (load, validate, save). Step order is not ownership.
+5. Organize modules around one body of domain knowledge, not around steps (load, validate, save); name each module by its role or layer. Step order is not ownership.
 6. Pick the structure at write time; later it reads as a refactor and gets deferred.
 7. If the current shape is clear and local, keep it boring.
 
