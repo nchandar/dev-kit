@@ -34,4 +34,38 @@ ok "detail: finished worker shows handoff" 'echo "$out" | grep "fin" | grep -q d
 ok "list line counts running/killed"       '"$rec" | grep "$A" | grep -q "1 running" && "$rec" | grep "$A" | grep -q "1 killed"'
 "$rec" nosuch >/dev/null 2>&1; rc=$?
 ok "unknown task exits 2"                  '[ $rc -eq 2 ]'
+# --- state.md and the learning inbox are visible from reconcile
+export HARNESS_LEARN_DIR="$t/inbox"
+S="$("$ledger" base)/tasks/$A/state.md"
+cat > "$S" <<'S2'
+# state
+goal: see spec.md
+
+## Findings
+- the digest is read first (handoffs/a.md:1)
+
+## Decisions
+
+## Direction
+two tier digest, then recipes
+
+## Open questions
+- where do recipes live?
+- who approves library edits?
+
+## Learnings
+- [ ] retry with backoff | scope: general | ref: handoffs/a.md:3
+- [~] build flag Y | scope: recipe | ref: runs/001.log
+S2
+out=$("$rec" "$A")
+ok "detail shows the direction"                    'echo "$out" | grep -q "direction: two tier digest, then recipes"'
+ok "detail lists open questions"                   'echo "$out" | grep -q "where do recipes live"'
+ok "detail counts open and queued learnings"       'echo "$out" | grep -q "learnings: 1 open, 1 queued"'
+printf -- '- a bullet with no pointer at all\n' >> "$S"; sed -i.bak 's/^## Decisions$/## Decisions\n- no pointer here/' "$S"; rm "$S.bak"
+out=$("$rec" "$A")
+ok "detail warns when state.md breaks the rules"   'echo "$out" | grep -q "state: .* issue"'
+mkdir -p "$t/inbox"; printf 'time\tproject\ttask\tscope\tlesson\tref\tfrom\nT\tp\tt\tgeneral\tl\tr\tf\n' > "$t/inbox/inbox.tsv"
+out=$("$rec")
+ok "list footer shows queued learnings"            'echo "$out" | tail -1 | grep -q "learnings queued: 1"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

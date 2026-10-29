@@ -2,7 +2,7 @@
 # Rebuild status from disk + git. No watcher, no state of its own.
 #   reconcile            one line per OPEN task in this repo (use at session start)
 #   reconcile --all      include finished tasks
-#   reconcile <task-id>  detail: resume point, recent ledger rows, workers, branches
+#   reconcile <task-id>  detail: resume point, direction, open questions, learnings, recent rows, workers, branches
 set -u
 here=$(dirname "$0"); B=$("$here/ledger" base); TD=$B/tasks
 cut_() { printf '%s' "$1" | cut -c1-"$2"; }
@@ -23,12 +23,20 @@ case ${1:-} in
       row=$(lastrow "$d"); ph=$(printf '%s' "$row" | cut -f2); dec=$(printf '%s' "$row" | cut -f3)
       if [ "$ph" = done ]; then [ "${1:-}" = --all ] || continue; state=done; else state=open; fi
       printf '%s  %s  %s: %s  [%s]\n' "$id" "$state" "$ph" "$(cut_ "$dec" 60)" "$(workers "$d")"
-    done;;
+    done
+    n=$("$here/learn" count 2>/dev/null); [ "${n:-0}" -eq 0 ] || echo "learnings queued: $n (run dev-learn)";;
   *)
     d=$TD/$1; [ -d "$d" ] || { echo "reconcile: unknown task '$1'" >&2; exit 2; }
     echo "task $1"
     nx=$(rows "$d" | awk -F'\t' '$2=="next"' | tail -1)
     [ -n "$nx" ] && echo "resume: $(printf '%s' "$nx" | cut -f3)"
+    S=$d/state.md
+    if [ -f "$S" ]; then
+      dir=$(awk '/^## /{sec=substr($0,4);next} sec=="Direction" && $0!=""{printf "%s%s",(n++?" / ":""),$0}' "$S"); [ -z "$dir" ] || echo "direction: $dir"
+      oq=$(awk '/^## /{sec=substr($0,4);next} sec=="Open questions" && /^- /{c++; if(c<=3) print "  " $0}' "$S"); [ -z "$oq" ] || { echo "open questions:"; echo "$oq"; }
+      lo=$(grep -c '^- \[ \] ' "$S"); lq=$(grep -c '^- \[~\] ' "$S"); [ $((lo+lq)) -eq 0 ] || echo "learnings: $lo open, $lq queued"
+      v=$(HARNESS_TASK=$1 "$here/state" check 2>&1 | grep -c '^FAIL'); [ "$v" -eq 0 ] || echo "state: $v issue(s), run bin/state check"
+    fi
     echo "recent:"; rows "$d" | tail -5 | awk -F'\t' '{printf "  %s %s: %s\n", substr($1,3), $2, substr($3,1,70)}'
     echo "workers:"; workers "$d" -v
     [ -f "$d/plan.json" ] && echo "plan: $(grep -c '"id"' "$d/plan.json") slices in plan.json"
