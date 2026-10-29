@@ -6,6 +6,8 @@ description: Build a feature or refactor end to end: clarify, spec, thin slices,
 
 Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
 
+Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else.
+
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=feature).
 
 ## When to Use
@@ -13,7 +15,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - Not for a bug (use dev-debug) or a question (use dev-research).
 
 ## Checklist
-- [ ] 1. Clarify: follow library/grill until goal, non-goals and acceptance check are approved.
+- [ ] 1. Clarify: first read any research report (the path the user names, else the newest `report.md` under `.harness/tasks/*/`) and grill only on what it leaves open. No report is fine: go straight to library/grill until goal, non-goals and acceptance check are approved.
 - [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture.
 - [ ] 3. Quality bar: no `CONSTRAINTS.md`? follow library/quality-bar; run the baseline.
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.

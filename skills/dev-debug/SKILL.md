@@ -6,6 +6,8 @@ description: Fix a bug or failing test: reproduce, find the root cause, have it 
 
 Paths: the `bin/` tools and the `library/` folder live in `~/.agents/harness/`; run tools by that path.
 
+Task: no `HARNESS_TASK` set? Run `~/.agents/harness/bin/ledger start <slug>` first (it prints your id) and prefix harness commands with `HARNESS_TASK=<id>`. `<task>` below is `.harness/tasks/<id>` at the repo root; never write run files anywhere else.
+
 Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=debug).
 
 ## When to Use
