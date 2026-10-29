@@ -7,6 +7,7 @@ ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && echo base > f.txt && git add -A && git -c user.name=t -c user.email=t@t commit -qm init
 export HARNESS_DIR="$t/.harness"
+export HARNESS_VIEW=off HARNESS_VIEW_CLOSE_DELAY=0
 ledger="$here/bin/ledger"
 TA=$("$ledger" start task-a x); TB=$("$ledger" start task-b y)
 TD="$HARNESS_DIR/tasks/$TA"; export HARNESS_TASK=$TA
@@ -134,5 +135,49 @@ git init -q --bare "$t/remote.git"; git remote add origin "$t/remote.git"
 FAKE_ID=pg FAKE_PUSH=1 "$spawn" pg fake "$t/brief.md"
 ok "worker push is blocked" '[ "$(cat $HARNESS_DIR/push.rc)" != 0 ] && [ "$(git -C "$t/remote.git" rev-list --all 2>/dev/null | wc -l)" -eq 0 ]'
 ok "the main agent can still push" 'git push -q origin HEAD 2>/dev/null && [ "$(git -C "$t/remote.git" rev-list --all | wc -l)" -ge 1 ]'
+
+# --- herdr view: a tab tails the worker log and the pane is reported as an agent (stub herdr, never the real one)
+hs="$t/herdr-stub"; mkdir -p "$hs"; export HERDR_LOG="$t/herdr.log"
+cat > "$hs/herdr" <<'S'
+#!/usr/bin/env bash
+echo "$*" >> "$HERDR_LOG"
+case "$1 $2" in
+  "tab list") exit "${HERDR_DOWN:-0}";;
+  "tab create") echo '{"result":{"root_pane":{"pane_id":"X:p9","tab_id":"X:t9"},"tab":{"tab_id":"X:t9"}}}';;
+esac
+S
+chmod +x "$hs/herdr"
+vrun() { : > "$HERDR_LOG"; ( export PATH="$hs:$PATH"; "$@" ); }
+
+HARNESS_VIEW=herdr FAKE_ID=v1 vrun "$spawn" v1 fake "$t/brief.md"
+ok "view: tab labelled '<id> · <cli> · <shape>', no focus steal" 'grep -q "tab create --label v1 · fake · ship --cwd .* --no-focus" "$HERDR_LOG"'
+ok "view: pane tails the worker log"            'grep -q "pane run X:p9 tail -n +1 -f .*v1.log" "$HERDR_LOG"'
+ok "view: reported working, then idle"          'grep -n "report-agent" "$HERDR_LOG" | head -1 | grep -q "working" && grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "idle"'
+ok "view: Agents panel gets title and display name" 'grep "report-metadata" "$HERDR_LOG" | grep -q -- "--display-agent fake ship" && grep "report-metadata" "$HERDR_LOG" | grep -q -- "--title v1"'
+ok "view: no notification when all is well"      '! grep -q "notification show" "$HERDR_LOG"'
+ok "view: tab closed after a successful run"    'grep -q "tab close X:t9" "$HERDR_LOG"'
+ok "view: worker itself unchanged (done + handoff)" 'grep -q "^done" $TD/run/v1.status && [ -s $TD/handoffs/v1.md ]'
+
+HARNESS_VIEW_KEEP=1 HARNESS_VIEW=herdr FAKE_ID=v2 vrun "$spawn" v2 fake "$t/brief.md"
+ok "view: HARNESS_VIEW_KEEP=1 leaves the tab open" '! grep -q "tab close" "$HERDR_LOG" && grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "idle"'
+
+HARNESS_VIEW=herdr FAKE_ID=v3 FAKE_NOHANDOFF=1 vrun "$spawn" v3 fake "$t/brief.md"
+ok "view: a failed worker is reported blocked and its tab kept" 'grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "blocked" && ! grep -q "tab close" "$HERDR_LOG"'
+
+ok "view: failure raises a notification with the request sound" 'grep "notification show" "$HERDR_LOG" | grep -q "v3" && grep "notification show" "$HERDR_LOG" | grep -q -- "--sound request"'
+ok "view: the failed tab id is remembered" '[ -s $TD/run/v3.tab ]'
+: > "$HERDR_LOG"; ( export PATH="$hs:$PATH"; "$spawn" --close-views )
+ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X:t9" "$HERDR_LOG" && [ ! -e $TD/run/v3.tab ]'
+HARNESS_VIEW_NOTIFY=all HARNESS_VIEW=herdr FAKE_ID=v7 vrun "$spawn" v7 fake "$t/brief.md"
+ok "view: HARNESS_VIEW_NOTIFY=all also notifies on success" 'grep "notification show" "$HERDR_LOG" | grep -q -- "--sound done"'
+
+HARNESS_VIEW=off FAKE_ID=v4 vrun "$spawn" v4 fake "$t/brief.md"
+ok "view: HARNESS_VIEW=off makes no herdr calls" '[ ! -s "$HERDR_LOG" ] && grep -q "^done" $TD/run/v4.status'
+
+HERDR_DOWN=1 HARNESS_VIEW=herdr FAKE_ID=v5 vrun "$spawn" v5 fake "$t/brief.md"
+ok "view: herdr server down falls back to headless" '! grep -q "tab create" "$HERDR_LOG" && grep -q "^done" $TD/run/v5.status'
+
+( export PATH="/usr/bin:/bin"; export HARNESS_VIEW=herdr; FAKE_ID=v6 "$spawn" v6 fake "$t/brief.md" )
+ok "view: no herdr installed falls back to headless" 'grep -q "^done" $TD/run/v6.status'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

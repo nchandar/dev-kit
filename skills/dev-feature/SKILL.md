@@ -22,7 +22,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding.
 - [ ] 8. Review: run dev-review on the full diff; fix blockers.
 - [ ] 9. Verify: follow library/verify against the spec's acceptance criteria.
-- [ ] 10. Ship: follow library/git-ship. Ask before any push.
+- [ ] 10. Ship: follow library/git-ship. Ask before any push. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Refactor variant
 Replace steps 1 to 2 with: state the structural goal and the invariant. Save baseline output of the real artifact first. Characterization tests where coverage is thin. Small steps, tests green after each, one commit per step. Migrate all callers, then delete the old path. At step 9 the output must equal the baseline (also library/simplify).

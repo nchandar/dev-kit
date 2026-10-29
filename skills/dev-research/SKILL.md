@@ -20,7 +20,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 5. Write findings as claims, each with file:line, URL, or command output as evidence, plus a confidence level.
 - [ ] 6. Any claim that drives a decision: run library/doubt on it.
 - [ ] 7. Write the report: `<task>/reports/<topic>.md` (or `.html` if the user wants a page). Sections: question, answer in 3 lines, evidence, options with tradeoffs, recommendation, open questions.
-- [ ] 8. Confirm `git status` shows no project code changes. Ledger the conclusion.
+- [ ] 8. Confirm `git status` shows no project code changes. Ledger the conclusion. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Rationalizations
 | Excuse | Rebuttal |

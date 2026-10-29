@@ -4,6 +4,8 @@
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
 # Needs HARNESS_TASK (from `ledger start`). Per-task files live in .harness/tasks/<task>/; worker slots are repo-wide.
+# Herdr view (default when herdr is up): HARNESS_VIEW=off disables, HARNESS_VIEW_KEEP=1 keeps tabs, HARNESS_VIEW_NOTIFY=all notifies on success,
+#   spawn --close-views closes tabs kept for failed workers.
 # Workers skip permissions (HARNESS_SAFE=1 for restricted modes) but can never push. Env: HARNESS_MAX_WORKERS (2), HARNESS_TIMEOUT secs (900, 0=off), HARNESS_MODEL, HARNESS_DRYRUN=1 (print command only), HARNESS_DIR
 set -u
 here=$(dirname "$0")
@@ -23,6 +25,10 @@ doctor() { local bad=0 cli v h f need
     if [ $cli = opencode ]; then opencode service status 2>&1 | grep -q '^http' || echo "          WARN opencode v2 needs its background service: run 'opencode service start' once in a normal terminal"; fi
   done; return $bad; }
 [ "${1:-}" = --doctor ] && { doctor; exit $?; }
+if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open for failed workers
+  [ -n "${HARNESS_TASK:-}" ] || { echo "spawn: no task. Set HARNESS_TASK" >&2; exit 2; }
+  for f in "$("$here/ledger" -t "$HARNESS_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
+fi
 
 shape=ship; wt=0; model=${HARNESS_MODEL:-}; inline=
 while [ $# -gt 0 ]; do case $1 in
@@ -91,6 +97,21 @@ export HARNESS_DEPTH=1 HARNESS_DIR=$H HARNESS_TASK=$task
 gn=${GIT_CONFIG_COUNT:-0}
 for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-harness"; gn=$((gn+1)); done
 [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn
+# herdr view: a tab tails the worker log and the pane is reported as an agent. Execution below is unchanged.
+view=0; vtab=""; vpane=""
+case "${HARNESS_VIEW:-herdr}" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
+vreport() { herdr pane report-agent --source harness --agent "$cli" --state "$1" --message "$id: $2" "$vpane" >/dev/null 2>&1; }
+if [ $view = 1 ]; then
+  : > "$log"
+  vj=$(herdr tab create --label "$id · $cli · $shape" --cwd "$wd" --no-focus 2>/dev/null)
+  vtab=$(printf '%s' "$vj" | grep -o '"tab_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+  vpane=$(printf '%s' "$vj" | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+  if [ -n "$vpane" ]; then
+    herdr pane run "$vpane" "tail -n +1 -f '$log'" >/dev/null 2>&1
+    herdr pane report-metadata --source harness --agent "$cli" --title "$id: $(brieftext | head -1 | cut -c1-50)" --display-agent "$cli $shape" "$vpane" >/dev/null 2>&1
+    vreport working running
+  else view=0; fi
+fi
 ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
 wpid=$!
 guard=
@@ -112,5 +133,16 @@ fi
 after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.harness/')
 if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then state=violation; fi
 echo "$state $rc $(date +%s)" > "$st"
+if [ $view = 1 ]; then
+  if [ $state = done ]; then
+    vreport idle done
+    [ "${HARNESS_VIEW_NOTIFY:-}" != all ] || herdr notification show "$id done" --body "$cli $shape: $hf" --sound done >/dev/null 2>&1
+    if [ -n "${HARNESS_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
+    else sleep "${HARNESS_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
+  else
+    vreport blocked "$state"; echo "$vtab" > "$T/run/$id.tab"
+    herdr notification show "$id $state" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
+  fi
+fi
 "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]
