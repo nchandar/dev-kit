@@ -38,12 +38,20 @@ Each skill opens with a checklist and reads small files from `library/` only whe
 - With herdr running, each worker gets a tab (closed on success, kept when failed) and shows in the Agents panel. `HARNESS_VIEW=off` disables it.
 - Other switches: `HARNESS_MODEL`, `HARNESS_SAFE=1`, `HARNESS_TIMEOUT` (900 s), `HARNESS_MAX_WORKERS` (2).
 
+## Reports and explainers
+- `dev-research` writes `.harness/tasks/<id>/report.md` (question, answer, evidence, options, recommendation, open questions, `## Build handoff`). `dev-feature` reads it and grills only on what it leaves open.
+- For a system or data flow it also writes `report.html`: an animated diagram with play, pause and step controls, a one-line why per step, and small tables for components and decisions. Self-contained and offline. Recipe: `library/explain-html.md`.
+
 ## State
 Everything a run writes goes to `<repo>/.harness/tasks/<id>/` (gitignored), so parallel sessions never collide. New terminal: `bin/reconcile`.
 
 ## Tests and evals
 - `tests/run-all.sh`: every script suite with a fake CLI, no tokens.
 - `evals/e2e.sh <claude|codex|opencode>`: real scenario with that CLI as the main agent opening two others.
+
+## Measured
+- Always loaded: about 3 KB (global rules plus five skill descriptions). A route adds one skill (2 to 3 KB) and the library files it names.
+- Cross-agent run, main plus two parallel workers, herdr tabs on: Claude main 117 s, Codex main 96 s, about 0.7 GB extra memory each. Both 7/7 on `evals/e2e.sh`.
 
 ## Limits
 OpenCode cannot start its service from a sandboxed shell. Worker `--resume` is not built.
