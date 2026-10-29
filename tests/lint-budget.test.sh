@@ -71,4 +71,18 @@ expect "skill missing section fails" 1 "$t/m"
 mut; sed -i.bak '/## Steps/d' "$t/m/library/verify.md"; rm "$t/m/library/verify.md.bak"
 expect "library missing section fails" 1 "$t/m"
 
+# --- public-safety: nothing personal or secret may live in this repo
+# fixtures are assembled at runtime so this file holds no literal paths, addresses or key markers
+A="@"; U="/Use""rs"; HM="/ho""me"; DASH="-----"
+leak() { mut; printf '%s\n' "$1" > "$t/m/notes.txt"; }
+leak "see $U/bob/project/file";               expect "home path /Users/<name> fails" 1 "$t/m"
+leak "cd $HM/alice/src";                        expect "home path /home/<name> fails" 1 "$t/m"
+leak "mail me at someone${A}gmail.com";              expect "email address fails" 1 "$t/m"
+leak "contact: dev${A}example.com";                  expect "example.com address is allowed" 0 "$t/m"
+leak "token ghp_$(printf 'a%.0s' $(seq 1 36))";   expect "GitHub token shape fails" 1 "$t/m"
+leak "key sk-$(printf 'b%.0s' $(seq 1 30))";      expect "sk- key shape fails" 1 "$t/m"
+leak "aws AKIA$(printf 'C%.0s' $(seq 1 16))";     expect "AWS key id shape fails" 1 "$t/m"
+leak "${DASH}BEGIN RSA PRIV""ATE KEY${DASH}";           expect "private key header fails" 1 "$t/m"
+leak "use ~/.agents/harness and \$HOME/x";        expect "tilde and \$HOME paths are fine" 0 "$t/m"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

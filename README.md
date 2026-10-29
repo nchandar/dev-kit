@@ -55,3 +55,15 @@ Everything a run writes goes to `<repo>/.harness/tasks/<id>/` (gitignored), so p
 
 ## Limits
 OpenCode cannot start its service from a sandboxed shell. Worker `--resume` is not built.
+
+## Keep it public-safe
+- This repo is public. Never commit secrets, tokens, API keys, `.env` files, personal paths (`/Users/<name>`, `/home/<name>`), email addresses or machine-specific config.
+- Use `~`, `$HOME` and `<placeholders>` in docs, examples, briefs and tests.
+- `bin/lint-budget` fails on home paths, email addresses (except `example.com`) and secret-shaped strings. Run `tests/run-all.sh` before every commit.
+- `.harness/` is gitignored on purpose: ledgers, briefs and handoffs can contain paths and prompts. Never commit it.
+
+## Acknowledgements
+Ideas adapted, not copied, from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (skill anatomy, doubt pass), [mattpocock/skills](https://github.com/mattpocock/skills) (grilling, two-axis review, TDD) and [cursor/plugins](https://github.com/cursor/plugins) (pstack decision log, ralph-loop promise tag, orchestrate handoffs). All MIT.
+
+## License
+MIT, see `LICENSE`.
