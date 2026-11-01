@@ -4,8 +4,8 @@
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
 # Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
-# Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs, DEVKIT_VIEW_NOTIFY=all notifies on success,
-#   spawn --close-views closes tabs kept for failed workers.
+# Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs (also failed ones), DEVKIT_VIEW_NOTIFY=all notifies on success,
+#   spawn --close-views closes kept tabs. Failures print the id, state and last log lines to stderr.
 # Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env: DEVKIT_MAX_WORKERS (2), DEVKIT_TIMEOUT secs (900, 0=off), DEVKIT_MODEL, DEVKIT_DRYRUN=1 (print command only), DEVKIT_DIR
 set -u
 here=$(dirname "$0")
@@ -25,7 +25,7 @@ doctor() { local bad=0 cli v h f need
     if [ $cli = opencode ]; then opencode service status 2>&1 | grep -q '^http' || echo "          WARN opencode v2 needs its background service: run 'opencode service start' once in a normal terminal"; fi
   done; return $bad; }
 [ "${1:-}" = --doctor ] && { doctor; exit $?; }
-if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open for failed workers
+if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open by DEVKIT_VIEW_KEEP=1
   [ -n "${DEVKIT_TASK:-}" ] || { echo "spawn: no task. Set DEVKIT_TASK" >&2; exit 2; }
   for f in "$("$here/ledger" -t "$DEVKIT_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
 fi
@@ -133,16 +133,18 @@ fi
 after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
 if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then state=violation; fi
 echo "$state $rc $(date +%s)" > "$st"
+[ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
 if [ $view = 1 ]; then
   if [ $state = done ]; then
     vreport idle done
     [ "${DEVKIT_VIEW_NOTIFY:-}" != all ] || herdr notification show "$id done" --body "$cli $shape: $hf" --sound done >/dev/null 2>&1
-    if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
-    else sleep "${DEVKIT_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
   else
-    vreport blocked "$state"; echo "$vtab" > "$T/run/$id.tab"
+    vreport blocked "$state"
     herdr notification show "$id $state" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
   fi
+  # a headless worker's tab is not interactive; the error goes to the caller and the handoff, so close it on failure too
+  if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
+  else sleep "${DEVKIT_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
 fi
 "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]
