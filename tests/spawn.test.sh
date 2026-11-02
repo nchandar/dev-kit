@@ -104,7 +104,7 @@ firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
 ok "default cap is 10: ten start together, the eleventh waits" '[ "$n" -lt 40 ] && [ "$before" -eq 10 ]'
 
-FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1
+FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1 # sleep-ok: let the holder claim its slot before the nested attempt
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" nest fake "$t/brief.md" 2>"$t/nest.err"; rc=$?
 ok "a nested spawn that finds no free slot fails fast (exit 4)" '[ $rc -eq 4 ] && grep -q "no free" "$t/nest.err"'
 wait
@@ -217,7 +217,7 @@ ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X
 # an interrupted spawn must not leave its tab, an orphan worker, a held slot or a stale "running" status
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH"; DEVKIT_VIEW=herdr FAKE_ID=k1 FAKE_SLEEP=20 exec "$spawn" k1 fake "$t/brief.md" ) 2>/dev/null &
-sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1
+sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1 # sleep-ok: let the worker claim tab and slot before TERM; let cleanup settle
 ok "interrupted spawn closes its herdr tab"          'grep -q "tab close X:t9" "$HERDR_LOG"'
 ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null'
 ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
@@ -262,7 +262,7 @@ DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/br
 ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
 
 # --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
-ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
+ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"' # pitfall-ok: src-grep negative assertion, slot tests cover behavior
 # --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
 
 # --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
@@ -288,13 +288,13 @@ ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ]
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # --- hardening 7: pid reuse is guarded by a start-time record
-sleep 30 & live=$!
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; echo "bogus" > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk4 DEVKIT_MAX_WORKERS=1 "$spawn" lk4 fake "$t/brief.md" 2>/dev/null; rc=$?
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a slot with a live pid but mismatched start is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk4.md ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
-sleep 30 & live=$!
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk5 fake "$t/brief.md" 2>/dev/null; rc=$?
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
@@ -302,14 +302,14 @@ ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # --- ship fixes: empty start, TZ-normalized lstart, 08 depth, worktree reuse, cap counts slots above CAP
-sleep 30 & live=$!
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; : > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk6 fake "$t/brief.md" 2>/dev/null; rc=$?
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "an empty start file is treated as no record (live slot kept)" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
-sleep 30 & live=$!
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 TZ="Pacific/Kiritimati" "$spawn" lk7 fake "$t/brief.md" 2>/dev/null; rc=$?
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
@@ -323,7 +323,7 @@ FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md"
 FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md" 2>"$t/w2.err"; rc=$?
 ok "re-running an id with --worktree reuses the worktree" '[ $rc -eq 0 ] && [ -s $TD/handoffs/w2.md ]'
 
-sleep 30 & live=$!
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.3"; echo "$live" > "$DEVKIT_DIR/run/slot.3/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.3/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk8 fake "$t/brief.md" 2>/dev/null; rc=$?
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
