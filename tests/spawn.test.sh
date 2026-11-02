@@ -235,8 +235,7 @@ ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2
 
 # --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
 ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
-# --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid
-ok "wpid is cleared right after wait" 'grep -q -F "wait \"\$wpid\"; rc=\$?; wpid=\"\"" "$spawn"'
+# --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
 
 # --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
@@ -253,8 +252,7 @@ s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKER
 ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
-# --- hardening 6: a lock older than 5s is removed (GNU stat first, BSD fallback)
-ok "lock age prefers GNU stat with a BSD fallback" 'grep -q "stat -c %Y.*|| stat -f %m" "$spawn"'
+# --- hardening 6: a lock older than 5s is removed (behavior test below covers GNU/BSD stat)
 mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
 touch -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>/dev/null; rc=$?
@@ -265,14 +263,47 @@ rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 sleep 30 & live=$!
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; echo "bogus" > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk4 DEVKIT_MAX_WORKERS=1 "$spawn" lk4 fake "$t/brief.md" 2>/dev/null; rc=$?
-kill "$live" 2>/dev/null
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a slot with a live pid but mismatched start is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk4.md ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 sleep 30 & live=$!
-mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk5 fake "$t/brief.md" 2>/dev/null; rc=$?
-kill "$live" 2>/dev/null
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- ship fixes: empty start, TZ-normalized lstart, 08 depth, worktree reuse, cap counts slots above CAP
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; : > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk6 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "an empty start file is treated as no record (live slot kept)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 TZ="Pacific/Kiritimati" "$spawn" lk7 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "lstart compared in UTC: a foreign-TZ spawner still matches the live pid" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+FAKE_ID=oct DEVKIT_DEPTH=08 DEVKIT_MAX_DEPTH=10 "$spawn" oct fake "$t/brief.md" 2>"$t/oct.err"; rc=$?
+ok "DEVKIT_DEPTH=08 is decimal 8, child sees depth 9" '[ $rc -eq 0 ] && grep -q "depth=9" $TD/handoffs/oct.md'
+
+FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md"
+FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md" 2>"$t/w2.err"; rc=$?
+ok "re-running an id with --worktree reuses the worktree" '[ $rc -eq 0 ] && [ -s $TD/handoffs/w2.md ]'
+
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.3"; echo "$live" > "$DEVKIT_DIR/run/slot.3/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.3/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk8 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "slots above a lowered CAP still count (cap=1, slot.3 live)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.3" "$DEVKIT_DIR/run/slot.3.lock"
+
+fresh=$(mktemp -d); (cd "$t" && DEVKIT_DIR="$fresh/.devkit" env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null); rc=$?
+ok "no task creates no run dir" '[ $rc -eq 2 ] && [ ! -e "$fresh/.devkit/run" ]'
+rm -rf "$fresh"
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
