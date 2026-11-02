@@ -3,6 +3,7 @@
 Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (your tool's todo list, or ledger rows if it has none; skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
 
 ## Routes
+- dev-mode: entry point for any request: triage by type and size, announce the route, chain the loops, close with one answer.
 - dev-feature: build or refactor: clarify, spec, slices, test-first, review, verify, ship.
 - dev-debug: bug or failing test: repro, root cause, doubt, regression test, fix.
 - dev-research: question or spike; report as .md/.html; changes no code.

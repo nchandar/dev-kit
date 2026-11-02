@@ -31,7 +31,7 @@ Enforced by `bin/lint-budget`:
 | `AGENTS.md` size | 6144 B |
 | Skill descriptions, total | 4096 B (each one line) |
 | Skill file | 150 lines |
-| Skill count | 4 to 6 |
+| Skill count | 4 to 8 |
 | Core library file | 80 lines |
 | Core library, total | 32768 B |
 | `library/deep/` file / total | 45 lines / 65536 B |
@@ -55,7 +55,7 @@ One home per rule. Point to it elsewhere, never copy.
 ## 5. Adding things
 | Add | How |
 |---|---|
-| Skill | Max 6 total. Folder `skills/dev-<name>/`, one-line description, required sections, `library/state` closeout; add a route to `AGENTS.md` and a README entry |
+| Skill | Max 8 total (raised from 6 because the set keeps growing; the descriptions cap bounds what is always loaded). Folder `skills/dev-<name>/`, one-line description, required sections, `library/state` closeout; add a route to `AGENTS.md` and a README entry |
 | Library file | Prefer extending one. New file needs When to Use, Steps, Red Flags, Verification and a `bin/ledger` line |
 | Deep file | `library/deep/<name>.md` with When to Load and Red Flags; add a pointer in `principles.md` |
 | Recipe | `library/recipes/<name>.md` with When to Load, Steps, Gotchas, Verified; add `name: trigger` to `index.md` |

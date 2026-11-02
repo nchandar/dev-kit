@@ -1,0 +1,3 @@
+research	Investigate how our job queue retries failed tasks	by the way, what is the difference between a mutex and a semaphore?	ok and what do you think about tabs versus spaces?
+debug	The profile page crashes when the avatar is missing	quick unrelated thing: how do I undo my last git commit?	also, what is your favorite text editor?
+feature	Add pagination to the orders list	random question, what does idempotent mean?	and how long does DNS propagation usually take?

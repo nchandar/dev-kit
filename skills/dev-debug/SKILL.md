@@ -22,7 +22,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 4. Doubt: run library/doubt on the root-cause claim with a fresh scout; settle every objection. Refresh `<task>/state.md` (library/state).
 - [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason.
 - [ ] 6. Smallest fix, no drive-by edits. Test green, then the full suite.
-- [ ] 7. Verify: follow library/verify; the original repro passes, plus one adjacent case.
+- [ ] 7. Verify: follow library/verify; the original repro passes, plus one adjacent case. Then run dev-review on the diff and fix blockers.
 - [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 Stuck after 3 failed hypotheses: write the state as a ledger row (phase=next) and stop or escalate.

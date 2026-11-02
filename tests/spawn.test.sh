@@ -163,13 +163,16 @@ ok "view: worker itself unchanged (done + handoff)" 'grep -q "^done" $TD/run/v1.
 DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v2 vrun "$spawn" v2 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_KEEP=1 leaves the tab open" '! grep -q "tab close" "$HERDR_LOG" && grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "idle"'
 
-DEVKIT_VIEW=herdr FAKE_ID=v3 FAKE_NOHANDOFF=1 vrun "$spawn" v3 fake "$t/brief.md"
-ok "view: a failed worker is reported blocked and its tab kept" 'grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "blocked" && ! grep -q "tab close" "$HERDR_LOG"'
-
+DEVKIT_VIEW=herdr FAKE_ID=v3 FAKE_NOHANDOFF=1 vrun "$spawn" v3 fake "$t/brief.md" 2> "$t/v3.err"
+ok "view: a failed worker is reported blocked, then its tab is closed" 'grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "blocked" && grep -q "tab close X:t9" "$HERDR_LOG"'
 ok "view: failure raises a notification with the request sound" 'grep "notification show" "$HERDR_LOG" | grep -q "v3" && grep "notification show" "$HERDR_LOG" | grep -q -- "--sound request"'
-ok "view: the failed tab id is remembered" '[ -s $TD/run/v3.tab ]'
+ok "view: a closed failed tab is not remembered" '[ ! -e $TD/run/v3.tab ]'
+ok "view: failure is reported to the caller on stderr" 'grep -q "spawn: v3 failed" "$t/v3.err" && grep -q "v3.md" "$t/v3.err"'
+
+DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v8 FAKE_NOHANDOFF=1 vrun "$spawn" v8 fake "$t/brief.md" 2>/dev/null
+ok "view: DEVKIT_VIEW_KEEP=1 keeps a failed tab and remembers it" '! grep -q "tab close" "$HERDR_LOG" && [ -s $TD/run/v8.tab ]'
 : > "$HERDR_LOG"; ( export PATH="$hs:$PATH"; "$spawn" --close-views )
-ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X:t9" "$HERDR_LOG" && [ ! -e $TD/run/v3.tab ]'
+ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X:t9" "$HERDR_LOG" && [ ! -e $TD/run/v8.tab ]'
 DEVKIT_VIEW_NOTIFY=all DEVKIT_VIEW=herdr FAKE_ID=v7 vrun "$spawn" v7 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_NOTIFY=all also notifies on success" 'grep "notification show" "$HERDR_LOG" | grep -q -- "--sound done"'
 
