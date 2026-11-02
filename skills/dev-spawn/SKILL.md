@@ -18,7 +18,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 1. Pick the shape: scout (report only, no code change) or ship (edits code).
 - [ ] 2. Write the brief to `<task>/briefs/<id>.md`, standalone, max 40 lines: goal and why, in-scope files, non-goals, facts already known, the output wanted, the done-check command.
 - [ ] 3. Parallel writers each get `--worktree` (branch `devkit/<id>`). Scouts need none.
-- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md`, each worker as its OWN background command so every finish notifies you (never wait on a group: the slowest hides the rest). When one finishes, read its handoff and check its output exists before trusting PASS. Copy any `learnings` from accepted handoffs into `state.md` (library/state). Short ask? `--prompt "text"` instead of a brief file. At most 2 live workers; extras queue; a hung worker is killed after `DEVKIT_TIMEOUT` (900 s).
+- [ ] 4. Run: `bin/spawn [--shape scout] [--worktree] [--model M] <id> <claude|codex|opencode> <task>/briefs/<id>.md`, each worker as its OWN background command so every finish notifies you (never wait on a group: the slowest hides the rest). When one finishes, read its handoff and check its output exists before trusting PASS. Copy any `learnings` from accepted handoffs into `state.md` (library/state). Short ask? `--prompt "text"` instead of a brief file. Live workers are capped (limits in the ARCHITECTURE.md env table); extras queue; a hung worker is killed after `DEVKIT_TIMEOUT`.
 - [ ] 5. Read only `<task>/handoffs/<id>.md`; open the `.log` only if it failed.
 - [ ] 6. Accept a report only if it ends `PASS`, `ISSUES` or `BLOCKED` with evidence (command, file:line). No evidence: reject and respawn once; a second miss is a gap, and a gap is not a pass.
 - [ ] 7. Dropout: continue with the others and note it. Run `bin/reconcile` to see all states.
@@ -30,7 +30,7 @@ Any CLI can be the main agent and any CLI the worker; it is always the same bash
 |---|---|
 | "open a codex instance and run X" | `bin/spawn --prompt "X" <id> codex` |
 | "have opencode review this diff" | scout brief naming the diff command, then `bin/spawn --shape scout <id> opencode <brief>` |
-| "run these two in parallel on claude and codex" | two spawns, each as its own background command (cap 10) |
+| "run these two in parallel on claude and codex" | two spawns, each as its own background command (within the worker cap) |
 | "use a cheap model for this" | add `--model <name>` (name as that CLI expects it) |
 | "run the tests" | `bin/run <cmd>`: no agent; full output to a log, you read the summary |
 | a CLI misbehaves or is new | `bin/spawn --doctor` (installed, flags still valid; OpenCode v2 needs `opencode service start` once) |

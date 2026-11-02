@@ -62,7 +62,7 @@ Workers skip permission prompts but can never push.
 | `DEVKIT_VIEW=off` | no herdr tabs for workers |
 | `DEVKIT_MODEL` | model name for workers (cheaper runs) |
 | `DEVKIT_SAFE=1` | restricted worker permissions |
-| `DEVKIT_TIMEOUT` / `DEVKIT_MAX_WORKERS` / `DEVKIT_MAX_DEPTH` | kill a hung worker (900 s) / live workers (10) / nesting depth (3) |
+| `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT` | hung-worker timeout, live workers, nesting depth, nested slot wait; defaults are in the ARCHITECTURE.md env table |
 
 ## Under the hood
 ![Detailed architecture](docs/architecture.svg)

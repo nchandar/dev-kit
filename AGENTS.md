@@ -8,7 +8,7 @@ Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `l
 - dev-debug: bug or failing test: repro, root cause, doubt, regression test, fix.
 - dev-research: question or spike; report as .md/.html; changes no code.
 - dev-review: Standards + Spec scouts in parallel, blast radius.
-- dev-spawn: delegate to headless sub-agents (up to 10 live, nesting depth 3).
+- dev-spawn: delegate to headless sub-agents (parallel and nestable, within the limits in ARCHITECTURE.md).
 - dev-learn: queued learnings into library edits, merged only with the user's approval.
 If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first.
 
@@ -23,7 +23,7 @@ If a route matches, you MUST use it; never implement directly. Unclear request: 
 - Context guard: bulk output stays out of your context. Commands: `bin/run <cmd>` (log + short summary, no agent). Reading, review, independent work: a dev-spawn worker on any CLI ("open a codex instance and run X"). Take back summaries and paths only.
 - Done means `library/verify` evidence, never "it builds".
 - State assumptions; stop and ask on conflicting requirements; push back on bad ideas; keep it simple; touch only what was asked.
-- The main agent spawns; a worker may spawn too until depth 3 (`DEVKIT_MAX_DEPTH`). Workers report up via handoff files.
+- The main agent spawns; a worker may spawn too until the depth limit (`DEVKIT_MAX_DEPTH`). Workers report up via handoff files.
 
 ## Library (read on demand)
 grill spec plan tdd debug-method doubt verify quality-bar architecture docs-grounding simplify security performance observability git-ship ui-browser

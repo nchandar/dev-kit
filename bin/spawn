@@ -6,9 +6,10 @@
 # Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
 # Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs (also failed ones), DEVKIT_VIEW_NOTIFY=all notifies on success,
 #   spawn --close-views closes kept tabs. Failures print the id, state and last log lines to stderr.
-# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env: DEVKIT_MAX_WORKERS (10, repo-wide), DEVKIT_MAX_DEPTH (3, nesting), DEVKIT_CHILD_WAIT secs (60, nested spawns only), DEVKIT_TIMEOUT secs (900, 0=off), DEVKIT_MODEL, DEVKIT_DRYRUN=1 (print command only), DEVKIT_DIR
+# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env knobs (defaults in bin/defaults, table in ARCHITECTURE.md): DEVKIT_MAX_WORKERS (repo-wide), DEVKIT_MAX_DEPTH (nesting), DEVKIT_CHILD_WAIT (nested spawns only), DEVKIT_TIMEOUT (zero turns it off), plus DEVKIT_MODEL, DEVKIT_DRYRUN (print the command only), DEVKIT_DIR
 set -u
 here=$(dirname "$0")
+. "$here/defaults" || { echo "spawn: cannot load $here/defaults" >&2; exit 2; }
 
 # flags each adapter relies on, checked against the CLI's own --help (catches version drift on a new machine)
 doctor() { local bad=0 cli v h f need
@@ -36,14 +37,14 @@ while [ $# -gt 0 ]; do case $1 in
 want=3; [ -n "$inline" ] && want=2
 [ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
-depth=${DEVKIT_DEPTH:-0}; MAXD=${DEVKIT_MAX_DEPTH:-3}
+depth=${DEVKIT_DEPTH:-0}; MAXD=$DEVKIT_MAX_DEPTH
 case $depth$MAXD in *[!0-9]*|"") echo "spawn: DEVKIT_DEPTH and DEVKIT_MAX_DEPTH must be numbers" >&2; exit 2;; esac
 [ "$depth" -lt "$MAXD" ] || { echo "spawn: depth $depth is at the limit $MAXD (DEVKIT_MAX_DEPTH); a worker at the limit must not spawn" >&2; exit 3; }
 case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
 case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
-root=$PWD; CAP=${DEVKIT_MAX_WORKERS:-10}; TMO=${DEVKIT_TIMEOUT:-900}
+root=$PWD; CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
@@ -87,7 +88,7 @@ claim() { local n d p
 trap '[ -n "$slot" ] && rm -rf "$slot"' EXIT
 waited=0
 until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
-  if [ "$depth" -gt 0 ] && [ "$waited" -ge "${DEVKIT_CHILD_WAIT:-60}" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT:-60}s; a nested spawn does not wait longer" >&2; exit 4; fi
+  if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi
   sleep 1; waited=$((waited+1))
 done
 
@@ -107,7 +108,7 @@ for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remot
 [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn
 # herdr view: a tab tails the worker log and the pane is reported as an agent. Execution below is unchanged.
 view=0; vtab=""; vpane=""
-case "${DEVKIT_VIEW:-herdr}" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
+case "$DEVKIT_VIEW" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
 vreport() { herdr pane report-agent --source dev-kit --agent "$cli" --state "$1" --message "$id: $2" "$vpane" >/dev/null 2>&1; }
 if [ $view = 1 ]; then
   : > "$log"
@@ -152,7 +153,7 @@ if [ $view = 1 ]; then
   fi
   # a headless worker's tab is not interactive; the error goes to the caller and the handoff, so close it on failure too
   if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
-  else sleep "${DEVKIT_VIEW_CLOSE_DELAY:-2}"; herdr tab close "$vtab" >/dev/null 2>&1; fi
+  else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
 fi
 "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]

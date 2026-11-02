@@ -1,0 +1,9 @@
+# Tunable defaults, one home. Sourced by the bin tools; an env var of the same name wins
+# (an empty one counts as unset). Documented in the ARCHITECTURE.md env table;
+# tests/defaults.test.sh keeps the two equal. Rule limits (lint-budget, state, ledger) stay in their tools.
+: "${DEVKIT_MAX_WORKERS:=10}"
+: "${DEVKIT_MAX_DEPTH:=3}"
+: "${DEVKIT_CHILD_WAIT:=60}"
+: "${DEVKIT_TIMEOUT:=900}"
+: "${DEVKIT_VIEW_CLOSE_DELAY:=2}"
+: "${DEVKIT_VIEW:=herdr}"
