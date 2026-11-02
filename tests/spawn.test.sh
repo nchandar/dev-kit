@@ -221,4 +221,16 @@ ok "view: herdr server down falls back to headless" '! grep -q "tab create" "$HE
 ( export PATH="/usr/bin:/bin"; export DEVKIT_VIEW=herdr; FAKE_ID=v6 "$spawn" v6 fake "$t/brief.md" )
 ok "view: no herdr installed falls back to headless" 'grep -q "^done" $TD/run/v6.status'
 
+# --- hardening 1: numeric knobs fail closed with exit 2 naming the knob
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=0 "$spawn" e1 fake "$t/brief.md" 2>"$t/e1.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=0 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e1.err"'
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=many "$spawn" e2 fake "$t/brief.md" 2>"$t/e2.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=many exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e2.err"'
+DEVKIT_DRYRUN=1 DEVKIT_CHILD_WAIT=1.5 "$spawn" e3 fake "$t/brief.md" 2>"$t/e3.err"; rc=$?
+ok "DEVKIT_CHILD_WAIT=1.5 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_CHILD_WAIT" "$t/e3.err"'
+DEVKIT_DRYRUN=1 DEVKIT_TIMEOUT=soon "$spawn" e4 fake "$t/brief.md" 2>"$t/e4.err"; rc=$?
+ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_TIMEOUT" "$t/e4.err"'
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
+ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
