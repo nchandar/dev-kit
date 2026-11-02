@@ -16,7 +16,8 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
-- [ ] 1. Recon, hypotheses, clarify: restate the bug (expected vs actual, two lines). Then run dev-research (failing code, tests, logs, recent changes plus the external industry-standard/cutting-edge pass), or read a fresh matching research report instead of re-researching. List 2-3 root-cause hypotheses with a recommendation, then grill (library/grill). New unknowns loop back to recon, up to 3 rounds.
+- [ ] 1. Recon, hypotheses, clarify: restate bug (expected vs actual, two lines). Fresh research report wins; else run dev-research (clarify skipped, checkpoint folds into options). List 2-3 hypotheses + recommendation; grill. Unknowns loop back to recon, up to 3 rounds.
+  - dev-research covers failing code, tests, logs, recent changes plus the external industry-standard/cutting-edge pass.
 - [ ] 2. Reproduce with a command, via library/debug-method (stop-the-line, preserve evidence). No repro, no fix.
 - [ ] 3. Localize and find the root cause at file:line (library/debug-method). Check the same fault elsewhere.
 - [ ] 4. Doubt: run library/doubt on the root-cause claim with a fresh scout; settle every objection. Refresh `<task>/state.md` (library/state).
