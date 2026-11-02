@@ -12,8 +12,19 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && echo base > f.txt && git add -A && git -c user.name=t -c user.email=t@t commit -qm init
 export DEVKIT_DIR="$t/.devkit"
 export DEVKIT_VIEW=off DEVKIT_VIEW_CLOSE_DELAY=0
-# guard: outside the stub-PATH subshells below, herdr must not resolve, or the suite would drive the real herdr
-if command -v herdr >/dev/null 2>&1; then echo "FAIL tests would reach the real herdr at $(command -v herdr); refusing to run" >&2; exit 1; fi
+# tripwire: a herdr stub first on PATH for the whole suite, so a machine with
+# real herdr installed still runs headless (spawn probes with `herdr tab list`).
+# It appends its argv to a log and exits 1. The herdr-stub subshells below
+# prepend their own stub, so they keep working (they shadow this one).
+tripwire="$t/tripwire"; mkdir -p "$tripwire"
+export HERDR_TRIPWIRE_LOG="$t/herdr-tripwire.log"; : > "$HERDR_TRIPWIRE_LOG"
+cat > "$tripwire/herdr" <<'S'
+#!/usr/bin/env bash
+echo "$*" >> "$HERDR_TRIPWIRE_LOG"
+exit 1
+S
+chmod +x "$tripwire/herdr"
+export PATH="$tripwire:$PATH"
 ledger="$here/bin/ledger"
 TA=$("$ledger" start task-a x); TB=$("$ledger" start task-b y)
 TD="$DEVKIT_DIR/tasks/$TA"; export DEVKIT_TASK=$TA
@@ -322,5 +333,7 @@ rm -rf "$DEVKIT_DIR/run/slot.3" "$DEVKIT_DIR/run/slot.3.lock"
 fresh=$(mktemp -d); (cd "$t" && DEVKIT_DIR="$fresh/.devkit" env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null); rc=$?
 ok "no task creates no run dir" '[ $rc -eq 2 ] && [ ! -e "$fresh/.devkit/run" ]'
 rm -rf "$fresh"
+
+ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
