@@ -32,6 +32,12 @@ expect() { # name want root [args]
   if [ $rc -eq $want ]; then pass=$((pass+1)); echo "ok   $n"
   else fail=$((fail+1)); echo "FAIL $n (rc=$rc want=$want)"; echo "$out" | sed 's/^/     /'; fi
 }
+expect_msg() { # name want msg root [args]; fail unless rc and output match
+  local n=$1 want=$2 msg=$3 r=$4; shift 4
+  out=$("$lint" "$r" "$@" 2>&1); rc=$?; [ $rc -ne 0 ] && rc=1
+  if [ $rc -eq $want ] && printf '%s\n' "$out" | grep -qF "$msg"; then pass=$((pass+1)); echo "ok   $n"
+  else fail=$((fail+1)); echo "FAIL $n (rc=$rc want=$want msg=$msg)"; echo "$out" | sed 's/^/     /'; fi
+}
 mut() { rm -rf "$t/m"; cp -R "$t/good" "$t/m"; }
 
 good "$t/good"
@@ -119,8 +125,8 @@ mut; recipe unlisted; index
 expect "recipe missing from the index fails" 1 "$t/m"
 mut; recipe real-one; index real-one ghost-one
 expect "index entry with no file fails" 1 "$t/m"
-mut; for n in $(seq 1 30); do { printf '# big%s\n## When to Load\n- t\n## Steps\n' "$n"; for i in $(seq 1 30); do printf 'padding %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; printf '## Gotchas\n- g\n## Verified\n- v\n'; } > "$t/m/library/recipes/big$n.md"; done; index $(for n in $(seq 1 30); do echo big$n; done)
-expect "recipes folder over its byte cap fails" 1 "$t/m"
+mut; mkdir -p "$t/m/library/recipes"; for n in $(seq 1 30); do { printf '# big%s\n## When to Load\n- t\n## Steps\n' "$n"; for i in $(seq 1 30); do printf 'padding %s %s xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' "$n" "$i"; done; printf '## Gotchas\n- g\n## Verified\n- v\n'; } > "$t/m/library/recipes/big$n.md"; done; index $(for n in $(seq 1 30); do echo big$n; done)
+expect_msg "recipes folder over its byte cap fails" 1 "library/recipes totals" "$t/m"
 mut; recipe good-one; index good-one; echo "see library/recipes/good-one" >> "$t/m/skills/dev-debug/SKILL.md"
 expect "reference to an existing recipe resolves" 0 "$t/m"
 mut; echo "see library/recipes/missing-one" >> "$t/m/skills/dev-debug/SKILL.md"
@@ -136,4 +142,8 @@ expect "a skill without a library/state reference fails" 1 "$t/m"
 mut; skill "$t/m" dev-learn "queued lessons become library edits after approval"; sed -i.bak 's/ Closeout: library\/state\.//' "$t/m/skills/dev-learn/SKILL.md"; rm "$t/m/skills/dev-learn/SKILL.md.bak"
 expect "dev-learn is exempt from the library/state reference" 0 "$t/m"
 
+# a linked worktree has a .git pointer FILE ("gitdir: /Users/..."); it must not trip the public-safety scan
+h="$t/Users/tester/repo"; mkdir -p "$h"; good "$h"
+( cd "$h" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm i && git worktree add -q "$t/Users/tester/wt" -b wt )
+expect "lint passes inside a linked worktree" 0 "$t/Users/tester/wt"
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

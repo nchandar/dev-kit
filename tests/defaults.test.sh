@@ -29,4 +29,17 @@ for k in $nknobs; do
   ok "no number next to $k in README, AGENTS, skills or the spawn header" \
      '! prose | grep -q -E "$k[^|]{0,80}[0-9]|[0-9][^|]{0,80}$k"'
 done
+# prose must not restate a numeric default next to its noun, even without the knob name
+noun_scan() { # files... -> lines where a default value sits within 30 chars of its noun
+  w=$(val DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH); c=$(val DEVKIT_CHILD_WAIT); t=$(val DEVKIT_TIMEOUT)
+  for f in "$@"; do case "$f" in *ARCHITECTURE.md) grep -v '^|' "$f";; *) cat "$f";; esac; done |
+    grep -iE "workers?.{0,30}max [0-9]+|max [0-9]+.{0,30}workers?|workers?.{0,30}(^|[^0-9])$w([^0-9]|$)|(^|[^0-9])$w([^0-9]|$).{0,30}workers?|depth.{0,30}(^|[^0-9])$d([^0-9]|$)|(^|[^0-9])$d([^0-9]|$).{0,30}depth|(timeout|seconds).{0,30}(^|[^0-9])$t([^0-9]|$)|(^|[^0-9])$t([^0-9]|$).{0,30}(timeout|seconds)|wait.{0,30}(^|[^0-9])$c([^0-9]|$)|(^|[^0-9])$c([^0-9]|$).{0,30}wait"
+}
+tmp=$(mktemp); w=$(val DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH)
+printf 'up to %s workers\nnesting depth %s\nthe old cap, max 2 workers\n' "$w" "$d" >"$tmp" # fixture built from bin/defaults, no literal values
+ok "flags $w next to workers" 'noun_scan "$tmp" | grep -qi workers'
+ok "flags $d next to depth" 'noun_scan "$tmp" | grep -qi depth'
+ok "flags a stale max N next to workers (an old default)" 'noun_scan "$tmp" | grep -qi "max 2"'
+rm -f "$tmp"
+ok "no default value next to its noun in the docs" '! noun_scan "$here/README.md" "$here/AGENTS.md" "$here"/skills/*/SKILL.md "$here/ARCHITECTURE.md" "$here"/docs/*.svg "$here"/docs/*.html | grep -q .'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

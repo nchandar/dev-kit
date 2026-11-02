@@ -2,6 +2,9 @@
 # Tests for bin/spawn using a fake agent CLI (no tokens). Usage: tests/spawn.test.sh
 set -u
 unset DEVKIT_DEPTH  # these suites must pass when run from inside a worker too
+# a worker also inherits its model, tunables and the push guard; none may change what this suite measures
+unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
+for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
 here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }

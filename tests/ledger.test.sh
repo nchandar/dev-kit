@@ -6,10 +6,18 @@ pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && mkdir -p sub/deep
-unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK
+unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK DEVKIT_DEPTH
 
 A=$(cd sub/deep && "$ledger" start fix-login "first look")
 ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".devkit/tasks/$A" ]'
+before=$(ls .devkit/tasks | wc -l | tr -d ' ')
+DEVKIT_DEPTH=1 "$ledger" start sneaky 2>"$t/guard.err"; rc=$?
+ok "a worker (DEVKIT_DEPTH>0) cannot start a task"          '[ $rc -eq 3 ] && grep -q "worker" "$t/guard.err" && [ "$(ls .devkit/tasks | wc -l | tr -d " ")" = "$before" ]'
+G=$("$ledger" start worker-log 2>/dev/null)
+DEVKIT_DEPTH=2 "$ledger" -t "$G" note "from a worker" "still allowed" >/dev/null 2>&1; rc=$?
+ok "a worker can still log to its own task"                  '[ $rc -eq 0 ] && grep -q "from a worker" ".devkit/tasks/$G/ledger.tsv"'
+B0=$(DEVKIT_DEPTH=0 "$ledger" start main-agent 2>/dev/null)
+ok "depth 0 (the main agent) can start a task"               '[[ $B0 == main-agent-* ]]'
 ok "start writes header + start row"        '[ "$(wc -l < .devkit/tasks/$A/ledger.tsv)" -eq 2 ] && sed -n 1p .devkit/tasks/$A/ledger.tsv | grep -q "^time	phase	decision	reason	evidence	result$" && sed -n 2p .devkit/tasks/$A/ledger.tsv | awk -F"\t" "\$2==\"start\"{f=1} END{exit !f}"'
 B=$("$ledger" start fix-login "second session, same slug")
 ok "same slug twice gets distinct ids"      '[ "$A" != "$B" ] && [ -d ".devkit/tasks/$B" ]'
