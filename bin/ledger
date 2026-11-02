@@ -48,7 +48,7 @@ task=${DEVKIT_TASK:-}
 if [ "${1:-}" = path ] && [ "${2:-}" = -t ]; then task=${3:-}; set -- path
 elif [ "${1:-}" = -t ]; then task=${2:-}; shift 2; fi
 [ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set DEVKIT_TASK"
-case $task in */*) die "bad id '$task' (must not contain '/')";; esac
+case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')";; esac
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;

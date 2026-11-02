@@ -107,5 +107,7 @@ W=$("$ledger" start wr-fail 2>/dev/null); chmod 444 ".devkit/tasks/$W/ledger.tsv
 "$ledger" -t "$W" p d r >/dev/null 2>&1; rc=$?
 ok "failed append exits non-zero" '[ $rc -ne 0 ] || [ "$(id -u)" = 0 ]'
 chmod 644 ".devkit/tasks/$W/ledger.tsv"
+for bad in . ..; do "$ledger" -t "$bad" p d r >/dev/null 2>&1; rc=$?
+  ok "task id '$bad' rejected" '[ $rc -eq 2 ] && [ ! -e .devkit/ledger.tsv ]'; done
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
