@@ -308,6 +308,18 @@ kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
+# a stalled claimer (slow ps in its live scan) must keep its slot: the pid is written before the scan
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.2"; echo "$live" > "$DEVKIT_DIR/run/slot.2/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.2/start"
+slowps="$t/slowps"; mkdir -p "$slowps"; real_ps=$(command -v ps)
+printf '#!/bin/sh\ncase "$*" in *"-p %s"*) sleep 2;; esac\nexec %s "$@"\n' "$live" "$real_ps" > "$slowps/ps"; chmod +x "$slowps/ps" # sleep-ok: the stall under test
+( export PATH="$slowps:$PATH"; FAKE_ID=st1 FAKE_SLEEP=8 DEVKIT_MAX_WORKERS=2 "$spawn" st1 fake "$t/brief.md" 2>/dev/null ) & sa=$!
+n=0; while [ ! -d "$DEVKIT_DIR/run/slot.1" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n+1)); done # sleep-ok: bounded poll until A is mid-claim
+( export PATH="$slowps:$PATH"; DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 FAKE_ID=st2 DEVKIT_MAX_WORKERS=2 "$spawn" st2 fake "$t/brief.md" 2>"$t/st2.err" ); rc=$?
+wait $sa; kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a stalled claimer keeps its slot (a second spawn finds none free)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.2" "$DEVKIT_DIR/run/slot.2.lock"
+
 # --- ship fixes: empty start, TZ-normalized lstart, 08 depth, worktree reuse, cap counts slots above CAP
 sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; : > "$DEVKIT_DIR/run/slot.1/start"
