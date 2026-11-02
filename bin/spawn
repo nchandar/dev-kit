@@ -45,6 +45,10 @@ case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" 
 case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
 root=$PWD; CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
+case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number" >&2; exit 2;; esac
+[ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; }
+case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a whole number" >&2; exit 2;; esac
+case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
@@ -80,10 +84,24 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead pid) are reclaimed
 slot=
-claim() { local n d p
-  for n in $(seq 1 "$CAP"); do d=$H/run/slot.$n
-    if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
-    p=$(cat "$d/pid" 2>/dev/null); if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
+slot_live() { # $1=slot dir $2=pid: a slot is live only if the pid answers and its start time still matches
+  kill -0 "$2" 2>/dev/null || return 1
+  [ -f "$1/start" ] || return 0
+  [ "$(ps -o lstart= -p "$2" 2>/dev/null)" = "$(cat "$1/start" 2>/dev/null)" ]
+}
+claim() { local n d p lock m
+  n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
+    if mkdir "$d" 2>/dev/null; then ps -o lstart= -p $$ > "$d/start" 2>/dev/null; echo $$ > "$d/pid"; slot=$d; return 0; fi
+    if mkdir "$lock" 2>/dev/null; then
+      p=$(cat "$d/pid" 2>/dev/null)
+      if [ -z "$p" ]; then sleep 1; p=$(cat "$d/pid" 2>/dev/null); fi
+      if [ -z "$p" ] || ! slot_live "$d" "$p"; then rm -rf "$d"; fi
+      rm -rf "$lock"
+    else
+      m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)
+      if [ -n "$m" ] && [ $(( $(date +%s) - m )) -gt 5 ]; then rm -rf "$lock"; fi
+    fi
+    n=$((n+1))
   done; return 1; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; view=0; vtab=""; vdone=0
@@ -144,7 +162,7 @@ if [ "$TMO" -gt 0 ] 2>/dev/null; then
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
   guard=$!
 fi
-wait "$wpid"; rc=$?
+wait "$wpid"; rc=$?; wpid=""
 if [ -n "$guard" ]; then pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; fi
 
 state=done; [ $rc -eq 0 ] || state=failed

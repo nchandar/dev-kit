@@ -221,4 +221,58 @@ ok "view: herdr server down falls back to headless" '! grep -q "tab create" "$HE
 ( export PATH="/usr/bin:/bin"; export DEVKIT_VIEW=herdr; FAKE_ID=v6 "$spawn" v6 fake "$t/brief.md" )
 ok "view: no herdr installed falls back to headless" 'grep -q "^done" $TD/run/v6.status'
 
+# --- hardening 1: numeric knobs fail closed with exit 2 naming the knob
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=0 "$spawn" e1 fake "$t/brief.md" 2>"$t/e1.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=0 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e1.err"'
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=many "$spawn" e2 fake "$t/brief.md" 2>"$t/e2.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=many exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e2.err"'
+DEVKIT_DRYRUN=1 DEVKIT_CHILD_WAIT=1.5 "$spawn" e3 fake "$t/brief.md" 2>"$t/e3.err"; rc=$?
+ok "DEVKIT_CHILD_WAIT=1.5 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_CHILD_WAIT" "$t/e3.err"'
+DEVKIT_DRYRUN=1 DEVKIT_TIMEOUT=soon "$spawn" e4 fake "$t/brief.md" 2>"$t/e4.err"; rc=$?
+ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_TIMEOUT" "$t/e4.err"'
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
+ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
+
+# --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
+ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
+# --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid
+ok "wpid is cleared right after wait" 'grep -q -F "wait \"\$wpid\"; rc=\$?; wpid=\"\"" "$spawn"'
+
+# --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+FAKE_ID=lk0 DEVKIT_MAX_WORKERS=1 "$spawn" lk0 fake "$t/brief.md"
+ok "a stale slot is reclaimed under its lock, lock released" '[ -s $TD/handoffs/lk0.md ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.*.lock 2>/dev/null)" ]'
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk1 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale
+mkdir -p "$DEVKIT_DIR/run/slot.1"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKERS=1 "$spawn" lk2 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 6: a lock older than 5s is removed (GNU stat first, BSD fallback)
+ok "lock age prefers GNU stat with a BSD fallback" 'grep -q "stat -c %Y.*|| stat -f %m" "$spawn"'
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+touch -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk3.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 7: pid reuse is guarded by a start-time record
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; echo "bogus" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk4 DEVKIT_MAX_WORKERS=1 "$spawn" lk4 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null
+ok "a slot with a live pid but mismatched start is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk4.md ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk5 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null
+ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
