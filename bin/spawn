@@ -6,7 +6,7 @@
 # Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
 # Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs (also failed ones), DEVKIT_VIEW_NOTIFY=all notifies on success,
 #   spawn --close-views closes kept tabs. Failures print the id, state and last log lines to stderr.
-# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env: DEVKIT_MAX_WORKERS (2), DEVKIT_TIMEOUT secs (900, 0=off), DEVKIT_MODEL, DEVKIT_DRYRUN=1 (print command only), DEVKIT_DIR
+# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env: DEVKIT_MAX_WORKERS (10, repo-wide), DEVKIT_MAX_DEPTH (3, nesting), DEVKIT_CHILD_WAIT secs (60, nested spawns only), DEVKIT_TIMEOUT secs (900, 0=off), DEVKIT_MODEL, DEVKIT_DRYRUN=1 (print command only), DEVKIT_DIR
 set -u
 here=$(dirname "$0")
 
@@ -36,12 +36,14 @@ while [ $# -gt 0 ]; do case $1 in
 want=3; [ -n "$inline" ] && want=2
 [ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
-[ -z "${DEVKIT_DEPTH:-}" ] || { echo "spawn: sub-agents must not spawn (depth 1)" >&2; exit 3; }
+depth=${DEVKIT_DEPTH:-0}; MAXD=${DEVKIT_MAX_DEPTH:-3}
+case $depth$MAXD in *[!0-9]*|"") echo "spawn: DEVKIT_DEPTH and DEVKIT_MAX_DEPTH must be numbers" >&2; exit 2;; esac
+[ "$depth" -lt "$MAXD" ] || { echo "spawn: depth $depth is at the limit $MAXD (DEVKIT_MAX_DEPTH); a worker at the limit must not spawn" >&2; exit 3; }
 case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
 case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
-root=$PWD; CAP=${DEVKIT_MAX_WORKERS:-2}; TMO=${DEVKIT_TIMEOUT:-900}
+root=$PWD; CAP=${DEVKIT_MAX_WORKERS:-10}; TMO=${DEVKIT_TIMEOUT:-900}
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
@@ -62,7 +64,9 @@ build_cmd() { # $1=workdir $2=prompt
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
     fake)     cmd=("$DEVKIT_FAKE" "$2" "$hf");;
   esac; }
-make_prompt() { echo "You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only. Do not start a new task, spawn agents, or contact other workers. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
+make_prompt() { local spawnrule="Do not spawn agents"
+  [ $((depth+1)) -ge "$MAXD" ] || spawnrule="You may spawn sub-workers with bin/spawn (you are at depth $((depth+1)) of $MAXD; they share the repo-wide worker cap and your DEVKIT_TASK), keeping fan-out small; if spawn exits 4 there is no free slot, so do that work yourself"
+  echo "You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
 
 --- BRIEF ---
 $1"; }
@@ -81,7 +85,11 @@ claim() { local n d p
     p=$(cat "$d/pid" 2>/dev/null); if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
   done; return 1; }
 trap '[ -n "$slot" ] && rm -rf "$slot"' EXIT
-until claim; do sleep 1; done
+waited=0
+until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
+  if [ "$depth" -gt 0 ] && [ "$waited" -ge "${DEVKIT_CHILD_WAIT:-60}" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT:-60}s; a nested spawn does not wait longer" >&2; exit 4; fi
+  sleep 1; waited=$((waited+1))
+done
 
 wd=$root
 if [ $wt = 1 ]; then
@@ -92,7 +100,7 @@ rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
 
 build_cmd "$wd" "$(make_prompt "$(brieftext)")"
-export DEVKIT_DEPTH=1 DEVKIT_DIR=$H DEVKIT_TASK=$task
+export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote
 gn=${GIT_CONFIG_COUNT:-0}
 for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done

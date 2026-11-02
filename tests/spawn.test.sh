@@ -18,7 +18,7 @@ cat > "$t/fake" <<'F'
 # $1=prompt $2=handoff path. Behaviour via FAKE_* env.
 if [ /dev/stdin -ef /dev/null ]; then stdin_state=null; else stdin_state=open; fi
 echo "$(date +%s) start $FAKE_ID" >> "$DEVKIT_DIR/events"
-[ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
+[ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x${DEVKIT_DEPTH:-} fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
 sleep "${FAKE_SLEEP:-0}"
@@ -33,10 +33,16 @@ ok "ship run writes handoff"       '[ -s $TD/handoffs/a.md ]'
 ok "status is done"                'grep -q "^done 0" $TD/run/a.status'
 ok "worker sees DEVKIT_DEPTH=1"   'grep -q "depth=1" $TD/handoffs/a.md'
 
-DEVKIT_DEPTH=1 "$spawn" z fake "$t/brief.md" 2>/dev/null; rc=$?
-ok "spawn refuses inside a worker" '[ $rc -eq 3 ]'
+FAKE_ID=d2 DEVKIT_DEPTH=1 "$spawn" d2 fake "$t/brief.md"; rc=$?
+ok "a depth-1 worker may spawn; its child sees depth 2" '[ $rc -eq 0 ] && grep -q "depth=2" $TD/handoffs/d2.md'
+DEVKIT_DEPTH=3 "$spawn" z fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "spawn refuses at the depth limit (3)" '[ $rc -eq 3 ]'
+DEVKIT_MAX_DEPTH=1 DEVKIT_DEPTH=1 "$spawn" z fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "DEVKIT_MAX_DEPTH=1 restores the no-nesting rule" '[ $rc -eq 3 ]'
 FAKE_ID=n FAKE_SPAWN="$spawn" "$spawn" n fake "$t/brief.md"
-ok "nested spawn from worker blocked" '[ "$(cat $DEVKIT_DIR/nested.rc)" = 3 ]'
+ok "a worker can spawn a child, down to the limit" '[ "$(cat $DEVKIT_DIR/nested.rc)" = 0 ] && [ -s $TD/handoffs/x1.md ] && [ -s $TD/handoffs/x2.md ]'
+FAKE_ID=n2 DEVKIT_MAX_DEPTH=1 FAKE_SPAWN="$spawn" "$spawn" n2 fake "$t/brief.md"
+ok "nested spawn blocked when the limit is 1" '[ "$(cat $DEVKIT_DIR/nested.rc)" = 3 ]'
 
 "$spawn" q nosuchcli "$t/brief.md" 2>/dev/null; rc=$?
 ok "unknown cli exits 2"           '[ $rc -eq 2 ]'
@@ -54,7 +60,7 @@ ok "worktree created on branch"    'git rev-parse --verify -q devkit/$TA-w >/dev
 ok "worker ran inside worktree"    'grep -q "cwd=.*/wt/w" $TD/handoffs/w.md'
 
 : > $DEVKIT_DIR/events
-for i in 1 2 3; do FAKE_ID=c$i FAKE_SLEEP=2 "$spawn" c$i fake "$t/brief.md" & done; wait
+for i in 1 2 3; do FAKE_ID=c$i FAKE_SLEEP=2 DEVKIT_MAX_WORKERS=2 "$spawn" c$i fake "$t/brief.md" & done; wait
 third=$(awk '$2=="start"{print $1}' $DEVKIT_DIR/events | sort -n | tail -1)
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 ok "cap=2: third starts after a slot frees" '[ "$third" -ge "$firstend" ]'
@@ -68,10 +74,26 @@ DEVKIT_TASK=$TB FAKE_ID=iso "$spawn" iso fake "$t/brief.md"
 ok "spawn logs only to its own task's ledger" 'grep -q "iso done" "$DEVKIT_DIR/tasks/$TB/ledger.tsv" && ! grep -q "iso" $TD/ledger.tsv'
 
 : > $DEVKIT_DIR/events
-for i in 1 2 3; do tk=$TA; [ $i = 2 ] && tk=$TB; DEVKIT_TASK=$tk FAKE_ID=x$i FAKE_SLEEP=2 "$spawn" x$i fake "$t/brief.md" & done; wait
+for i in 1 2 3; do tk=$TA; [ $i = 2 ] && tk=$TB; DEVKIT_TASK=$tk FAKE_ID=x$i FAKE_SLEEP=2 DEVKIT_MAX_WORKERS=2 "$spawn" x$i fake "$t/brief.md" & done; wait
 third=$(awk '$2=="start"{print $1}' $DEVKIT_DIR/events | sort -n | tail -1)
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
+
+: > $DEVKIT_DIR/events
+for i in $(seq 1 11); do FAKE_ID=m$i FAKE_SLEEP=3 "$spawn" m$i fake "$t/brief.md" & done; wait
+firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
+before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
+ok "default cap is 10: ten start together, the eleventh waits" '[ "$before" -eq 10 ]'
+
+FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" nest fake "$t/brief.md" 2>"$t/nest.err"; rc=$?
+ok "a nested spawn that finds no free slot fails fast (exit 4)" '[ $rc -eq 4 ] && grep -q "no free" "$t/nest.err"'
+wait
+
+DEVKIT_DRYRUN=1 "$spawn" p1 fake "$t/brief.md" > "$t/p1.out"
+ok "prompt tells a worker below the limit it may spawn"  'grep -q "may spawn" "$t/p1.out"'
+DEVKIT_MAX_DEPTH=1 DEVKIT_DRYRUN=1 "$spawn" p2 fake "$t/brief.md" > "$t/p2.out"
+ok "prompt tells a worker at the limit not to spawn"      'grep -q "Do not spawn" "$t/p2.out" && ! grep -q "may spawn" "$t/p2.out"'
 
 FAKE_ID=in "$spawn" in fake "$t/brief.md" < "$t/brief.md"
 ok "worker stdin is closed (no hang on stdin)" 'grep -q "stdin=null$" $TD/handoffs/in.md'
