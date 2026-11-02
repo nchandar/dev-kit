@@ -129,7 +129,7 @@ valid_guards() {
   done < <(grep '^| pg-' "$here/docs/pitfalls.md" 2>/dev/null)
   [ "$bad" -eq 0 ]
 }
-ok "pitfalls.md exists with 11 rows" '[ -f "$here/docs/pitfalls.md" ] && [ "$(grep -c "^| pg-" "$here/docs/pitfalls.md")" -ge 11 ]'
+ok "pitfalls.md exists with 19 rows" '[ -f "$here/docs/pitfalls.md" ] && [ "$(grep -c "^| pg-" "$here/docs/pitfalls.md")" -ge 19 ]'
 ok "every pitfalls.md row names an existing guard" 'valid_guards'
 ok "dev-debug closes bugs with a regression test plus a pitfalls row" 'grep -q "docs/pitfalls.md" "$here/skills/dev-debug/SKILL.md"'
 
