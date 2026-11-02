@@ -12,6 +12,8 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && echo base > f.txt && git add -A && git -c user.name=t -c user.email=t@t commit -qm init
 export DEVKIT_DIR="$t/.devkit"
 export DEVKIT_VIEW=off DEVKIT_VIEW_CLOSE_DELAY=0
+# guard: outside the stub-PATH subshells below, herdr must not resolve, or the suite would drive the real herdr
+if command -v herdr >/dev/null 2>&1; then echo "FAIL tests would reach the real herdr at $(command -v herdr); refusing to run" >&2; exit 1; fi
 ledger="$here/bin/ledger"
 TA=$("$ledger" start task-a x); TB=$("$ledger" start task-b y)
 TD="$DEVKIT_DIR/tasks/$TA"; export DEVKIT_TASK=$TA
@@ -84,10 +86,12 @@ firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
 : > $DEVKIT_DIR/events
-for i in $(seq 1 11); do FAKE_ID=m$i FAKE_SLEEP=3 "$spawn" m$i fake "$t/brief.md" & done; wait
+for i in $(seq 1 10); do FAKE_ID=m$i FAKE_SLEEP=8 "$spawn" m$i fake "$t/brief.md" & done
+n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done
+FAKE_ID=m11 FAKE_SLEEP=1 "$spawn" m11 fake "$t/brief.md" & wait
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
-ok "default cap is 10: ten start together, the eleventh waits" '[ "$before" -eq 10 ]'
+ok "default cap is 10: ten start together, the eleventh waits" '[ "$n" -lt 40 ] && [ "$before" -eq 10 ]'
 
 FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" nest fake "$t/brief.md" 2>"$t/nest.err"; rc=$?
@@ -208,6 +212,19 @@ ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_D
 ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
 ok "interrupted spawn frees its slot"                '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; pkill -f "sleep 20" 2>/dev/null; true
+
+# a hard-killed spawn runs no EXIT trap, so the pane itself must close the tab once the spawn pid is gone
+: > "$HERDR_LOG"
+DEVKIT_VIEW=herdr FAKE_ID=v9 vrun "$spawn" v9 fake "$t/brief.md"
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
+ok "view: pane command watches the spawn pid" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
+: > "$HERDR_LOG"
+if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi
+ok "view: watchdog closes the tab once the spawn pid is gone" 'grep -q "tab close X:t9" "$HERDR_LOG"'
+: > "$HERDR_LOG"
+DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v10 vrun "$spawn" v10 fake "$t/brief.md"
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
+ok "view: watchdog keeps the tab when DEVKIT_VIEW_KEEP=1" '! echo "$pcmd" | grep -q "tab close"'
 
 DEVKIT_VIEW_NOTIFY=all DEVKIT_VIEW=herdr FAKE_ID=v7 vrun "$spawn" v7 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_NOTIFY=all also notifies on success" 'grep "notification show" "$HERDR_LOG" | grep -q -- "--sound done"'

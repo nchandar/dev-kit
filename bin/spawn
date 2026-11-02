@@ -162,7 +162,11 @@ if [ $view = 1 ]; then
   vtab=$(printf '%s' "$vj" | grep -o '"tab_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   vpane=$(printf '%s' "$vj" | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   if [ -n "$vpane" ]; then
-    herdr pane run "$vpane" "tail -n +1 -f '$log'" >/dev/null 2>&1
+    # the pane watches the spawn pid itself: a hard kill (kill -9) runs no EXIT trap,
+    # so the pane closes its own tab once the spawner is gone (unless the tab is kept)
+    if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then vwatch="tail -n +1 -f '$log'"
+    else vwatch="tail -n +1 -f '$log' & tp=\$!; while kill -0 $$ 2>/dev/null; do sleep 1; done; kill \$tp 2>/dev/null; herdr tab close '$vtab' >/dev/null 2>&1"; fi
+    herdr pane run "$vpane" "$vwatch" >/dev/null 2>&1
     herdr pane report-metadata --source dev-kit --agent "$cli" --title "$id: $(brieftext | head -1 | cut -c1-50)" --display-agent "$cli $shape" "$vpane" >/dev/null 2>&1
     vreport working running
   else view=0; fi
