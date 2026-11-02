@@ -13,6 +13,10 @@ ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".d
 before=$(ls .devkit/tasks | wc -l | tr -d ' ')
 DEVKIT_DEPTH=1 "$ledger" start sneaky 2>"$t/guard.err"; rc=$?
 ok "a worker (DEVKIT_DEPTH>0) cannot start a task"          '[ $rc -eq 3 ] && grep -q "worker" "$t/guard.err" && [ "$(ls .devkit/tasks | wc -l | tr -d " ")" = "$before" ]'
+DEVKIT_DEPTH=abc "$ledger" start sneaky-junk 2>"$t/guard-junk.err"; rc=$?
+ok "junk DEVKIT_DEPTH (abc) cannot start a task"   '[ $rc -eq 3 ] && grep -q "worker" "$t/guard-junk.err" && [ "$(ls .devkit/tasks | wc -l | tr -d " ")" = "$before" ]'
+B00=$(DEVKIT_DEPTH=00 "$ledger" start double-zero 2>/dev/null); rc=$?
+ok "depth 00 (zero-padded main agent) can start a task" '[[ $B00 == double-zero-* ]] && [ $rc -eq 0 ]'
 G=$("$ledger" start worker-log 2>/dev/null)
 DEVKIT_DEPTH=2 "$ledger" -t "$G" note "from a worker" "still allowed" >/dev/null 2>&1; rc=$?
 ok "a worker can still log to its own task"                  '[ $rc -eq 0 ] && grep -q "from a worker" ".devkit/tasks/$G/ledger.tsv"'
