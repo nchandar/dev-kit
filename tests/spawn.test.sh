@@ -247,4 +247,10 @@ s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn"
 ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
+# --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale
+mkdir -p "$DEVKIT_DIR/run/slot.1"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKERS=1 "$spawn" lk2 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
