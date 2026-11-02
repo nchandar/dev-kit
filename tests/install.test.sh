@@ -5,13 +5,13 @@ here=$(cd "$(dirname "$0")/.." && pwd); inst="$here/install.sh"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-skills="dev-debug dev-feature dev-research dev-review dev-spawn"
+skills="dev-debug dev-feature dev-research dev-review dev-spawn dev-mode"
 
 HOME="$t" "$inst" >/dev/null 2>&1; rc=$?
 ok "fresh machine: exits 0"                     '[ $rc -eq 0 ]'
 ok "dev-kit dir linked to the repo"             '[ "$(readlink "$t/.agents/dev-kit")" = "$here" ]'
 allok=1; for r in .claude/skills .codex/skills .agents/skills; do for n in $skills; do [ -f "$t/$r/$n/SKILL.md" ] || allok=0; done; done
-ok "5 skills resolve in all 3 skill dirs"       '[ $allok -eq 1 ]'
+ok "6 skills resolve in all 3 skill dirs"       '[ $allok -eq 1 ]'
 
 HOME="$t" "$inst" >/dev/null 2>&1; rc=$?
 ok "rerun is safe (exits 0)"                    '[ $rc -eq 0 ]'

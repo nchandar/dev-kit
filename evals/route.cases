@@ -1,0 +1,25 @@
+dev-debug	The checkout test fails with a null pointer after the last merge
+dev-debug	Users get a 500 when uploading files over 5 MB
+dev-debug	npm run build breaks with a type error since yesterday
+dev-feature	Add dark mode to the settings page
+dev-feature	Refactor the payment module to use the new client
+dev-feature	Add CSV export to the reports screen
+dev-research	How does our auth middleware decide when a session expires?
+dev-research	Should we use Postgres or DynamoDB for the event log? Compare them
+dev-research	Spike: can we stream responses with the current framework?
+dev-review	Review my diff on branch feature-x
+dev-review	Can you code review the changes in the last commit?
+dev-spawn	Run the linter and the type checker in a separate codex instance and report back
+dev-spawn	Open two worker agents to read the docs folder and summarize it
+dev-learn	Turn the learnings we queued from finished work into library improvements
+dev-learn	Process the queued learnings and draft the library edits
+none	hello
+none	thanks, looks good
+none	run the test suite
+none	change the port in config.yaml from 8080 to 9090
+none	print the current git branch
+dev-research	Investigate why the cache is slow, then fix it
+dev-debug	The login test fails; once it is fixed, add a remember-me option
+dev-research	Look into whether we should switch to websockets and then build it
+dev-debug	Fix the failing build and then review the diff
+dev-research	Compare two queue libraries and implement the winner

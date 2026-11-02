@@ -22,7 +22,7 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Layer | What lives there | Who reads it |
 |---|---|---|
 | Entry rules | `AGENTS.md` (routes and always-rules, max 6144 B), `CLAUDE.md` | Main agent, every session |
-| Skills | `skills/dev-*/SKILL.md`: six routes, each a checklist | Main agent, one per task |
+| Skills | `skills/dev-*/SKILL.md`: seven skills: an entry point (dev-mode) and six routes, each a checklist | Main agent, one per task |
 | Library | `library/`: principles, core, deep, recipes | Main agent or workers, on demand |
 | Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, lint-budget | Agents run them; people can too |
 | Per-task files | `.devkit/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |
@@ -124,7 +124,7 @@ sequenceDiagram
 ### 3.7 lint-budget (`bin/lint-budget`)
 - Purpose: keep what agents load small and consistent. `bin/lint-budget [root] [--partial]`.
 - Checks:
-  - `AGENTS.md` at most 6144 B; 4 to 6 skills, each at most 150 lines, `name` = folder = `dev-*`, one-line description, descriptions total at most 4096 B.
+  - `AGENTS.md` at most 6144 B; 4 to 8 skills, each at most 150 lines, `name` = folder = `dev-*`, one-line description, descriptions total at most 4096 B.
   - Skill sections: When to Use, Checklist, Rationalizations, Red Flags, Verification; a `bin/ledger` mention; a `library/state` reference (except dev-learn).
   - Core library: each file at most 80 lines (sections When to Use, Steps, Red Flags, Verification), total at most 32768 B.
   - Deep: at most 45 lines each, total 65536 B. Recipes: at most 45 lines each, total 49152 B, each indexed.
@@ -161,7 +161,13 @@ sequenceDiagram
 
 ## 5. Skills
 
-All six start with the same preamble: start or resume a task, read `.devkit/memory.md`, copy the checklist into the task list, ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
+The six routes start with the same preamble: start or resume a task, read `.devkit/memory.md`, copy the checklist into the task list, ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
+
+### dev-mode
+- Triggers: `/dev-mode <request>`, explicit only (no hook). Entry point; it owns no work of its own.
+- Steps: triage size first (trivial means no route, no ledger), then type; announce `route: <skill>, <size>`; mixed requests split into one task per route (research, debug, feature, review last); run each route's own skill; chain; close with result, evidence, open risks.
+- Stays on track with a footer on every in-route reply: `route: <skill>, step N/M, next: <step>`; gates are the only pauses.
+- Reads: state. Checked by `tests/dev-mode.test.sh` (content) and `evals/route.sh` (routing and drift against the real claude, costs tokens).
 
 ### dev-feature
 - Triggers: new behavior, behavior change, refactor.
