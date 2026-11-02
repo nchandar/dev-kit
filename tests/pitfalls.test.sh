@@ -17,17 +17,18 @@ guards="seq-args portable-cmd lstart-tz bounded-retry decimal-arith sleep-ok spa
 r_seq() { grep -rn -E '(^|[^A-Za-z0-9_.-])seq +([0-9]+ +)*["]?\$' "$@" 2>/dev/null | grep -v 'pitfall-ok: seq-args' || true; }
 r_portable() { grep -rn -E '(^|[^A-Za-z0-9_.-])(stat +-(c|f)|date +-d|readlink +-f|sed +-i([^.]|$))' "$@" 2>/dev/null | grep -v 'pitfall-ok: portable-cmd' || true; }
 r_lstart() { grep -rn -E 'ps +-o[^|;]*lstart' "$@" 2>/dev/null | grep -v -E 'LC_ALL=C.*TZ=UTC|TZ=UTC.*LC_ALL=C' | grep -v 'pitfall-ok: lstart-tz' || true; }
-r_retry() { # flags until/while-true loops whose line plus 6 followers name no bound
+r_retry() { # flags until/while-true loops whose line plus 6 followers name no bound (a counter compare, timeout or marker; sleep/break/return are not bounds)
   out=""
   for f in "$@"; do
     while IFS= read -r ln; do
-      printf '%s\n' "$(sed -n "${ln},$((ln+6))p" "$f")" | grep -q -E 'tries|waited|count|timeout|CHILD_WAIT|sleep|exit [0-9]|break|return|pitfall-ok: bounded-retry' \
+      printf '%s\n' "$(sed -n "${ln},$((ln+6))p" "$f")" | grep -q -E 'tries|waited|timeout|CHILD_WAIT|-(ge|gt)[[:space:]]+["]?[$A-Za-z0-9]|pitfall-ok: bounded-retry' \
         || out="${out}${f}:${ln}: unbounded retry loop (no counter or timeout nearby)
 "
     done < <(grep -n -E '(^|[^A-Za-z0-9_])(until[[:space:]]|while +(true|:)([[:space:];]|$))' "$f" 2>/dev/null | cut -d: -f1)
   done
   printf '%s' "$out"
 }
+retry_scan() { r_retry "$1"/*; } # files, not the dir: grep -n on a dir errors silently
 r_arith() { # [ -op ] or $(( )) on $vars without 10#: operands must be decimal-safe
   { grep -rn -E '\$\(\([^)]*\$|-(eq|ne|lt|le|gt|ge)[[:space:]]+["]?\$|\$[A-Za-z_][A-Za-z0-9_]*["]?[[:space:]]+-(eq|ne|lt|le|gt|ge)|\$\{[^}]+\}["]?[[:space:]]+-(eq|ne|lt|le|gt|ge)|-(eq|ne|lt|le|gt|ge)[[:space:]]+["]?\$\{' "$@" 2>/dev/null
     grep -rn -E '\$\(\(' "$@" 2>/dev/null | grep -E -e '-(eq|ne|lt|le|gt|ge)'; } | grep -v '10#' | grep -v 'pitfall-ok: decimal-arith' | sort -u || true
@@ -61,6 +62,15 @@ ok "lstart-tz passes LC_ALL=C TZ=UTC" '[ -z "$(r_lstart "$t/good.sh")" ]'
 
 printf '%s\n' 'until mkdir "$d" 2>/dev/null; do' '  :' 'done' > "$t/bad.sh"
 printf '%s\n' 'tries=0' 'until mkdir "$d" 2>/dev/null; do' '  tries=$((tries+1)); [ "$tries" -ge 20 ] && exit 2' 'done' > "$t/good.sh"
+printf '%s\n' 'until claim; do' ' sleep 1' 'done' > "$t/b_sleep.sh" # sleep-ok: fixture text, never executed
+printf '%s\n' 'until claim; do' ' n=$((n+1))  # count' 'done' > "$t/b_count.sh"
+printf '%s\n' 'while true; do' ' try && break' 'done' > "$t/b_break.sh"
+printf '%s\n' 'tries=0' 'until claim; do' ' tries=$((tries+1)); [ "$tries" -ge 9 ] && exit 2' 'done' > "$t/g_cmp.sh"
+printf '%s\n' 'until claim; do # pitfall-ok: bounded-retry caller kills us' ' :' 'done' > "$t/g_ok.sh"
+ok "bounded-retry flags sleep, count and break as non-bounds" '[ -n "$(r_retry "$t/b_sleep.sh")" ] && [ -n "$(r_retry "$t/b_count.sh")" ] && [ -n "$(r_retry "$t/b_break.sh")" ]'
+ok "bounded-retry passes a counter compare and a marked loop" '[ -z "$(r_retry "$t/g_cmp.sh" "$t/g_ok.sh")" ]'
+mkdir "$t/fx"; cp "$t/bad.sh" "$t/fx/bad.sh"; cp "$t/good.sh" "$t/fx/good.sh"
+ok "bounded-retry dir scan flags a fixture directory" '[ -n "$(retry_scan "$t/fx")" ]'
 ok "bounded-retry flags a bare until loop" '[ -n "$(r_retry "$t/bad.sh")" ]'
 ok "bounded-retry passes a counted loop" '[ -z "$(r_retry "$t/good.sh")" ]'
 
@@ -89,7 +99,7 @@ ok "src-grep passes greps of outputs" '[ -z "$(r_srcgrep "$t/good.sh")" ]'
 ok "seq-args: bin/ has no variable-arg seq" '[ -z "$(r_seq "$here/bin")" ]'
 ok "portable-cmd: bin/ has no raw stat/date/sed/readlink" '[ -z "$(r_portable "$here/bin")" ]'
 ok "lstart-tz: lstart always runs under LC_ALL=C TZ=UTC" '[ -z "$(r_lstart "$here/bin" "$here/tests")" ]'
-ok "bounded-retry: bin/ loops name a bound" '[ -z "$(r_retry "$here/bin")" ]'
+ok "bounded-retry: bin/ loops name a bound" '[ -z "$(retry_scan "$here/bin")" ]'
 ok "decimal-arith: bin/ arithmetic is 10# or allowlisted" '[ -z "$(r_arith "$here/bin")" ]'
 ok "sleep-ok: fixed sleeps in tests carry a why" '[ -z "$(r_sleep "$here"/tests/*.test.sh)" ]'
 srcfiles=""; for f in "$here"/tests/*.test.sh; do case $f in *pitfalls.test.sh) continue;; esac; srcfiles="$srcfiles $f"; done
