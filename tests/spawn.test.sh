@@ -320,6 +320,17 @@ wait $sa; kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a stalled claimer keeps its slot (a second spawn finds none free)" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.2" "$DEVKIT_DIR/run/slot.2.lock"
 
+# kill -9 of spawn frees no slot while its worker still runs
+sleep 30 & live=$! # sleep-ok: live worker fixture, killed right after
+sleep 0 & dead=$!; wait $dead 2>/dev/null
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$dead" > "$DEVKIT_DIR/run/slot.1/pid"; echo "$live" > "$DEVKIT_DIR/run/slot.1/wpid"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=2 DEVKIT_MAX_WORKERS=1 "$spawn" wk1 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a slot whose spawner died but whose worker lives stays counted" '[ $rc -eq 4 ]'
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=wk2 DEVKIT_MAX_WORKERS=1 "$spawn" wk2 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "once the worker is gone too, the slot is reclaimed" '[ $rc -eq 0 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 # --- ship fixes: empty start, TZ-normalized lstart, 08 depth, worktree reuse, cap counts slots above CAP
 sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; : > "$DEVKIT_DIR/run/slot.1/start"

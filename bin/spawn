@@ -90,10 +90,13 @@ if [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null
 
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead/reused pid, no pid after 1s) are reclaimed under a per-slot lock
 slot=
-slot_live() { # $1=slot dir $2=pid: a slot is live only if the pid answers and its start time still matches
-  kill -0 "$2" 2>/dev/null || return 1
-  [ -s "$1/start" ] || return 0
-  [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$2" 2>/dev/null)" = "$(cat "$1/start" 2>/dev/null)" ]
+slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching start time, or (kill -9 of spawn) its worker still runs
+  local wp
+  if kill -0 "$2" 2>/dev/null; then
+    [ -s "$1/start" ] || return 0
+    [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$2" 2>/dev/null)" != "$(cat "$1/start" 2>/dev/null)" ] || return 0
+  fi
+  wp=$(cat "$1/wpid" 2>/dev/null); [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null
 }
 claim() { local n d p p2 lock m live s pp
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock # pitfall-ok: decimal-arith n internal plus CAP validated above
@@ -186,6 +189,7 @@ fi
 # own process group (set -m, only for this launch) so timeout and interrupt can signal the whole tree with kill -- -$wpid
 set -m; ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
 wpid=$!; set +m
+[ -z "$slot" ] || echo "$wpid" > "$slot/wpid" 2>/dev/null # lets the slot stay counted if spawn is kill -9ed while the worker runs
 guard=
 if [ "$TMO" -gt 0 ] 2>/dev/null; then # pitfall-ok: decimal-arith TMO validated above
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
