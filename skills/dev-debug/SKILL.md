@@ -16,12 +16,12 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
-- [ ] 1. Restate the bug: expected vs actual, two lines. Unclear? library/grill.
+- [ ] 1. Recon, hypotheses, clarify: restate the bug (expected vs actual, two lines). Then a research pass first: read failing code, tests, logs, recent changes. Announce a tier: T0 touched code, tests, logs; T1 also similar code, docs and web (bulk reading to scouts); T2 run dev-research first. List 2-3 root-cause hypotheses with a recommendation, then grill (library/grill). New unknowns loop back to recon, up to 3 rounds.
 - [ ] 2. Reproduce with a command, via library/debug-method (stop-the-line, preserve evidence). No repro, no fix.
 - [ ] 3. Localize and find the root cause at file:line (library/debug-method). Check the same fault elsewhere.
 - [ ] 4. Doubt: run library/doubt on the root-cause claim with a fresh scout; settle every objection. Refresh `<task>/state.md` (library/state).
 - [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason.
-- [ ] 6. Smallest fix, no drive-by edits. Test green, then the full suite.
+- [ ] 6. List 2-3 fix options with a recommendation and ask the user's pick; then the smallest fix, no drive-by edits. Test green, then the full suite.
 - [ ] 7. Verify: follow library/verify; the original repro passes, plus one adjacent case. Then run dev-review on the diff and fix blockers.
 - [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
