@@ -8,7 +8,7 @@ cd "$root" || exit 2
 
 AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=8 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536 RECIPE_LINES=45 RECIPE_TOTAL=49152
 errs=0
-bad() { echo "FAIL $*"; errs=$((errs+1)); }
+bad() { echo "FAIL $*"; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
 common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
   grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
@@ -17,17 +17,17 @@ common() { # every skill and library file: ledger line, no escaping the tree, re
     [ -f "$r.md" ] || bad "$1: unresolved reference $r"; done; }
 
 sz=$(wc -c < AGENTS.md 2>/dev/null || echo 0)
-[ "$sz" -le $AGENTS_MAX ] || bad "AGENTS.md is $sz B (max $AGENTS_MAX)" # pitfall-ok: decimal-arith wc output, always decimal
+[ "$sz" -le $AGENTS_MAX ] || bad "AGENTS.md is $sz B (max $AGENTS_MAX)"
 
 shopt -s nullglob
 skills=(skills/*/SKILL.md); n=${#skills[@]}
-[ "$n" -le $SKILLS_MAX ] || bad "$n skills (max $SKILLS_MAX)" # pitfall-ok: decimal-arith array count, always decimal
-[ "$partial" = 1 ] || [ "$n" -ge $SKILLS_MIN ] || bad "$n skills (min $SKILLS_MIN)" # pitfall-ok: decimal-arith array count, always decimal
+[ "$n" -le $SKILLS_MAX ] || bad "$n skills (max $SKILLS_MAX)"
+[ "$partial" = 1 ] || [ "$n" -ge $SKILLS_MIN ] || bad "$n skills (min $SKILLS_MIN)"
 
 total=0; descs=""
 for f in "${skills[@]}"; do
   lines=$(wc -l < "$f")
-  [ "$lines" -le $SKILL_LINES ] || bad "$f has $lines lines (max $SKILL_LINES)" # pitfall-ok: decimal-arith wc output, always decimal
+  [ "$lines" -le $SKILL_LINES ] || bad "$f has $lines lines (max $SKILL_LINES)"
   fm=$(awk 'NR==1&&$0!="---"{exit} NR>1&&$0=="---"{exit} NR>1{print}' "$f")
   nm=$(printf '%s\n' "$fm" | sed -n 's/^name:[[:space:]]*//p' | head -1)
   folder=$(basename "$(dirname "$f")")
@@ -44,12 +44,12 @@ for f in "${skills[@]}"; do
   [ "$nm" = dev-learn ] || grep -q 'library/state' "$f" || bad "$f: must reference library/state (closeout)"
   for h in "When to Use" "Checklist" "Rationalizations" "Red Flags" "Verification"; do section "$f" "$h"; done
 done
-[ "$total" -le $DESC_MAX ] || bad "descriptions total $total B (max $DESC_MAX)" # pitfall-ok: decimal-arith internal counter, always decimal
+[ "$total" -le $DESC_MAX ] || bad "descriptions total $total B (max $DESC_MAX)"
 
 libs=(library/*.md); ln=${#libs[@]}; libbytes=0
 for f in "${libs[@]}"; do
   lines=$(wc -l < "$f"); libbytes=$((libbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith wc output, always decimal
-  [ "$lines" -le $LIB_LINES ] || bad "$f has $lines lines (max $LIB_LINES)" # pitfall-ok: decimal-arith wc output, always decimal
+  [ "$lines" -le $LIB_LINES ] || bad "$f has $lines lines (max $LIB_LINES)"
   common "$f"
   for h in "When to Use" "Steps" "Red Flags" "Verification"; do section "$f" "$h"; done
 done
@@ -58,19 +58,19 @@ done
 deepf=(library/deep/*.md); dn=${#deepf[@]}; deepbytes=0
 for f in ${deepf[@]+"${deepf[@]}"}; do
   lines=$(wc -l < "$f"); deepbytes=$((deepbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith wc output, always decimal
-  [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)" # pitfall-ok: decimal-arith wc output, always decimal
+  [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Red Flags"; do section "$f" "$h"; done
   for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | grep -v -x -E 'library/(deep|recipes)' | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
 done
-[ "$deepbytes" -le $DEEP_TOTAL ] || bad "library/deep totals $deepbytes B (max $DEEP_TOTAL)" # pitfall-ok: decimal-arith internal counter plus wc output
+[ "$deepbytes" -le $DEEP_TOTAL ] || bad "library/deep totals $deepbytes B (max $DEEP_TOTAL)"
 
 # library/recipes: reusable procedures learned in real work. On demand, indexed, never auto-loaded.
 recf=(library/recipes/*.md); rn=0; recbytes=0
 for f in ${recf[@]+"${recf[@]}"}; do
   name=$(basename "$f" .md); [ "$name" = index ] && continue
   rn=$((rn + 1)); lines=$(wc -l < "$f"); recbytes=$((recbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith internal counter plus wc output
-  [ "$lines" -le $RECIPE_LINES ] || bad "$f has $lines lines (max $RECIPE_LINES)" # pitfall-ok: decimal-arith wc output, always decimal
+  [ "$lines" -le $RECIPE_LINES ] || bad "$f has $lines lines (max $RECIPE_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Steps" "Gotchas" "Verified"; do section "$f" "$h"; done
   for r in $(grep -oE 'library/(deep/|recipes/)?[a-z0-9-]+' "$f" | grep -v -x -E 'library/(deep|recipes)' | sort -u); do [ -f "$r.md" ] || bad "$f: unresolved reference $r"; done
@@ -79,9 +79,9 @@ done
 if [ -f library/recipes/index.md ]; then
   for e in $(grep -oE '^[a-z0-9-]+:' library/recipes/index.md | tr -d ':'); do [ -f "library/recipes/$e.md" ] || bad "library/recipes/index.md lists $e but the file is missing"; done
 fi
-[ "$recbytes" -le $RECIPE_TOTAL ] || bad "library/recipes totals $recbytes B (max $RECIPE_TOTAL)" # pitfall-ok: decimal-arith internal counter plus wc output
+[ "$recbytes" -le $RECIPE_TOTAL ] || bad "library/recipes totals $recbytes B (max $RECIPE_TOTAL)"
 
-[ "$libbytes" -le $LIB_TOTAL ] || bad "library totals $libbytes B (max $LIB_TOTAL): compress before adding" # pitfall-ok: decimal-arith internal counter plus wc output
+[ "$libbytes" -le $LIB_TOTAL ] || bad "library totals $libbytes B (max $LIB_TOTAL): compress before adding"
 
 # trigger collision: Jaccard over content words of each listed description pair
 if [ -n "$descs" ]; then
@@ -92,13 +92,13 @@ if [ -n "$descs" ]; then
     END{ for(a=1;a<=NR;a++) for(b=a+1;b<=NR;b++){ inter=0; ua=0; ub=0
         for(key in set){ split(key,p,SUBSEP); if(p[1]==a){ua++; if((b SUBSEP p[2]) in set) inter++} else if(p[1]==b) ub++ }
         un=ua+ub-inter; if(un>0 && inter/un>=thr){ printf "FAIL trigger collision %.2f: %s <-> %s\n", inter/un, names[a], names[b]; c++ } }
-      exit c>0 }' || errs=$((errs+1))
+      exit c>0 }' || errs=$((errs+1)) # pitfall-ok: decimal-arith internal counter
 fi
 
 # public-safety: this repo is public, so no home paths, emails or secret-shaped strings anywhere in it
 LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude=.git --exclude-dir=.devkit --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
-[ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); }
+[ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 
-if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi # pitfall-ok: decimal-arith internal counter, always decimal
+if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi
 exit 1

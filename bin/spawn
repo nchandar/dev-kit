@@ -36,19 +36,19 @@ while [ $# -gt 0 ]; do case $1 in
   --shape) shape=${2-}; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
 case $shape in ship|scout) ;; *) echo "spawn: --shape must be ship or scout" >&2; exit 2;; esac
 want=3; [ -n "$inline" ] && want=2
-[ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; } # pitfall-ok: decimal-arith shell count and literal, always decimal
+[ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
 depth=${DEVKIT_DEPTH:-0}; MAXD=$DEVKIT_MAX_DEPTH
 case $depth$MAXD in *[!0-9]*|"") echo "spawn: DEVKIT_DEPTH and DEVKIT_MAX_DEPTH must be numbers" >&2; exit 2;; esac
 depth=$((10#$depth)); MAXD=$((10#$MAXD)) # force decimal: 08/09 are not octal
-[ "$depth" -lt "$MAXD" ] || { echo "spawn: depth $depth is at the limit $MAXD (DEVKIT_MAX_DEPTH); a worker at the limit must not spawn" >&2; exit 3; } # pitfall-ok: decimal-arith forced decimal on line 42
+[ "$depth" -lt "$MAXD" ] || { echo "spawn: depth $depth is at the limit $MAXD (DEVKIT_MAX_DEPTH); a worker at the limit must not spawn" >&2; exit 3; }
 case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
 case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
 root=$PWD; CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
 case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number" >&2; exit 2;; esac
-[ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; } # pitfall-ok: decimal-arith CAP validated above
+[ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; }
 case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a whole number" >&2; exit 2;; esac
 case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
 case ${GIT_CONFIG_COUNT:-0} in ''|*[!0-9]*) echo "spawn: GIT_CONFIG_COUNT must be a whole number" >&2; exit 2;; esac
@@ -99,15 +99,15 @@ slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching 
   wp=$(cat "$1/wpid" 2>/dev/null); [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null
 }
 claim() { local n d p p2 lock m live s pp
-  n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock # pitfall-ok: decimal-arith n internal plus CAP validated above
+  n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then
       # pid first: until it exists a reclaimer may treat the dir as abandoned
-      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; n=$((n+1)); continue; fi
+      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
       # CAP may have been lowered while higher slots live; a fresh dir must not push the live count over it
       live=0; for s in "$H"/run/slot.*; do case $s in "$d"|*.lock) continue;; esac
         [ -d "$s" ] || continue; pp=$(cat "$s/pid" 2>/dev/null); [ -n "$pp" ] || continue
-        slot_live "$s" "$pp" && live=$((live+1)); done
-      if [ "$live" -ge "$CAP" ]; then rm -rf "$d" # pitfall-ok: decimal-arith CAP validated above, live counts slots
+        slot_live "$s" "$pp" && live=$((live+1)); done # pitfall-ok: decimal-arith internal counter
+      if [ "$live" -ge "$CAP" ]; then rm -rf "$d"
       else LC_ALL=C TZ=UTC ps -o lstart= -p $$ > "$d/start" 2>/dev/null
         # a reclaimer may still have removed the dir; only a verified pid means the slot is ours
         if [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ]; then slot=$d; return 0; fi; fi
@@ -120,7 +120,7 @@ claim() { local n d p p2 lock m live s pp
       m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null) # pitfall-ok: portable-cmd GNU-or-BSD fallback pair
       if [ -n "$m" ] && [ $(( $(date +%s) - m )) -gt 5 ]; then rm -rf "$lock"; fi # pitfall-ok: decimal-arith date is decimal, m guarded by -n
     fi
-    n=$((n+1))
+    n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; view=0; vtab=""; vdone=0
@@ -141,8 +141,8 @@ cleanup() { local rc=$?
 trap cleanup EXIT; trap 'exit 143' TERM; trap 'exit 130' INT; trap 'exit 129' HUP
 waited=0
 until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
-  if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi # pitfall-ok: decimal-arith depth 10# line 42, rest validated above
-  sleep 1; waited=$((waited+1))
+  if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi
+  sleep 1; waited=$((waited+1)) # pitfall-ok: decimal-arith internal counter
 done
 
 wd=$root
@@ -161,12 +161,12 @@ snap() { { git -C "$wd" rev-parse HEAD 2>/dev/null; git -C "$wd" diff HEAD -- . 
 before=$(snap)
 
 build_cmd "$wd" "$(make_prompt "$(brieftext)")"
-export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task
+export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task # pitfall-ok: decimal-arith depth validated above
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote.
 gn=$((10#${GIT_CONFIG_COUNT:-0})) # 08 is decimal 8, not an octal error
 # NOTE: only remote.<name>.pushurl is rewritten, so `git push <url>` with an explicit URL bypasses this; it is a guardrail, not a sandbox.
-for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done
-[ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn # pitfall-ok: decimal-arith internal counter, always decimal
+for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done # pitfall-ok: decimal-arith gn forced through 10# above
+[ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn
 # herdr view: a tab tails the worker log and the pane is reported as an agent. Execution below is unchanged.
 view=0; vtab=""; vpane=""
 case "$DEVKIT_VIEW" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1 && view=1;; esac
@@ -191,14 +191,14 @@ set -m; ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
 wpid=$!; set +m
 [ -z "$slot" ] || echo "$wpid" > "$slot/wpid" 2>/dev/null # lets the slot stay counted if spawn is kill -9ed while the worker runs
 guard=
-if [ "$TMO" -gt 0 ] 2>/dev/null; then # pitfall-ok: decimal-arith TMO validated above
+if [ "$TMO" -gt 0 ] 2>/dev/null; then
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
   guard=$!
 fi
 wait "$wpid"; rc=$?; wpid=""
 if [ -n "$guard" ]; then pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; fi
 
-state=done; [ $rc -eq 0 ] || state=failed # pitfall-ok: decimal-arith rc from $?, always decimal
+state=done; [ $rc -eq 0 ] || state=failed
 [ -f "$T/run/$id.timedout" ] && state=timeout
 if [ ! -s "$hf" ]; then
   [ $state = done ] && state=failed

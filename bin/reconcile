@@ -9,7 +9,7 @@ cut_() { printf '%s' "$1" | cut -c1-"$2"; }
 workers() { # task dir -> "running killed done failed" counts, or per-worker lines with -v
   local d=$1 mode=${2:-count} r=0 k=0 f=0 s st pid id
   for s in "$d"/run/*.status; do [ -f "$s" ] || continue; id=$(basename "$s" .status); read -r st pid _ < "$s"
-    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then st=running; r=$((r+1)); else st=killed; k=$((k+1)); fi; else f=$((f+1)); fi
+    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then st=running; r=$((r+1)); else st=killed; k=$((k+1)); fi; else f=$((f+1)); fi # pitfall-ok: decimal-arith internal counters
     [ "$mode" = -v ] && printf '  %-14s %-9s %s\n' "$id" "$st" "$([ -s "$d/handoffs/$id.md" ] && echo "handoff: handoffs/$id.md" || echo "no handoff")"
   done
   [ "$mode" = count ] && echo "$r running, $k killed, $f finished"; }
@@ -24,7 +24,7 @@ case ${1:-} in
       if [ "$ph" = done ]; then [ "${1:-}" = --all ] || continue; state=done; else state=open; fi
       printf '%s  %s  %s: %s  [%s]\n' "$id" "$state" "$ph" "$(cut_ "$dec" 60)" "$(workers "$d")"
     done
-    n=$("$here/learn" count 2>/dev/null); [ "${n:-0}" -eq 0 ] || echo "learnings queued: $n (run dev-learn)";; # pitfall-ok: decimal-arith learn count prints a number
+    n=$("$here/learn" count 2>/dev/null); [ "${n:-0}" -eq 0 ] || echo "learnings queued: $n (run dev-learn)";;
   *)
     d=$TD/$1; [ -d "$d" ] || { echo "reconcile: unknown task '$1'" >&2; exit 2; }
     echo "task $1"
@@ -35,7 +35,7 @@ case ${1:-} in
       dir=$(awk '/^## /{sec=substr($0,4);next} sec=="Direction" && $0!=""{printf "%s%s",(n++?" / ":""),$0}' "$S"); [ -z "$dir" ] || echo "direction: $dir"
       oq=$(awk '/^## /{sec=substr($0,4);next} sec=="Open questions" && /^- /{c++; if(c<=3) print "  " $0}' "$S"); [ -z "$oq" ] || { echo "open questions:"; echo "$oq"; }
       lo=$(grep -c '^- \[ \] ' "$S"); lq=$(grep -c '^- \[~\] ' "$S"); [ $((lo+lq)) -eq 0 ] || echo "learnings: $lo open, $lq queued" # pitfall-ok: decimal-arith grep -c outputs, always decimal
-      v=$(DEVKIT_TASK=$1 "$here/state" check 2>&1 | grep -c '^FAIL'); [ "$v" -eq 0 ] || echo "state: $v issue(s), run bin/state check" # pitfall-ok: decimal-arith grep -c output, always decimal
+      v=$(DEVKIT_TASK=$1 "$here/state" check 2>&1 | grep -c '^FAIL'); [ "$v" -eq 0 ] || echo "state: $v issue(s), run bin/state check"
     fi
     echo "recent:"; rows "$d" | tail -5 | awk -F'\t' '{printf "  %s %s: %s\n", substr($1,3), $2, substr($3,1,70)}'
     echo "workers:"; workers "$d" -v

@@ -51,5 +51,5 @@ if [ -f "$M" ]; then
     END { if (n > 80) print "FAIL " f ": " n " lines (max 80)" }' "$M")
   [ -z "$out" ] || { printf '%s\n' "$out"; errs=1; }
 fi
-[ $errs -eq 0 ] && { echo "OK: state.md$( [ -f "$M" ] && echo ' and memory.md')"; exit 0; } # pitfall-ok: decimal-arith internal counter, always decimal
+[ $errs -eq 0 ] && { echo "OK: state.md$( [ -f "$M" ] && echo ' and memory.md')"; exit 0; }
 exit 1

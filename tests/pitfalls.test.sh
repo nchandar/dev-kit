@@ -29,9 +29,9 @@ r_retry() { # flags until/while-true loops whose line plus 6 followers name no b
   printf '%s' "$out"
 }
 retry_scan() { r_retry "$1"/*; } # files, not the dir: grep -n on a dir errors silently
-r_arith() { # [ -op ] or $(( )) on $vars without 10#: operands must be decimal-safe
-  { grep -rn -E '\$\(\([^)]*\$|-(eq|ne|lt|le|gt|ge)[[:space:]]+["]?\$|\$[A-Za-z_][A-Za-z0-9_]*["]?[[:space:]]+-(eq|ne|lt|le|gt|ge)|\$\{[^}]+\}["]?[[:space:]]+-(eq|ne|lt|le|gt|ge)|-(eq|ne|lt|le|gt|ge)[[:space:]]+["]?\$\{' "$@" 2>/dev/null
-    grep -rn -E '\$\(\(' "$@" 2>/dev/null | grep -E -e '-(eq|ne|lt|le|gt|ge)'; } | grep -v '10#' | grep -v 'pitfall-ok: decimal-arith' | sort -u || true
+r_arith() { # $(( )) or [[ -op ]] with any variable lacking 10#: 08 reads as octal there ([ -op ] is always decimal)
+  { grep -rn -E '\$\(\([^)]*[A-Za-z_$]' "$@" 2>/dev/null
+    grep -rn -E '\[\[.*-(eq|ne|lt|le|gt|ge)[[:space:]]' "$@" 2>/dev/null; } | grep -v '10#' | grep -v 'pitfall-ok: decimal-arith' | sort -u || true
 }
 r_sleep() { grep -rn -E '(^|[^"_A-Za-z0-9=])sleep [0-9]' "$@" 2>/dev/null | grep -v 'sleep-ok:' || true; }
 r_srcgrep() { grep -rn -E 'grep( +-[a-zA-Z]+)* +[^|;&]*(\$spawn|\$here/bin|\$spn|bin/spawn)' "$@" 2>/dev/null | grep -v 'pitfall-ok: src-grep' || true; }
@@ -76,8 +76,11 @@ ok "bounded-retry passes a counted loop" '[ -z "$(r_retry "$t/good.sh")" ]'
 
 bad_ar='[ "$depth" -lt "$MAXD" ]'; good_ar='[ "$((10#$depth))" -eq 0 ]'; good_ar2='[ "$tries" -ge 20 ] # pitfall-ok: decimal-arith internal counter, always decimal'
 printf '%s\n' "$bad_ar" > "$t/bad.sh"; printf '%s\n' "$good_ar" "$good_ar2" > "$t/good.sh"
-ok "decimal-arith flags a bare comparison on vars" '[ -n "$(r_arith "$t/bad.sh")" ]'
-ok "decimal-arith passes 10# and marked lines" '[ -z "$(r_arith "$t/good.sh")" ]'
+ok "decimal-arith passes [ -op ] (always decimal) and 10# and marked lines" '[ -z "$(r_arith "$t/bad.sh" "$t/good.sh")" ]'
+printf '%s\n' 'y=$((x+1))' > "$t/ar1.sh"; printf '%s\n' 'y=$(( $a + 1 ))' > "$t/ar2.sh"; printf '%s\n' '[[ $a -eq 8 ]]' > "$t/ar3.sh"; printf '%s\n' '[[ a -lt b ]]' > "$t/ar4.sh"
+printf '%s\n' 'y=$((10#$x+1))' 'y=$((3+4))' 'y=$((x+1)) # pitfall-ok: decimal-arith internal counter' > "$t/ar_good.sh"
+ok "decimal-arith flags bare and \$ vars in \$(( )) and [[ ]]" '[ -n "$(r_arith "$t/ar1.sh")" ] && [ -n "$(r_arith "$t/ar2.sh")" ] && [ -n "$(r_arith "$t/ar3.sh")" ] && [ -n "$(r_arith "$t/ar4.sh")" ]'
+ok "decimal-arith passes 10#, literals and marked \$(( ))" '[ -z "$(r_arith "$t/ar_good.sh")" ]'
 
 bad_sl='sleep 5' # sleep-ok: self-test fixture, never executed
 good_sl='sleep 5 # sleep-ok: bounded wait for the condition below'
