@@ -83,4 +83,24 @@ ok "a field over 400 chars warns on stderr"        'echo "$err" | grep -qi "trun
 err=$("$ledger" -t "$A" small "short" r 2>&1 >/dev/null)
 ok "a short field stays silent"                    '[ -z "$err" ]'
 
+# --- hardening fixes (scHard 3, 4, 10)
+ro=$(mktemp -d); chmod 555 "$ro"
+( DEVKIT_DIR="$ro/newdir" DEVKIT_DEPTH=0 "$ledger" start ro-test >/dev/null 2>"$t/ro.err" ) & rop=$!
+sleep 4
+if kill -0 $rop 2>/dev/null; then kill -9 $rop 2>/dev/null; wait $rop 2>/dev/null; rorc=124; else wait $rop; rorc=$?; fi
+ok "unwritable base: start fails fast instead of hanging" '[ $rorc -ne 124 ] && [ $rorc -ne 0 ] && grep -qi "cannot create" "$t/ro.err"'
+chmod 755 "$ro"; rm -rf "$ro"
+D000=$(DEVKIT_DEPTH=000 "$ledger" start triple-zero 2>/dev/null); rc=$?
+ok "depth 000 (zero-padded main agent) can start a task" '[[ $D000 == triple-zero-* ]] && [ $rc -eq 0 ]'
+DEVKIT_DEPTH=08 "$ledger" start octal-eight 2>"$t/depth08.err"; rc=$?
+ok "depth 08 is a worker (exit 3), not an arithmetic error" '[ $rc -eq 3 ] && grep -q "worker" "$t/depth08.err"'
+mkdir -p .devkit/x
+"$ledger" -t "../x" plan a b 2>/dev/null; rc=$?
+ok "traversal id rejected even when the target exists" '[ $rc -eq 2 ] && [ ! -e .devkit/x/ledger.tsv ]'
+rm -rf .devkit/x
+"$ledger" -t "a/b" plan a b 2>/dev/null; rc=$?
+ok "id containing slash rejected" '[ $rc -eq 2 ]'
+err=$("$ledger" -t "$A" 2>&1); rc=$?
+ok "usage notes reserved phases" '[ $rc -eq 2 ] && echo "$err" | grep -qi "reserved"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
