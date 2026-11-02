@@ -17,11 +17,11 @@ Tools and library: `~/.agents/dev-kit`. One ledger task per route (`bin/ledger s
 - Your instructions outrank this skill; this skill outranks defaults.
 
 ## Checklist
-- [ ] 1. Triage, size first: trivial (chat, a one-line edit or config value, running tests or a command) means type none; otherwise standard, or large (unknowns remain: dev-research first). Type: bug or failing test -> dev-debug; new behavior or refactor -> dev-feature; question or spike -> dev-research; review -> dev-review; delegate -> dev-spawn; queued learnings -> dev-learn.
+- [ ] 1. Triage, size first: trivial (chat, a one-line edit or config value, running a command yourself; delegation is never trivial) means type none; otherwise standard, or large (unknowns remain: dev-research first). Type: bug or failing test -> dev-debug; new behavior or refactor -> dev-feature; question or spike -> dev-research; review -> dev-review; delegate -> dev-spawn; queued learnings -> dev-learn.
 - [ ] 2. Announce one line: `route: <skill>, <size>`, then `bin/ledger mode <skill> "<size>"`. Trivial or none: announce `route: none`, do it directly, no ledger.
 - [ ] 3. Mixed request: split it, one task per route, order research, debug, feature; review last.
 - [ ] 4. Run the route: invoke its skill. The route owns its checklist and ledger; do not copy or restate it here.
-- [ ] 5. Chain. research -> dev-feature when the report has a Build handoff and you agree. feature -> dev-review. debug -> dev-review after the fix. debug -> dev-research after 3 failed hypotheses. Bulk work -> dev-spawn.
+- [ ] 5. Chain. research -> dev-feature when the report has a Build handoff and you agree. feature -> dev-review. debug -> dev-review. debug -> dev-research after 3 failed hypotheses. Bulk work -> dev-spawn.
 - [ ] 6. Close: result, evidence, open risks, next step. Then `bin/ledger done "<summary>"` per task; follow library/state.
 
 ## Rationalizations

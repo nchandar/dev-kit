@@ -11,6 +11,7 @@ ok "hard rules in the first 12 body lines"     '[ "$(body | head -12 | grep -c -
 ok "footer rule covers off-topic answers, exact lowercase"  '[ "$(body | head -12 | grep -c -i -E "off-topic.*exact lowercase footer")" -ge 1 ]'
 ok "triage covers type and size"               'body | grep -qi "size" && body | grep -q "trivial"'
 ok "triage decides size first"                  'body | grep -qi "size first" && body | grep -qi "means type none"'
+ok "delegation is never trivial"               'body | grep -qi "delegation is never trivial"'
 ok "announce line format"                      'body | grep -q "route: <skill>"'
 ok "no-route exit skips the ledger"            'body | grep -q "route: none" && body | grep -qi "no ledger"'
 ok "mixed order stated"                        'body | grep -q "research, debug, feature"'

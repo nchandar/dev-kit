@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for bin/state check (state.md and memory.md rules). Usage: tests/state.test.sh
 set -u
+unset DEVKIT_DEPTH  # a worker running this suite must still be able to start fixture tasks
 here=$(cd "$(dirname "$0")/.." && pwd); ledger="$here/bin/ledger"; state="$here/bin/state"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
