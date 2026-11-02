@@ -112,5 +112,6 @@ valid_guards() {
 }
 ok "pitfalls.md exists with 11 rows" '[ -f "$here/docs/pitfalls.md" ] && [ "$(grep -c "^| pg-" "$here/docs/pitfalls.md")" -ge 11 ]'
 ok "every pitfalls.md row names an existing guard" 'valid_guards'
+ok "dev-debug closes bugs with a regression test plus a pitfalls row" 'grep -q "docs/pitfalls.md" "$here/skills/dev-debug/SKILL.md"'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
