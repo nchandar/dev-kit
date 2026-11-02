@@ -16,13 +16,13 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 1. Clarify: follow library/grill, one question at a time with your recommendation, until the question and the decision it feeds are clear. Skip only if already stated, and say so.
-- [ ] 2. List sources: code paths, docs, logs, upstream repos, primary sources first.
-- [ ] 3. Bulk reading goes to scouts via dev-spawn; keep only their reports. Ground API claims with library/docs-grounding.
+- [ ] 2. List sources: code paths, docs, logs, upstream repos, primary sources first. Always include an external industry-standard/cutting-edge pass for the problem, from primary sources (official docs, upstream repos, recent releases), grounded with library/docs-grounding; bulk web reading goes to scouts.
+- [ ] 3. Bulk reading goes to scouts via dev-spawn; keep only their reports.
 - [ ] 4. Spike only if reading cannot answer: throwaway code in `<task>/spike/`, never in the project tree. Record what it proved.
 - [ ] 5. Write findings as claims, each with file:line, URL, or command output as evidence, plus a confidence level.
 - [ ] 6. Any claim that drives a decision: run library/doubt on it.
 - [ ] 7. Checkpoint: share the findings and your recommendation in a few lines and ask where I agree or disagree. A disagreement or new unknown means grill again, research more, and checkpoint again (up to 3 rounds, then carry the open points into the report). Skip only if I said no questions. Refresh `<task>/state.md` each round (library/state).
-- [ ] 8. Write `<task>/report.md`: question, answer in 3 lines, evidence, options with tradeoffs, recommendation, open questions, and a closing `## Build handoff` (scope, non-goals, acceptance check, first slice) that dev-feature can start from.
+- [ ] 8. Write `<task>/report.md`: question, answer in 3 lines, evidence, options with tradeoffs (label each option standard, cutting-edge, or local), recommendation, open questions, and a closing `## Build handoff` (scope, non-goals, acceptance check, first slice) that dev-feature can start from.
 - [ ] 9. A system, architecture or data flow involved? Also write `<task>/report.html` with library/explain-html: animated flow, a short why per step, small tables; open it. Skip with a reason if there is no system to show.
 - [ ] 10. Confirm `git status` shows no project code changes. Ledger the conclusion, and offer the next step: grill me on the open questions, then dev-feature from the report. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 

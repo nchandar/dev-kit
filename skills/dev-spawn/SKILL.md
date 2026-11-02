@@ -44,7 +44,7 @@ Do not spawn agents. Do not contact other workers. Write your report to the hand
 |---|---|
 | "Quicker to do it myself" | Fine when tiny. For big reads it fills your context. |
 | "Let workers coordinate" | They report up through files only; you coordinate. |
-| "A worker can spawn a helper" | Depth is 1; `bin/spawn` refuses inside a worker. |
+| "A worker can spawn a helper" | Only if its prompt allows it, up to DEVKIT_MAX_DEPTH. |
 | "Same tree for two writers" | They clobber each other. Use worktrees. |
 
 ## Red Flags

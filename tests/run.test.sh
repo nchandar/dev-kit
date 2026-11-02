@@ -38,4 +38,9 @@ env -u DEVKIT_TASK "$run" true >/dev/null 2>&1; rc=$?
 ok "no task: exit 2"                       '[ $rc -eq 2 ]'
 "$run" >/dev/null 2>&1; rc=$?
 ok "no command: exit 2"                    '[ $rc -eq 2 ]'
+for i in 1 2 3 4 5 6; do "$run" sh -c "echo par$i" >/dev/null & done; wait
+ok "parallel runs keep separate logs" '[ "$(cat $TD/runs/*.log | grep -c "^par")" -eq 6 ]'
+n0=$(ls $TD/runs | wc -l); "$run" true >/dev/null
+ok "a new run gets a new log" '[ "$(ls $TD/runs | wc -l)" -gt "$n0" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

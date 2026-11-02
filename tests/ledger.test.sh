@@ -13,6 +13,10 @@ ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".d
 before=$(ls .devkit/tasks | wc -l | tr -d ' ')
 DEVKIT_DEPTH=1 "$ledger" start sneaky 2>"$t/guard.err"; rc=$?
 ok "a worker (DEVKIT_DEPTH>0) cannot start a task"          '[ $rc -eq 3 ] && grep -q "worker" "$t/guard.err" && [ "$(ls .devkit/tasks | wc -l | tr -d " ")" = "$before" ]'
+DEVKIT_DEPTH=abc "$ledger" start sneaky-junk 2>"$t/guard-junk.err"; rc=$?
+ok "junk DEVKIT_DEPTH (abc) cannot start a task"   '[ $rc -eq 3 ] && grep -q "worker" "$t/guard-junk.err" && [ "$(ls .devkit/tasks | wc -l | tr -d " ")" = "$before" ]'
+B00=$(DEVKIT_DEPTH=00 "$ledger" start double-zero 2>/dev/null); rc=$?
+ok "depth 00 (zero-padded main agent) can start a task" '[[ $B00 == double-zero-* ]] && [ $rc -eq 0 ]'
 G=$("$ledger" start worker-log 2>/dev/null)
 DEVKIT_DEPTH=2 "$ledger" -t "$G" note "from a worker" "still allowed" >/dev/null 2>&1; rc=$?
 ok "a worker can still log to its own task"                  '[ $rc -eq 0 ] && grep -q "from a worker" ".devkit/tasks/$G/ledger.tsv"'
@@ -54,6 +58,7 @@ ok "8 parallel writers: 200 intact rows"    '[ "$(awk -F"\t" "\$2==\"work\"" .de
 ok "done writes phase=done"                 'tail -1 .devkit/tasks/$C/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
 M="$t/mirror.out"; DEVKIT_LEDGER_MIRROR="echo \"\$1\" >> $M" "$ledger" -t "$A" ph2 dec2 why2
+for i in $(seq 1 50); do grep -q ph2 "$M" 2>/dev/null && break; sleep 0.1; done # sleep-ok: bounded poll, mirror is detached
 ok "mirror runs with row text as \$1"       'grep -q "ph2" "$M"'
 DEVKIT_LEDGER_MIRROR='exit 9' "$ledger" -t "$A" a b c; rc=$?
 ok "failing mirror does not fail ledger"    '[ $rc -eq 0 ] && awk -F"\t" "\$2==\"a\" && \$3==\"b\"{f=1} END{exit !f}" .devkit/tasks/$A/ledger.tsv'
@@ -78,5 +83,34 @@ err=$("$ledger" -t "$A" big "$(head -c 500 /dev/zero | tr '\0' z)" r 2>&1 >/dev/
 ok "a field over 400 chars warns on stderr"        'echo "$err" | grep -qi "truncated"'
 err=$("$ledger" -t "$A" small "short" r 2>&1 >/dev/null)
 ok "a short field stays silent"                    '[ -z "$err" ]'
+
+# --- hardening fixes (scHard 3, 4, 10)
+ro=$(mktemp -d); chmod 555 "$ro"
+( DEVKIT_DIR="$ro/newdir" DEVKIT_DEPTH=0 "$ledger" start ro-test >/dev/null 2>"$t/ro.err" ) & rop=$!
+sleep 4 # sleep-ok: the 4s IS the fail-fast budget under test
+if kill -0 $rop 2>/dev/null; then kill -9 $rop 2>/dev/null; wait $rop 2>/dev/null; rorc=124; else wait $rop; rorc=$?; fi
+ok "unwritable base: start fails fast instead of hanging" '[ $rorc -ne 124 ] && [ $rorc -ne 0 ] && grep -qi "cannot create" "$t/ro.err"'
+chmod 755 "$ro"; rm -rf "$ro"
+D000=$(DEVKIT_DEPTH=000 "$ledger" start triple-zero 2>/dev/null); rc=$?
+ok "depth 000 (zero-padded main agent) can start a task" '[[ $D000 == triple-zero-* ]] && [ $rc -eq 0 ]'
+DEVKIT_DEPTH=08 "$ledger" start octal-eight 2>"$t/depth08.err"; rc=$?
+ok "depth 08 is a worker (exit 3), not an arithmetic error" '[ $rc -eq 3 ] && grep -q "worker" "$t/depth08.err"'
+mkdir -p .devkit/x
+"$ledger" -t "../x" plan a b 2>/dev/null; rc=$?
+ok "traversal id rejected even when the target exists" '[ $rc -eq 2 ] && [ ! -e .devkit/x/ledger.tsv ]'
+rm -rf .devkit/x
+"$ledger" -t "a/b" plan a b 2>/dev/null; rc=$?
+ok "id containing slash rejected" '[ $rc -eq 2 ]'
+err=$("$ledger" -t "$A" 2>&1); rc=$?
+ok "usage notes reserved phases" '[ $rc -eq 2 ] && echo "$err" | grep -qi "reserved"'
+
+W=$("$ledger" start wr-fail 2>/dev/null); chmod 444 ".devkit/tasks/$W/ledger.tsv"
+"$ledger" -t "$W" p d r >/dev/null 2>&1; rc=$?
+ok "failed append exits non-zero" '[ $rc -ne 0 ] || [ "$(id -u)" = 0 ]'
+chmod 644 ".devkit/tasks/$W/ledger.tsv"
+for bad in . ..; do "$ledger" -t "$bad" p d r >/dev/null 2>&1; rc=$?
+  ok "task id '$bad' rejected" '[ $rc -eq 2 ] && [ ! -e .devkit/ledger.tsv ]'; done
+S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/dev/null 2>&1; e=$(date +%s) # sleep-ok: simulates a hung mirror
+ok "a hung mirror does not hang the ledger call" '[ $((e-S)) -lt 5 ] && grep -q "mirror" ".devkit/tasks/$W/ledger.tsv"' # sleep-ok: simulates a hung mirror
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
 #   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id; refused inside a worker (exit 3)
-#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]
+#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phase names path, done, base, start are reserved)
 #   ledger [-t id] done [summary]                       mark the task finished
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
 # Task: -t id, else $DEVKIT_TASK. No task is an error: there is no shared fallback ledger.
@@ -25,16 +25,24 @@ HEADER='time\tphase\tdecision\treason\tevidence\tresult\n'
 append() { # file phase decision reason evidence result
   local x; for x in "$2" "$3" "$4" "${5:-}" "${6:-}"; do [ "${#x}" -le 400 ] || { echo "ledger: a field was truncated to 400 chars; keep long evidence in a file and point to it" >&2; break; }; done
   ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1"
-  [ -z "${DEVKIT_LEDGER_MIRROR:-}" ] || sh -c "$DEVKIT_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1" || die "cannot write $1"
+  # mirror runs detached and is killed after 10s so a hung supervisor never blocks a ledger call
+  [ -z "${DEVKIT_LEDGER_MIRROR:-}" ] || ( sh -c "$DEVKIT_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 &
+    mp=$!; ( sleep 10; kill "$mp" 2>/dev/null ) >/dev/null 2>&1 & wait "$mp" ) >/dev/null 2>&1 & # sleep-ok: mirror kill timer
+  return 0; }
 
 B=$(base)
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }
 if [ "${1:-}" = start ]; then
-  if [ "${DEVKIT_DEPTH:-0}" -gt 0 ] 2>/dev/null; then echo "ledger: a worker (DEVKIT_DEPTH=$DEVKIT_DEPTH) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3; fi
+  depth=${DEVKIT_DEPTH:-0}
+  case $depth in ''|*[!0-9]*) echo "ledger: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3;; esac
+  [ "$((10#$depth))" -eq 0 ] || { echo "ledger: a worker (DEVKIT_DEPTH=$depth) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3; }
   slug=$(printf '%s' "${2:-task}" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | cut -c1-30)
-  mkdir -p "$B/tasks"
-  until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do :; done
+  mkdir -p "$B/tasks" || die "cannot create tasks dir '$B/tasks'"
+  tries=0
+  until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do
+    tries=$((tries+1)); [ "$tries" -ge 20 ] && die "cannot create task dir in '$B/tasks' after 20 tries" # pitfall-ok: decimal-arith internal counter, always decimal
+  done
   append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "" open
   printf "$STATE_TEMPLATE" > "$B/tasks/$id/state.md"; exclude_local "$B"
   echo "$id"; exit 0
@@ -43,11 +51,12 @@ task=${DEVKIT_TASK:-}
 if [ "${1:-}" = path ] && [ "${2:-}" = -t ]; then task=${3:-}; set -- path
 elif [ "${1:-}" = -t ]; then task=${2:-}; shift 2; fi
 [ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set DEVKIT_TASK"
+case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')";; esac
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;
   done) append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done; exit 0;;
 esac
-[ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result]"
+[ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start are reserved)"
 append "$D/ledger.tsv" "$@"
 exit 0

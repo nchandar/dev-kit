@@ -8,7 +8,7 @@ cd "$root" || exit 2
 
 AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=8 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536 RECIPE_LINES=45 RECIPE_TOTAL=49152
 errs=0
-bad() { echo "FAIL $*"; errs=$((errs+1)); }
+bad() { echo "FAIL $*"; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }
 common() { # every skill and library file: ledger line, no escaping the tree, resolvable library refs
   grep -q 'bin/ledger' "$1" || bad "$1: must mention bin/ledger"
@@ -38,7 +38,7 @@ for f in "${skills[@]}"; do
   else
     nxt=$(printf '%s\n' "$fm" | awk '/^description:/{f=1;next} f{print;exit}')
     [[ $nxt == [[:space:]]* ]] && bad "$f: description spans multiple lines"
-    total=$((total + ${#d} + 1)); descs+="$f	$d"$'\n'
+    total=$((total + ${#d} + 1)); descs+="$f	$d"$'\n' # pitfall-ok: decimal-arith internal counter plus string length
   fi
   common "$f"
   [ "$nm" = dev-learn ] || grep -q 'library/state' "$f" || bad "$f: must reference library/state (closeout)"
@@ -48,7 +48,7 @@ done
 
 libs=(library/*.md); ln=${#libs[@]}; libbytes=0
 for f in "${libs[@]}"; do
-  lines=$(wc -l < "$f"); libbytes=$((libbytes + $(wc -c < "$f")))
+  lines=$(wc -l < "$f"); libbytes=$((libbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith wc output, always decimal
   [ "$lines" -le $LIB_LINES ] || bad "$f has $lines lines (max $LIB_LINES)"
   common "$f"
   for h in "When to Use" "Steps" "Red Flags" "Verification"; do section "$f" "$h"; done
@@ -57,7 +57,7 @@ done
 # library/deep: the on-demand long tail. Never auto-loaded, so it gets its own caps and lighter sections.
 deepf=(library/deep/*.md); dn=${#deepf[@]}; deepbytes=0
 for f in ${deepf[@]+"${deepf[@]}"}; do
-  lines=$(wc -l < "$f"); deepbytes=$((deepbytes + $(wc -c < "$f")))
+  lines=$(wc -l < "$f"); deepbytes=$((deepbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith wc output, always decimal
   [ "$lines" -le $DEEP_LINES ] || bad "$f has $lines lines (max $DEEP_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Red Flags"; do section "$f" "$h"; done
@@ -69,7 +69,7 @@ done
 recf=(library/recipes/*.md); rn=0; recbytes=0
 for f in ${recf[@]+"${recf[@]}"}; do
   name=$(basename "$f" .md); [ "$name" = index ] && continue
-  rn=$((rn + 1)); lines=$(wc -l < "$f"); recbytes=$((recbytes + $(wc -c < "$f")))
+  rn=$((rn + 1)); lines=$(wc -l < "$f"); recbytes=$((recbytes + $(wc -c < "$f"))) # pitfall-ok: decimal-arith internal counter plus wc output
   [ "$lines" -le $RECIPE_LINES ] || bad "$f has $lines lines (max $RECIPE_LINES)"
   grep -Eq '\.\./|references/' "$f" && bad "$f: references files outside the tree"
   for h in "When to Load" "Steps" "Gotchas" "Verified"; do section "$f" "$h"; done
@@ -92,13 +92,13 @@ if [ -n "$descs" ]; then
     END{ for(a=1;a<=NR;a++) for(b=a+1;b<=NR;b++){ inter=0; ua=0; ub=0
         for(key in set){ split(key,p,SUBSEP); if(p[1]==a){ua++; if((b SUBSEP p[2]) in set) inter++} else if(p[1]==b) ub++ }
         un=ua+ub-inter; if(un>0 && inter/un>=thr){ printf "FAIL trigger collision %.2f: %s <-> %s\n", inter/un, names[a], names[b]; c++ } }
-      exit c>0 }' || errs=$((errs+1))
+      exit c>0 }' || errs=$((errs+1)) # pitfall-ok: decimal-arith internal counter
 fi
 
 # public-safety: this repo is public, so no home paths, emails or secret-shaped strings anywhere in it
 LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude=.git --exclude-dir=.devkit --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
-[ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); }
+[ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 
 if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi
 exit 1

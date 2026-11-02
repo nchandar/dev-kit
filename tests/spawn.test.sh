@@ -12,6 +12,19 @@ t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && echo base > f.txt && git add -A && git -c user.name=t -c user.email=t@t commit -qm init
 export DEVKIT_DIR="$t/.devkit"
 export DEVKIT_VIEW=off DEVKIT_VIEW_CLOSE_DELAY=0
+# tripwire: a herdr stub first on PATH for the whole suite, so a machine with
+# real herdr installed still runs headless (spawn probes with `herdr tab list`).
+# It appends its argv to a log and exits 1. The herdr-stub subshells below
+# prepend their own stub, so they keep working (they shadow this one).
+tripwire="$t/tripwire"; mkdir -p "$tripwire"
+export HERDR_TRIPWIRE_LOG="$t/herdr-tripwire.log"; : > "$HERDR_TRIPWIRE_LOG"
+cat > "$tripwire/herdr" <<'S'
+#!/usr/bin/env bash
+echo "$*" >> "$HERDR_TRIPWIRE_LOG"
+exit 1
+S
+chmod +x "$tripwire/herdr"
+export PATH="$tripwire:$PATH"
 ledger="$here/bin/ledger"
 TA=$("$ledger" start task-a x); TB=$("$ledger" start task-b y)
 TD="$DEVKIT_DIR/tasks/$TA"; export DEVKIT_TASK=$TA
@@ -25,6 +38,10 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x${DEVKIT_DEPTH:-} fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
+[ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
+[ -n "${FAKE_GIT:-}" ] && { git config --get remote.origin.pushurl > "$DEVKIT_DIR/pushurl.out" 2>&1; echo $? > "$DEVKIT_DIR/git.rc"; }
+[ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & } # sleep-ok: grandchild outlives the fake; the harness kills it
+[ -n "${FAKE_DEEP:-}" ] && { ( ( sleep 60 & echo $! > "$DEVKIT_DIR/deep.${FAKE_ID}"; wait ) & wait ) & } # sleep-ok: two-level grandchild outlives the fake; the test checks it dies
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
@@ -84,12 +101,14 @@ firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
 : > $DEVKIT_DIR/events
-for i in $(seq 1 11); do FAKE_ID=m$i FAKE_SLEEP=3 "$spawn" m$i fake "$t/brief.md" & done; wait
+for i in $(seq 1 10); do FAKE_ID=m$i FAKE_SLEEP=8 "$spawn" m$i fake "$t/brief.md" & done
+n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done # sleep-ok: bounded poll (40 tries) for ten slots to be claimed
+FAKE_ID=m11 FAKE_SLEEP=1 "$spawn" m11 fake "$t/brief.md" & wait
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
-ok "default cap is 10: ten start together, the eleventh waits" '[ "$before" -eq 10 ]'
+ok "default cap is 10: ten start together, the eleventh waits" '[ "$n" -lt 40 ] && [ "$before" -eq 10 ]'
 
-FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1
+FAKE_ID=hold FAKE_SLEEP=4 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & sleep 1 # sleep-ok: let the holder claim its slot before the nested attempt
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" nest fake "$t/brief.md" 2>"$t/nest.err"; rc=$?
 ok "a nested spawn that finds no free slot fails fast (exit 4)" '[ $rc -eq 4 ] && grep -q "no free" "$t/nest.err"'
 wait
@@ -129,6 +148,11 @@ ok "--prompt runs and saves the brief" '[ -s $TD/handoffs/pp.md ] && grep -q "in
 
 # --- watchdog
 s0=$(date +%s); FAKE_ID=to FAKE_SLEEP=30 DEVKIT_TIMEOUT=2 "$spawn" to fake "$t/brief.md"; rc=$?; el=$(( $(date +%s)-s0 ))
+FAKE_ID=td FAKE_DEEP=1 FAKE_SLEEP=30 DEVKIT_TIMEOUT=2 "$spawn" td fake "$t/brief.md" 2>/dev/null; sleep 1 # sleep-ok: let the group kill land
+ok "timeout kills a grandchild two levels down" '[ -s $DEVKIT_DIR/deep.td ] && ! kill -0 "$(cat $DEVKIT_DIR/deep.td)" 2>/dev/null'
+( FAKE_ID=ti FAKE_DEEP=1 FAKE_SLEEP=30 exec "$spawn" ti fake "$t/brief.md" ) 2>/dev/null &
+sp=$!; n=0; while [ ! -s $DEVKIT_DIR/deep.ti ] && [ $n -lt 50 ]; do sleep 0.2; n=$((n+1)); done; kill -TERM $sp; wait $sp 2>/dev/null; sleep 2 # sleep-ok: bounded poll for the grandchild; let the group kill land
+ok "interrupt kills a grandchild two levels down" '[ -s $DEVKIT_DIR/deep.ti ] && ! kill -0 "$(cat $DEVKIT_DIR/deep.ti)" 2>/dev/null'
 ok "DEVKIT_TIMEOUT kills a hung worker quickly" '[ $rc -ne 0 ] && [ $el -lt 15 ]'
 ok "timeout is its own status + noted in handoff" 'grep -q "^timeout" $TD/run/to.status && grep -qi "timed out" $TD/handoffs/to.md'
 ok "slot released after timeout"    '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
@@ -202,12 +226,25 @@ ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X
 # an interrupted spawn must not leave its tab, an orphan worker, a held slot or a stale "running" status
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH"; DEVKIT_VIEW=herdr FAKE_ID=k1 FAKE_SLEEP=20 exec "$spawn" k1 fake "$t/brief.md" ) 2>/dev/null &
-sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1
+sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1 # sleep-ok: let the worker claim tab and slot before TERM; let cleanup settle
 ok "interrupted spawn closes its herdr tab"          'grep -q "tab close X:t9" "$HERDR_LOG"'
 ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null'
 ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
 ok "interrupted spawn frees its slot"                '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
-kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; pkill -f "sleep 20" 2>/dev/null; true
+kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; true
+
+# a hard-killed spawn runs no EXIT trap, so the pane itself must close the tab once the spawn pid is gone
+: > "$HERDR_LOG"
+DEVKIT_VIEW=herdr FAKE_ID=v9 vrun "$spawn" v9 fake "$t/brief.md"
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
+ok "view: pane command watches the spawn pid" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
+: > "$HERDR_LOG"
+if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi # sleep-ok: give the pane watchdog time to see the dead spawn pid before killing it
+ok "view: watchdog closes the tab once the spawn pid is gone" 'grep -q "tab close X:t9" "$HERDR_LOG"'
+: > "$HERDR_LOG"
+DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v10 vrun "$spawn" v10 fake "$t/brief.md"
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
+ok "view: watchdog keeps the tab when DEVKIT_VIEW_KEEP=1" '! echo "$pcmd" | grep -q "tab close"'
 
 DEVKIT_VIEW_NOTIFY=all DEVKIT_VIEW=herdr FAKE_ID=v7 vrun "$spawn" v7 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_NOTIFY=all also notifies on success" 'grep "notification show" "$HERDR_LOG" | grep -q -- "--sound done"'
@@ -220,5 +257,142 @@ ok "view: herdr server down falls back to headless" '! grep -q "tab create" "$HE
 
 ( export PATH="/usr/bin:/bin"; export DEVKIT_VIEW=herdr; FAKE_ID=v6 "$spawn" v6 fake "$t/brief.md" )
 ok "view: no herdr installed falls back to headless" 'grep -q "^done" $TD/run/v6.status'
+
+# --- hardening 1: numeric knobs fail closed with exit 2 naming the knob
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=0 "$spawn" e1 fake "$t/brief.md" 2>"$t/e1.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=0 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e1.err"'
+DEVKIT_DRYRUN=1 DEVKIT_MAX_WORKERS=many "$spawn" e2 fake "$t/brief.md" 2>"$t/e2.err"; rc=$?
+ok "DEVKIT_MAX_WORKERS=many exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e2.err"'
+DEVKIT_DRYRUN=1 DEVKIT_CHILD_WAIT=1.5 "$spawn" e3 fake "$t/brief.md" 2>"$t/e3.err"; rc=$?
+ok "DEVKIT_CHILD_WAIT=1.5 exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_CHILD_WAIT" "$t/e3.err"'
+DEVKIT_DRYRUN=1 DEVKIT_TIMEOUT=soon "$spawn" e4 fake "$t/brief.md" 2>"$t/e4.err"; rc=$?
+ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVKIT_TIMEOUT" "$t/e4.err"'
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
+ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
+
+# --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
+
+# --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+FAKE_ID=lk0 DEVKIT_MAX_WORKERS=1 "$spawn" lk0 fake "$t/brief.md"
+ok "a stale slot is reclaimed under its lock, lock released" '[ -s $TD/handoffs/lk0.md ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.*.lock 2>/dev/null)" ]'
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk1 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale
+mkdir -p "$DEVKIT_DIR/run/slot.1"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKERS=1 "$spawn" lk2 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 6: a lock older than 5s is removed (behavior test below covers GNU/BSD stat)
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+touch -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk3.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- hardening 7: pid reuse is guarded by a start-time record
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; echo "bogus" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk4 DEVKIT_MAX_WORKERS=1 "$spawn" lk4 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a slot with a live pid but mismatched start is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk4.md ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk5 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# a stalled claimer (slow ps in its live scan) must keep its slot: the pid is written before the scan
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.2"; echo "$live" > "$DEVKIT_DIR/run/slot.2/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.2/start"
+slowps="$t/slowps"; mkdir -p "$slowps"; real_ps=$(command -v ps)
+printf '#!/bin/sh\ncase "$*" in *"-p %s"*) sleep 2;; esac\nexec %s "$@"\n' "$live" "$real_ps" > "$slowps/ps"; chmod +x "$slowps/ps" # sleep-ok: the stall under test
+( export PATH="$slowps:$PATH"; FAKE_ID=st1 FAKE_SLEEP=8 DEVKIT_MAX_WORKERS=2 "$spawn" st1 fake "$t/brief.md" 2>/dev/null ) & sa=$!
+n=0; while [ ! -d "$DEVKIT_DIR/run/slot.1" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n+1)); done # sleep-ok: bounded poll until A is mid-claim
+( export PATH="$slowps:$PATH"; DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 FAKE_ID=st2 DEVKIT_MAX_WORKERS=2 "$spawn" st2 fake "$t/brief.md" 2>"$t/st2.err" ); rc=$?
+wait $sa; kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a stalled claimer keeps its slot (a second spawn finds none free)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.2" "$DEVKIT_DIR/run/slot.2.lock"
+
+# kill -9 of spawn frees no slot while its worker still runs
+sleep 30 & live=$! # sleep-ok: live worker fixture, killed right after
+sleep 0 & dead=$!; wait $dead 2>/dev/null # sleep-ok: exits at once, gives a dead pid
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$dead" > "$DEVKIT_DIR/run/slot.1/pid"; echo "$live" > "$DEVKIT_DIR/run/slot.1/wpid"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=2 DEVKIT_MAX_WORKERS=1 "$spawn" wk1 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a slot whose spawner died but whose worker lives stays counted" '[ $rc -eq 4 ]'
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=wk2 DEVKIT_MAX_WORKERS=1 "$spawn" wk2 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "once the worker is gone too, the slot is reclaimed" '[ $rc -eq 0 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# --- ship fixes: empty start, TZ-normalized lstart, 08 depth, worktree reuse, cap counts slots above CAP
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; : > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk6 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "an empty start file is treated as no record (live slot kept)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 TZ="Pacific/Kiritimati" "$spawn" lk7 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "lstart compared in UTC: a foreign-TZ spawner still matches the live pid" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+FAKE_ID=oct DEVKIT_DEPTH=08 DEVKIT_MAX_DEPTH=10 "$spawn" oct fake "$t/brief.md" 2>"$t/oct.err"; rc=$?
+ok "DEVKIT_DEPTH=08 is decimal 8, child sees depth 9" '[ $rc -eq 0 ] && grep -q "depth=9" $TD/handoffs/oct.md'
+
+FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md"
+FAKE_ID=w2 "$spawn" --worktree w2 fake "$t/brief.md" 2>"$t/w2.err"; rc=$?
+ok "re-running an id with --worktree reuses the worktree" '[ $rc -eq 0 ] && [ -s $TD/handoffs/w2.md ]'
+
+sleep 30 & live=$! # sleep-ok: live-pid fixture, the 30s guard never elapses (killed right after)
+mkdir -p "$DEVKIT_DIR/run/slot.3"; echo "$live" > "$DEVKIT_DIR/run/slot.3/pid"; LC_ALL=C TZ=UTC ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.3/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk8 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "slots above a lowered CAP still count (cap=1, slot.3 live)" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.3" "$DEVKIT_DIR/run/slot.3.lock"
+
+fresh=$(mktemp -d); (cd "$t" && DEVKIT_DIR="$fresh/.devkit" env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null); rc=$?
+ok "no task creates no run dir" '[ $rc -eq 2 ] && [ ! -e "$fresh/.devkit/run" ]'
+rm -rf "$fresh"
+
+# --- audit fixes: arg validation, GIT_CONFIG_COUNT, duplicate ids
+"$spawn" --shape foo sh1 fake "$t/brief.md" 2>/dev/null; rc=$?
+"$spawn" --shape "" sh2 fake "$t/brief.md" 2>"$t/sh2.err"; rc2=$?
+ok "--shape outside ship|scout exits 2 (also when empty, no shell error)" '[ $rc -eq 2 ] && [ $rc2 -eq 2 ] && ! grep -q "unary" "$t/sh2.err"'
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+echo "running $live 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md" 2>"$t/dup.err"; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a second spawn of an id that is running with a live pid is refused (exit 2)" '[ $rc -eq 2 ] && grep -q "already running" "$t/dup.err"'
+echo "running 99999999 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md"; rc=$?
+ok "a stale running status (dead pid) does not block the id" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/dup.status'
+rm -f "$DEVKIT_DIR/git.rc" "$DEVKIT_DIR/pushurl.out"
+( export GIT_CONFIG_COUNT=08; for i in 0 1 2 3 4 5 6 7; do export "GIT_CONFIG_KEY_$i=test.k$i" "GIT_CONFIG_VALUE_$i=v"; done
+  FAKE_ID=gc FAKE_GIT=1 "$spawn" gc fake "$t/brief.md" 2>/dev/null )
+ok "GIT_CONFIG_COUNT=08 is read as decimal 8: git works in the worker and the push guard holds" '[ "$(cat $DEVKIT_DIR/git.rc 2>/dev/null)" = 0 ] && grep -q "push-blocked" $DEVKIT_DIR/pushurl.out'
+GIT_CONFIG_COUNT=abc "$spawn" gc2 fake "$t/brief.md" 2>"$t/gc2.err"; rc=$?
+ok "a non-numeric GIT_CONFIG_COUNT fails closed (exit 2)" '[ $rc -eq 2 ] && grep -q "GIT_CONFIG_COUNT" "$t/gc2.err"'
+
+# --- audit fixes: scout violations (commits, repeat edits), process-group kill, slot tracking
+git checkout -q f.txt
+FAKE_ID=sc FAKE_COMMIT=1 "$spawn" --shape scout sc fake "$t/brief.md"
+ok "a scout that commits is flagged" 'grep -q "^violation" $TD/run/sc.status'
+git reset -q --hard HEAD~1
+echo pre >> f.txt
+FAKE_ID=sr FAKE_EDIT=1 "$spawn" --shape scout sr fake "$t/brief.md"
+ok "a scout editing an already-dirty file is flagged" 'grep -q "^violation" $TD/run/sr.status'
+git checkout -q f.txt
+
+ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
