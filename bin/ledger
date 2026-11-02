@@ -26,7 +26,10 @@ append() { # file phase decision reason evidence result
   local x; for x in "$2" "$3" "$4" "${5:-}" "${6:-}"; do [ "${#x}" -le 400 ] || { echo "ledger: a field was truncated to 400 chars; keep long evidence in a file and point to it" >&2; break; }; done # pitfall-ok: decimal-arith string length, always decimal
   ( set -C; printf "$HEADER" > "$1" ) 2>/dev/null || true
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(clean "$2")" "$(clean "$3")" "$(clean "$4")" "$(clean "${5:-}")" "$(clean "${6:-}")" >> "$1" || die "cannot write $1"
-  [ -z "${DEVKIT_LEDGER_MIRROR:-}" ] || sh -c "$DEVKIT_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 || true; }
+  # mirror runs detached and is killed after 10s so a hung supervisor never blocks a ledger call
+  [ -z "${DEVKIT_LEDGER_MIRROR:-}" ] || ( sh -c "$DEVKIT_LEDGER_MIRROR" _ "$(clean "$2"): $(clean "$3") ${6:+[$(clean "$6")]}" >/dev/null 2>&1 &
+    mp=$!; ( sleep 10; kill "$mp" 2>/dev/null ) >/dev/null 2>&1 & wait "$mp" ) >/dev/null 2>&1 & # sleep-ok: mirror kill timer
+  return 0; }
 
 B=$(base)
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }

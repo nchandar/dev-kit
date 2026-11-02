@@ -58,6 +58,7 @@ ok "8 parallel writers: 200 intact rows"    '[ "$(awk -F"\t" "\$2==\"work\"" .de
 ok "done writes phase=done"                 'tail -1 .devkit/tasks/$C/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
 M="$t/mirror.out"; DEVKIT_LEDGER_MIRROR="echo \"\$1\" >> $M" "$ledger" -t "$A" ph2 dec2 why2
+for i in $(seq 1 50); do grep -q ph2 "$M" 2>/dev/null && break; sleep 0.1; done # sleep-ok: bounded poll, mirror is detached
 ok "mirror runs with row text as \$1"       'grep -q "ph2" "$M"'
 DEVKIT_LEDGER_MIRROR='exit 9' "$ledger" -t "$A" a b c; rc=$?
 ok "failing mirror does not fail ledger"    '[ $rc -eq 0 ] && awk -F"\t" "\$2==\"a\" && \$3==\"b\"{f=1} END{exit !f}" .devkit/tasks/$A/ledger.tsv'
@@ -109,5 +110,7 @@ ok "failed append exits non-zero" '[ $rc -ne 0 ] || [ "$(id -u)" = 0 ]'
 chmod 644 ".devkit/tasks/$W/ledger.tsv"
 for bad in . ..; do "$ledger" -t "$bad" p d r >/dev/null 2>&1; rc=$?
   ok "task id '$bad' rejected" '[ $rc -eq 2 ] && [ ! -e .devkit/ledger.tsv ]'; done
+S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/dev/null 2>&1; e=$(date +%s)
+ok "a hung mirror does not hang the ledger call" '[ $((e-S)) -lt 5 ] && grep -q "mirror" ".devkit/tasks/$W/ledger.tsv"' # sleep-ok: simulates a hung mirror
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
