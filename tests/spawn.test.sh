@@ -21,6 +21,7 @@ cat > "$t/fake" <<'F'
 # $1=prompt $2=handoff path. Behaviour via FAKE_* env.
 if [ /dev/stdin -ef /dev/null ]; then stdin_state=null; else stdin_state=open; fi
 echo "$(date +%s) start $FAKE_ID" >> "$DEVKIT_DIR/events"
+echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x${DEVKIT_DEPTH:-} fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
@@ -198,6 +199,16 @@ DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v8 FAKE_NOHANDOFF=1 vrun "$spawn" v
 ok "view: DEVKIT_VIEW_KEEP=1 keeps a failed tab and remembers it" '! grep -q "tab close" "$HERDR_LOG" && [ -s $TD/run/v8.tab ]'
 : > "$HERDR_LOG"; ( export PATH="$hs:$PATH"; "$spawn" --close-views )
 ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X:t9" "$HERDR_LOG" && [ ! -e $TD/run/v8.tab ]'
+# an interrupted spawn must not leave its tab, an orphan worker, a held slot or a stale "running" status
+: > "$HERDR_LOG"
+( export PATH="$hs:$PATH"; DEVKIT_VIEW=herdr FAKE_ID=k1 FAKE_SLEEP=20 exec "$spawn" k1 fake "$t/brief.md" ) 2>/dev/null &
+sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1
+ok "interrupted spawn closes its herdr tab"          'grep -q "tab close X:t9" "$HERDR_LOG"'
+ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null'
+ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
+ok "interrupted spawn frees its slot"                '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
+kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; pkill -f "sleep 20" 2>/dev/null; true
+
 DEVKIT_VIEW_NOTIFY=all DEVKIT_VIEW=herdr FAKE_ID=v7 vrun "$spawn" v7 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_NOTIFY=all also notifies on success" 'grep "notification show" "$HERDR_LOG" | grep -q -- "--sound done"'
 

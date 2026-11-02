@@ -85,7 +85,23 @@ claim() { local n d p
     if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
     p=$(cat "$d/pid" 2>/dev/null); if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
   done; return 1; }
-trap '[ -n "$slot" ] && rm -rf "$slot"' EXIT
+# any exit, signals included, must not leave an orphan worker, an open tab or a held slot
+wpid=""; guard=""; view=0; vtab=""; vdone=0
+cleanup() { local rc=$?
+  trap - EXIT
+  if [ -n "$wpid" ] && kill -0 "$wpid" 2>/dev/null; then # interrupted while the worker ran
+    [ -z "$guard" ] || { pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; }
+    pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
+    pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null
+    echo "killed $rc $(date +%s)" > "$st"
+    "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+  fi
+  if [ "$view" = 1 ] && [ "$vdone" != 1 ]; then # the tab is closed or recorded on every path
+    if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else herdr tab close "$vtab" >/dev/null 2>&1; fi
+  fi
+  [ -z "$slot" ] || rm -rf "$slot"
+  exit $rc; }
+trap cleanup EXIT; trap 'exit 143' TERM; trap 'exit 130' INT; trap 'exit 129' HUP
 waited=0
 until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
   if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi
@@ -154,6 +170,7 @@ if [ $view = 1 ]; then
   # a headless worker's tab is not interactive; the error goes to the caller and the handoff, so close it on failure too
   if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"
   else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
+  vdone=1
 fi
 "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]
