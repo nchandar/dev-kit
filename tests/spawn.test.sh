@@ -235,5 +235,7 @@ ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2
 
 # --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
 ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
+# --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid
+ok "wpid is cleared right after wait" 'grep -q -F "wait \"\$wpid\"; rc=\$?; wpid=\"\"" "$spawn"'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

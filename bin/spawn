@@ -149,7 +149,7 @@ if [ "$TMO" -gt 0 ] 2>/dev/null; then
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
   guard=$!
 fi
-wait "$wpid"; rc=$?
+wait "$wpid"; rc=$?; wpid=""
 if [ -n "$guard" ]; then pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; fi
 
 state=done; [ $rc -eq 0 ] || state=failed
