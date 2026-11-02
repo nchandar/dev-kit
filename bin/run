@@ -9,12 +9,12 @@ here=$(dirname "$0"); tail_n=15
 task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "run: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 D=$("$here/ledger" -t "$task" path) || exit 2
 mkdir -p "$D/runs"
-n=$(printf '%03d' $(( $(ls "$D/runs" | wc -l) + 1 ))); log=$D/runs/$n.log
+n=$(printf '%03d' $(( $(ls "$D/runs" | wc -l) + 1 ))); log=$D/runs/$n.log # pitfall-ok: decimal-arith wc output, always decimal
 s=$(date +%s); "$@" > "$log" 2>&1 < /dev/null; rc=$?; e=$(date +%s)
 printf 'exit=%s secs=%s log=%s\n' "$rc" "$((e-s))" "$log"
-if [ $rc -ne 0 ]; then
+if [ $rc -ne 0 ]; then # pitfall-ok: decimal-arith rc from $?, always decimal
   grep -n -i -E 'fail|error|panic|assert|exception|traceback|✗|not ok' "$log" | cut -c1-200 | head -20
   echo "--- last $tail_n lines:"; tail -n "$tail_n" "$log" | cut -c1-200
 fi
-"$here/ledger" -t "$task" run "$(printf '%s ' "$@" | cut -c1-80)" "exit $rc in $((e-s))s" "$log" "$([ $rc -eq 0 ] && echo pass || echo fail)" 2>/dev/null || true
+"$here/ledger" -t "$task" run "$(printf '%s ' "$@" | cut -c1-80)" "exit $rc in $((e-s))s" "$log" "$([ $rc -eq 0 ] && echo pass || echo fail)" 2>/dev/null || true # pitfall-ok: decimal-arith rc from $?, always decimal
 exit $rc

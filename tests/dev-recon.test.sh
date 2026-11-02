@@ -30,7 +30,7 @@ ok "research names the industry-standard pass" 'grep -q "^- \[ \] 2\..*industry-
 ok "research names the cutting-edge pass" 'grep -q "^- \[ \] 2\..*cutting-edge" "$rsch"'
 ok "research grounds the external pass in primary sources and docs-grounding" 'grep -q "^- \[ \] 2\..*primary sources" "$rsch" && grep -q "library/docs-grounding" "$rsch"'
 ok "research labels options standard, cutting-edge or local" 'grep -q "^- \[ \] 8\..*standard.*cutting-edge.*local" "$rsch"'
-ok "spawn drops the stale no-nesting claim" '! grep -q "Depth is 1" "$spn" && ! grep -q "refuses inside a worker" "$spn"'
-ok "spawn says workers spawn up to DEVKIT_MAX_DEPTH" 'grep -q "DEVKIT_MAX_DEPTH" "$spn"'
+ok "spawn drops the stale no-nesting claim" '! grep -q "Depth is 1" "$spn" && ! grep -q "refuses inside a worker" "$spn"' # pitfall-ok: src-grep negative doc-sync assertion
+ok "spawn says workers spawn up to DEVKIT_MAX_DEPTH" 'grep -q "DEVKIT_MAX_DEPTH" "$spn"' # pitfall-ok: src-grep doc-sync assertion, behavior covered by spawn tests
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
