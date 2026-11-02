@@ -238,4 +238,13 @@ ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
 # --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid
 ok "wpid is cleared right after wait" 'grep -q -F "wait \"\$wpid\"; rc=\$?; wpid=\"\"" "$spawn"'
 
+# --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+FAKE_ID=lk0 DEVKIT_MAX_WORKERS=1 "$spawn" lk0 fake "$t/brief.md"
+ok "a stale slot is reclaimed under its lock, lock released" '[ -s $TD/handoffs/lk0.md ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.*.lock 2>/dev/null)" ]'
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk1 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
