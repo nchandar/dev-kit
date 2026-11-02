@@ -322,7 +322,7 @@ rm -rf "$DEVKIT_DIR/run/slot.2" "$DEVKIT_DIR/run/slot.2.lock"
 
 # kill -9 of spawn frees no slot while its worker still runs
 sleep 30 & live=$! # sleep-ok: live worker fixture, killed right after
-sleep 0 & dead=$!; wait $dead 2>/dev/null
+sleep 0 & dead=$!; wait $dead 2>/dev/null # sleep-ok: exits at once, gives a dead pid
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$dead" > "$DEVKIT_DIR/run/slot.1/pid"; echo "$live" > "$DEVKIT_DIR/run/slot.1/wpid"
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=2 DEVKIT_MAX_WORKERS=1 "$spawn" wk1 fake "$t/brief.md" 2>/dev/null; rc=$?
 ok "a slot whose spawner died but whose worker lives stays counted" '[ $rc -eq 4 ]'
