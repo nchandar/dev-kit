@@ -85,9 +85,10 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead pid) are reclaimed
 slot=
 claim() { local n d p
-  for n in $(seq 1 "$CAP"); do d=$H/run/slot.$n
+  n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n
     if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
     p=$(cat "$d/pid" 2>/dev/null); if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
+    n=$((n+1))
   done; return 1; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; view=0; vtab=""; vdone=0

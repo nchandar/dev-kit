@@ -233,4 +233,7 @@ ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVK
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
 ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
 
+# --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
+ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
