@@ -86,9 +86,9 @@ sequenceDiagram
   S-->>M: exit 0 only if state is done
 ```
 
-- States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed files outside `.devkit/`).
+- States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed HEAD, tracked content or untracked files outside `.devkit/`; checked by content hash, so commits and repeat edits count).
 - Interrupt (INT, TERM, HUP): spawn stops the worker and its children, closes the herdr tab (or records it under `DEVKIT_VIEW_KEEP`), frees the slot, and writes `killed` to the status and the ledger.
-- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives.
+- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives. A `kill -9` of spawn runs no cleanup: the slot stays counted while the worker lives (the slot records the worker pid), and the worker is stopped by the timeout guard.
 
 Defaults live in `bin/defaults` (an env var of the same name overrides it); `tests/defaults.test.sh` keeps this table equal to them.
 
