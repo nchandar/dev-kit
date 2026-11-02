@@ -84,13 +84,18 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead pid) are reclaimed
 slot=
+slot_live() { # $1=slot dir $2=pid: a slot is live only if the pid answers and its start time still matches
+  kill -0 "$2" 2>/dev/null || return 1
+  [ -f "$1/start" ] || return 0
+  [ "$(ps -o lstart= -p "$2" 2>/dev/null)" = "$(cat "$1/start" 2>/dev/null)" ]
+}
 claim() { local n d p lock m
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
-    if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
+    if mkdir "$d" 2>/dev/null; then ps -o lstart= -p $$ > "$d/start" 2>/dev/null; echo $$ > "$d/pid"; slot=$d; return 0; fi
     if mkdir "$lock" 2>/dev/null; then
       p=$(cat "$d/pid" 2>/dev/null)
       if [ -z "$p" ]; then sleep 1; p=$(cat "$d/pid" 2>/dev/null); fi
-      if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
+      if [ -z "$p" ] || ! slot_live "$d" "$p"; then rm -rf "$d"; fi
       rm -rf "$lock"
     else
       m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)

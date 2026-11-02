@@ -261,4 +261,18 @@ DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk
 ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk3.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
+# --- hardening 7: pid reuse is guarded by a start-time record
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; echo "bogus" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk4 DEVKIT_MAX_WORKERS=1 "$spawn" lk4 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null
+ok "a slot with a live pid but mismatched start is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk4.md ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+sleep 30 & live=$!
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$live" > "$DEVKIT_DIR/run/slot.1/pid"; ps -o lstart= -p "$live" > "$DEVKIT_DIR/run/slot.1/start"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk5 fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null
+ok "a slot with a live pid and matching start is kept" '[ $rc -eq 4 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
