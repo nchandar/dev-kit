@@ -73,7 +73,7 @@ sequenceDiagram
   participant W as Worker CLI
   participant L as Ledger
   M->>S: spawn id cli brief (background)
-  S->>S: claim slot (atomic mkdir, max 2)
+  S->>S: claim slot (atomic mkdir, max 10)
   S->>S: optional git worktree devkit/task-id
   S->>S: push guard (dead pushurl), build CLI command, status=running
   S->>W: launch headless, stdin closed, log to handoffs/id.log
@@ -93,12 +93,14 @@ sequenceDiagram
 | `--shape` | `ship` | `scout` adds "change NO code" to the prompt and checks the tree after |
 | `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `devkit/<task>-<id>` |
 | `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
-| `DEVKIT_MAX_WORKERS` | 2 | Slot count; extras wait, stale slots (dead pid) are reclaimed |
+| `DEVKIT_MAX_WORKERS` | 10 | Slot count, repo-wide; extras wait, stale slots (dead pid) are reclaimed |
+| `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
+| `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
 | `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
 | `DEVKIT_SAFE` | unset | Restricted permissions instead of skipping them |
 | `DEVKIT_DRYRUN` | unset | Print the CLI command and exit |
 | `DEVKIT_VIEW` | herdr | `off` disables the tab; `DEVKIT_VIEW_KEEP=1` keeps it; `DEVKIT_VIEW_NOTIFY=all` notifies on success |
-| `DEVKIT_DEPTH` | set to 1 in workers | Makes nested `spawn` refuse |
+| `DEVKIT_DEPTH` | parent depth + 1 in workers (main agent is 0) | `spawn` refuses at `DEVKIT_MAX_DEPTH` (exit 3) |
 
 | CLI | Command built | Restricted mode (`DEVKIT_SAFE`) |
 |---|---|---|
@@ -250,7 +252,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 3. Before stopping: a `next` row. When finished: `bin/ledger done`. A new session resumes via `bin/reconcile <id>`.
 
 **Delegate**
-1. The main agent writes a brief and runs `bin/spawn` (own background command per worker, max 2).
+1. The main agent writes a brief and runs `bin/spawn` (own background command per worker, up to 10).
 2. The worker runs headless in its own worktree with pushes blocked.
 3. It writes a handoff; spawn records the status and a ledger row.
 4. The main agent reads only the handoff, verifies a claim, and merges any branch itself.
@@ -270,7 +272,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 | Headless workers | Same bash command on every CLI; no terminal to babysit | Interactive windows or an in-process sub-agent API |
 | Push guard on every remote | Workers skip permissions, so a dead push URL makes pushing impossible | Trusting the prompt not to push |
 | Handoff files only | Workers never talk to each other; the main agent holds the picture | Peer messaging, shared scratch files |
-| Two live workers, depth 1 | Bounded cost and merge load; no runaway fan-out | Unbounded or recursive spawning |
+| Up to 10 live workers, nesting depth 3 | Reading and review scale in parallel; the depth limit stops runaway recursion; nested spawns fail fast instead of deadlocking on slots their parents hold | Unbounded or unlimited recursive spawning; the old cap of 2 |
 | Local-only state | `.devkit/` is git-ignored; no secrets or noise in history | Committing run files |
 | Approval gate for library edits | The library is shared and public; each edit is reviewed | Auto-merging learnings |
 | Tiered library | A 700-token digest first; depth only on a matching trigger | One large always-loaded file |
