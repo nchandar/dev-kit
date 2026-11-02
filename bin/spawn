@@ -148,7 +148,10 @@ if [ $wt = 1 ]; then
   fi
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
-before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
+# HEAD plus content hashes of tracked changes and untracked files, so commits and repeat edits show up too
+snap() { { git -C "$wd" rev-parse HEAD 2>/dev/null; git -C "$wd" diff HEAD -- . ':(exclude).devkit' 2>/dev/null
+  git -C "$wd" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | grep -v '^\.devkit/' | while IFS= read -r f; do printf '%s ' "$f"; git hash-object -- "$wd/$f"; done; } | git hash-object --stdin; }
+before=$(snap)
 
 build_cmd "$wd" "$(make_prompt "$(brieftext)")"
 export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task
@@ -194,7 +197,7 @@ if [ ! -s "$hf" ]; then
     if [ $state = timeout ]; then echo "status: timed out after ${TMO}s (no handoff written). Last output:"; else echo "status: no handoff written (exit $rc). Last output:"; fi
     tail -n 20 "$log"; } > "$hf"
 fi
-after=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
+after=$(snap)
 if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then state=violation; fi
 echo "$state $rc $(date +%s)" > "$st"
 [ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }

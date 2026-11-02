@@ -354,6 +354,16 @@ ok "GIT_CONFIG_COUNT=08 is read as decimal 8: git works in the worker and the pu
 GIT_CONFIG_COUNT=abc "$spawn" gc2 fake "$t/brief.md" 2>"$t/gc2.err"; rc=$?
 ok "a non-numeric GIT_CONFIG_COUNT fails closed (exit 2)" '[ $rc -eq 2 ] && grep -q "GIT_CONFIG_COUNT" "$t/gc2.err"'
 
+# --- audit fixes: scout violations (commits, repeat edits), process-group kill, slot tracking
+git checkout -q f.txt
+FAKE_ID=sc FAKE_COMMIT=1 "$spawn" --shape scout sc fake "$t/brief.md"
+ok "a scout that commits is flagged" 'grep -q "^violation" $TD/run/sc.status'
+git reset -q --hard HEAD~1
+echo pre >> f.txt
+FAKE_ID=sr FAKE_EDIT=1 "$spawn" --shape scout sr fake "$t/brief.md"
+ok "a scout editing an already-dirty file is flagged" 'grep -q "^violation" $TD/run/sr.status'
+git checkout -q f.txt
+
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
