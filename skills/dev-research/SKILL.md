@@ -16,8 +16,8 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 1. Clarify: follow library/grill, one question at a time with your recommendation, until the question and the decision it feeds are clear. Skip only if already stated, and say so.
-- [ ] 2. List sources: code paths, docs, logs, upstream repos, primary sources first. Always include an external pass on what the industry standard is and what is cutting edge for the problem, from primary sources (official docs, upstream repos, recent releases), grounded with library/docs-grounding; bulk web reading goes to scouts.
-- [ ] 3. Bulk reading goes to scouts via dev-spawn; keep only their reports. Ground API claims with library/docs-grounding.
+- [ ] 2. List sources: code paths, docs, logs, upstream repos, primary sources first. Always include an external industry-standard/cutting-edge pass for the problem, from primary sources (official docs, upstream repos, recent releases), grounded with library/docs-grounding; bulk web reading goes to scouts.
+- [ ] 3. Bulk reading goes to scouts via dev-spawn; keep only their reports.
 - [ ] 4. Spike only if reading cannot answer: throwaway code in `<task>/spike/`, never in the project tree. Record what it proved.
 - [ ] 5. Write findings as claims, each with file:line, URL, or command output as evidence, plus a confidence level.
 - [ ] 6. Any claim that drives a decision: run library/doubt on it.

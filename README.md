@@ -18,9 +18,9 @@ Just ask in plain words; the matching skill runs. Name one to be explicit (`/dev
 | Skill | Say something like | What it does | You get |
 |---|---|---|---|
 | `dev-mode` | "/dev-mode fix the login bug and add a remember-me option" | triage by type and size, announce the route, chain the loops, stay on route, one closing answer | the right loops run in order, with a status footer |
-| `dev-feature` | "add rate limiting", "refactor the parser" | grill, spec, thin slices, test first, review, verify, ship | code, tests, a ledger trail |
-| `dev-debug` | "login test fails", "crashes on empty input" | repro, root cause, doubt, regression test, fix, review | a fix and its failing-then-passing test |
-| `dev-research` | "compare Redis and Postgres", "how does auth work" | grill, research, checkpoint, report | `report.md` with a build handoff, plus `report.html` for systems |
+| `dev-feature` | "add rate limiting", "refactor the parser" | recon, options, spec, thin slices, test first, review, verify, ship | code, tests, a ledger trail |
+| `dev-debug` | "login test fails", "crashes on empty input" | recon, hypotheses, repro, root cause, doubt, regression test, fix options, fix, review | a fix and its failing-then-passing test |
+| `dev-research` | "compare Redis and Postgres", "how does auth work" | grill, research plus external standard pass, checkpoint, report with labeled options | `report.md` with a build handoff, plus `report.html` for systems |
 | `dev-review` | "review my branch" | Standards and Spec scouts in parallel, blast radius | findings with file:line |
 | `dev-spawn` | "open a codex instance and run X" | one headless worker per task on claude, codex or opencode | a short handoff with evidence |
 | `dev-learn` | "learn from this" | dedupes queued lessons, drafts a library change on a branch | a diff you approve |

@@ -41,6 +41,7 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
   - Id is `<slug>-<yymmdd-HHMMSS>-<4 hex>`; the directory is created with atomic `mkdir`, retried on collision.
   - Tabs and newlines in fields become spaces; each field is cut to 400 chars with a warning.
   - `DEVKIT_LEDGER_MIRROR="<cmd>"` runs with the row text as `$1`; `DEVKIT_DIR` overrides the `.devkit` location.
+  - `start` refuses inside a worker (`DEVKIT_DEPTH` nonzero); workers log to their own `DEVKIT_TASK`. The refusal status is 3.
   - Inside a git worktree the base resolves to the main repo, so workers share one `.devkit`.
 
 ### 3.2 state (`bin/state`)
@@ -87,7 +88,7 @@ sequenceDiagram
 
 - States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed files outside `.devkit/`).
 - Interrupt (INT, TERM, HUP): spawn stops the worker and its children, closes the herdr tab (or records it under `DEVKIT_VIEW_KEEP`), frees the slot, and writes `killed` to the status and the ledger.
-- Failure modes: nested `spawn` exits 3; unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1.
+- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt stops the worker plus direct children only: grandchildren that ignore TERM survive (no process-group kill on macOS).
 
 Defaults live in `bin/defaults` (an env var of the same name overrides it); `tests/defaults.test.sh` keeps this table equal to them.
 
@@ -96,7 +97,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `--shape` | `ship` | `scout` adds "change NO code" to the prompt and checks the tree after |
 | `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `devkit/<task>-<id>` |
 | `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
-| `DEVKIT_MAX_WORKERS` | 10 | Slot count, repo-wide; extras wait, stale slots (dead pid) are reclaimed |
+| `DEVKIT_MAX_WORKERS` | 10 | Slot count, repo-wide; extras wait, stale slots (dead/reused pid, no pid after 1s) reclaimed under a per-slot mkdir lock (5s expiry) with a start-time check against pid reuse |
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
 | `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
@@ -177,19 +178,19 @@ The six routes start with the same preamble: start or resume a task, read `.devk
 
 ### dev-feature
 - Triggers: new behavior, behavior change, refactor.
-- Steps: principles skim, clarify (read any research report first), spec, quality bar, plan, per-slice red/green, parallel slices via spawn, observability/ui/docs checks, dev-review, verify, ship.
+- Steps: principles skim, recon/options/clarify (fresh research report wins, else dev-research with clarify skipped and checkpoint folded into options), spec, quality bar, plan, per-slice red/green, parallel slices via spawn, observability/ui/docs checks, dev-review, verify, ship.
 - Reads: principles, grill, spec, architecture, quality-bar, plan, tdd, observability, ui-browser, docs-grounding, verify, git-ship, state.
 - Outputs: `spec.md`, `plan.json`, commits. Refactor variant: final output must equal the baseline.
 
 ### dev-debug
 - Triggers: failing test, broken build, regression, error in logs.
-- Steps: skim principles, restate bug, reproduce, root cause at file:line, doubt, regression test first, smallest fix, verify, observability gap, commit.
+- Steps: skim principles, recon/hypotheses/clarify (fresh report wins, else dev-research with clarify skipped), restate bug, reproduce, root cause at file:line, doubt, regression test first, fix-options pick, smallest fix, verify, observability gap, commit.
 - Reads: principles, grill, debug-method, doubt, tdd, verify, observability, git-ship, state.
 - Outputs: regression test plus fix; stuck after 3 hypotheses means a `next` row and stop.
 
 ### dev-research
 - Triggers: understand code, compare options, feasibility, spike. Scout shape: changes no project code.
-- Steps: grill, list sources, bulk reading to scouts, optional spike, evidence-backed claims, doubt, checkpoint with the user, report, optional HTML, confirm no code diff.
+- Steps: grill, list sources plus an external industry-standard/cutting-edge pass from primary sources, bulk reading to scouts, optional spike, evidence-backed claims, doubt, checkpoint with the user, report with labeled options (standard/cutting-edge/local), optional HTML, confirm no code diff.
 - Reads: grill, docs-grounding, doubt, state, explain-html.
 - Outputs: `report.md` ending in `## Build handoff`; `report.html` when a system is involved.
 
