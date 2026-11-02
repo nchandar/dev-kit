@@ -68,4 +68,10 @@ put Findings "$(printf -- '- crlf line (handoffs/a.md)\r')"
 out=$(chk); rc=$?
 ok "a carriage return in state.md fails"           '[ $rc -ne 0 ] && echo "$out" | grep -qi "tab or"'
 
+H=$("$ledger" start hdr-only "x"); HD=".devkit/tasks/$H"; head -1 "$HD/ledger.tsv" > "$HD/ledger.new" && mv "$HD/ledger.new" "$HD/ledger.tsv"
+cp "$S" "$HD/state.md"; reset
+cp "$S" "$HD/state.md"
+out=$("$state" check -t "$H" 2>&1); rc=$?
+ok "header-only ledger does not swallow state.md" '[ $rc -eq 0 ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
