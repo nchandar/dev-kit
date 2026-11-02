@@ -84,7 +84,7 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead pid) are reclaimed
 slot=
-claim() { local n d p lock
+claim() { local n d p lock m
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then echo $$ > "$d/pid"; slot=$d; return 0; fi
     if mkdir "$lock" 2>/dev/null; then
@@ -92,6 +92,9 @@ claim() { local n d p lock
       if [ -z "$p" ]; then sleep 1; p=$(cat "$d/pid" 2>/dev/null); fi
       if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then rm -rf "$d"; fi
       rm -rf "$lock"
+    else
+      m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)
+      if [ -n "$m" ] && [ $(( $(date +%s) - m )) -gt 5 ]; then rm -rf "$lock"; fi
     fi
     n=$((n+1))
   done; return 1; }

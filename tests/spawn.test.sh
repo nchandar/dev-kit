@@ -253,4 +253,12 @@ s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKER
 ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
+# --- hardening 6: a lock older than 5s is removed (GNU stat first, BSD fallback)
+ok "lock age prefers GNU stat with a BSD fallback" 'grep -q "stat -c %Y.*|| stat -f %m" "$spawn"'
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+touch -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=10 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk3.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
