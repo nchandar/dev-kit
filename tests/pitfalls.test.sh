@@ -35,10 +35,10 @@ r_arith() { # $(( )) or [[ -op ]] with any variable lacking 10#: 08 reads as oct
 }
 r_sleep() { grep -rn -E '(^|[^"_A-Za-z0-9=])sleep [0-9]' "$@" 2>/dev/null | grep -v 'sleep-ok:' || true; }
 r_srcgrep() { grep -rn -E 'grep( +-[a-zA-Z]+)* +[^|;&]*(\$spawn|\$here/bin|\$spn|bin/spawn)' "$@" 2>/dev/null | grep -v 'pitfall-ok: src-grep' || true; }
-chk_iso() { # one file: runs spawn as a command but names no isolation
-  f=$1
-  if grep -v -E '^[[:space:]]*#' "$f" 2>/dev/null | grep -q -E '"\$spawn" [A-Za-z-]|(^|[;|&(|`] *)bin/spawn( |$)'; then
-    grep -q -E 'DEVKIT_VIEW=off' "$f" 2>/dev/null || grep -q -E 'PATH=.*(stub|hs)|herdr-stub|/stubs' "$f" 2>/dev/null \
+chk_iso() { # one file: runs spawn as a command but names no isolation (comment lines ignored)
+  f=$1; code=$(grep -v -E '^[[:space:]]*#' "$f" 2>/dev/null | grep -v -E '(^|[^A-Za-z_])(grep|cat) ')
+  if printf '%s\n' "$code" | grep -q -E '"\$spawn" [A-Za-z-]|bin/spawn"? '; then
+    printf '%s\n' "$code" | grep -q -E 'DEVKIT_VIEW=off' || printf '%s\n' "$code" | grep -q -E 'PATH=.*(stub|hs)|herdr-stub|/stubs' \
       || echo "$f: runs spawn without DEVKIT_VIEW=off or a PATH stub"
   fi
 }
@@ -91,6 +91,12 @@ ok "sleep-ok passes a sleep with a why" '[ -z "$(r_sleep "$t/good.sh")" ]'
 printf '%s\n' '#!/usr/bin/env bash' 'FAKE_ID=x "$spawn" x fake brief.md' > "$t/badt.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'export DEVKIT_VIEW=off' 'FAKE_ID=x "$spawn" x fake brief.md' > "$t/goodt.sh"
 ok "spawn-isolation flags a run with no isolation" '[ -n "$(chk_iso "$t/badt.sh")" ]'
+printf '%s\n' '"$here/bin/spawn" x fake brief.md' > "$t/badp.sh"
+printf '%s\n' '# DEVKIT_VIEW=off' '/opt/dk/bin/spawn x fake brief.md' > "$t/badc.sh"
+printf '%s\n' 'export DEVKIT_VIEW=off' '"$here/bin/spawn" x fake brief.md' > "$t/goodp.sh"
+ok "spawn-isolation flags a path-prefixed bin/spawn" '[ -n "$(chk_iso "$t/badp.sh")" ]'
+ok "spawn-isolation ignores DEVKIT_VIEW=off in a comment" '[ -n "$(chk_iso "$t/badc.sh")" ]'
+ok "spawn-isolation passes a path-prefixed run with the view off" '[ -z "$(chk_iso "$t/goodp.sh")" ]'
 ok "spawn-isolation passes DEVKIT_VIEW=off" '[ -z "$(chk_iso "$t/goodt.sh")" ]'
 
 bad_sg='grep -q "cannot load" "$here/bin/spawn"'; good_sg='grep -q "^done" "$TD/run/v4.status"'
