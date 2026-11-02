@@ -16,7 +16,7 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
-- [ ] 1. Recon, options, clarify: read the research report first (the path the user names, else the newest `report.md` under `.devkit/tasks/*/` matching this request). No report: announce a recon tier, then run it: T0 read touched code and tests; T1 also similar code, docs and web (bulk reading to scouts); T2 run dev-research first. Then list 2-3 options with a recommendation, then grill (library/grill) until goal, non-goals and acceptance check are approved. New unknowns loop back to recon, up to 3 rounds; over-researching is fine. Then refresh `<task>/state.md` (library/state).
+- [ ] 1. Recon, options, clarify: read a fresh matching research report first (the path the user names, else the newest `report.md` under `.devkit/tasks/*/` for this request) instead of re-researching. No fresh report: run dev-research (code plus the external industry-standard/cutting-edge pass). Then list 2-3 options with a recommendation, then grill (library/grill) until goal, non-goals and acceptance check are approved. New unknowns loop back to recon, up to 3 rounds. Then refresh `<task>/state.md` (library/state).
 - [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture.
 - [ ] 3. Quality bar: no `CONSTRAINTS.md`? follow library/quality-bar; run the baseline.
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.
