@@ -103,4 +103,9 @@ ok "id containing slash rejected" '[ $rc -eq 2 ]'
 err=$("$ledger" -t "$A" 2>&1); rc=$?
 ok "usage notes reserved phases" '[ $rc -eq 2 ] && echo "$err" | grep -qi "reserved"'
 
+W=$("$ledger" start wr-fail 2>/dev/null); chmod 444 ".devkit/tasks/$W/ledger.tsv"
+"$ledger" -t "$W" p d r >/dev/null 2>&1; rc=$?
+ok "failed append exits non-zero" '[ $rc -ne 0 ] || [ "$(id -u)" = 0 ]'
+chmod 644 ".devkit/tasks/$W/ledger.tsv"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
