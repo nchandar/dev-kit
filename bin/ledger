@@ -31,7 +31,7 @@ append() { # file phase decision reason evidence result
 B=$(base)
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }
 if [ "${1:-}" = start ]; then
-  if [ "${DEVKIT_DEPTH:-0}" -gt 0 ] 2>/dev/null; then echo "ledger: a worker (DEVKIT_DEPTH=$DEVKIT_DEPTH) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3; fi
+  case ${DEVKIT_DEPTH:-0} in 0|00) ;; *) echo "ledger: a worker (DEVKIT_DEPTH=$DEVKIT_DEPTH) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3;; esac
   slug=$(printf '%s' "${2:-task}" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | cut -c1-30)
   mkdir -p "$B/tasks"
   until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do :; done
