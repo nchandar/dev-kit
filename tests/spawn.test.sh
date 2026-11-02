@@ -38,6 +38,9 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x${DEVKIT_DEPTH:-} fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
+[ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
+[ -n "${FAKE_GIT:-}" ] && { git config --get remote.origin.pushurl > "$DEVKIT_DIR/pushurl.out" 2>&1; echo $? > "$DEVKIT_DIR/git.rc"; }
+[ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & }
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
@@ -98,7 +101,7 @@ ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
 : > $DEVKIT_DIR/events
 for i in $(seq 1 10); do FAKE_ID=m$i FAKE_SLEEP=8 "$spawn" m$i fake "$t/brief.md" & done
-n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done
+n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done # sleep-ok: bounded poll (40 tries) for ten slots to be claimed
 FAKE_ID=m11 FAKE_SLEEP=1 "$spawn" m11 fake "$t/brief.md" & wait
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
@@ -222,7 +225,7 @@ ok "interrupted spawn closes its herdr tab"          'grep -q "tab close X:t9" "
 ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null'
 ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
 ok "interrupted spawn frees its slot"                '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
-kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; pkill -f "sleep 20" 2>/dev/null; true
+kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; true
 
 # a hard-killed spawn runs no EXIT trap, so the pane itself must close the tab once the spawn pid is gone
 : > "$HERDR_LOG"
@@ -230,7 +233,7 @@ DEVKIT_VIEW=herdr FAKE_ID=v9 vrun "$spawn" v9 fake "$t/brief.md"
 pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
 ok "view: pane command watches the spawn pid" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
 : > "$HERDR_LOG"
-if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi
+if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi # sleep-ok: give the pane watchdog time to see the dead spawn pid before killing it
 ok "view: watchdog closes the tab once the spawn pid is gone" 'grep -q "tab close X:t9" "$HERDR_LOG"'
 : > "$HERDR_LOG"
 DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v10 vrun "$spawn" v10 fake "$t/brief.md"
@@ -261,8 +264,6 @@ ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVK
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
 ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
 
-# --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
-ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"' # pitfall-ok: src-grep negative assertion, slot tests cover behavior
 # --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
 
 # --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
@@ -333,6 +334,35 @@ rm -rf "$DEVKIT_DIR/run/slot.3" "$DEVKIT_DIR/run/slot.3.lock"
 fresh=$(mktemp -d); (cd "$t" && DEVKIT_DIR="$fresh/.devkit" env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null); rc=$?
 ok "no task creates no run dir" '[ $rc -eq 2 ] && [ ! -e "$fresh/.devkit/run" ]'
 rm -rf "$fresh"
+
+# --- audit fixes: arg validation, GIT_CONFIG_COUNT, duplicate ids
+"$spawn" --shape foo sh1 fake "$t/brief.md" 2>/dev/null; rc=$?
+"$spawn" --shape "" sh2 fake "$t/brief.md" 2>"$t/sh2.err"; rc2=$?
+ok "--shape outside ship|scout exits 2 (also when empty, no shell error)" '[ $rc -eq 2 ] && [ $rc2 -eq 2 ] && ! grep -q "unary" "$t/sh2.err"'
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+echo "running $live 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md" 2>"$t/dup.err"; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a second spawn of an id that is running with a live pid is refused (exit 2)" '[ $rc -eq 2 ] && grep -q "already running" "$t/dup.err"'
+echo "running 99999999 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md"; rc=$?
+ok "a stale running status (dead pid) does not block the id" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/dup.status'
+rm -f "$DEVKIT_DIR/git.rc" "$DEVKIT_DIR/pushurl.out"
+( export GIT_CONFIG_COUNT=08; for i in 0 1 2 3 4 5 6 7; do export "GIT_CONFIG_KEY_$i=test.k$i" "GIT_CONFIG_VALUE_$i=v"; done
+  FAKE_ID=gc FAKE_GIT=1 "$spawn" gc fake "$t/brief.md" 2>/dev/null )
+ok "GIT_CONFIG_COUNT=08 is read as decimal 8: git works in the worker and the push guard holds" '[ "$(cat $DEVKIT_DIR/git.rc 2>/dev/null)" = 0 ] && grep -q "push-blocked" $DEVKIT_DIR/pushurl.out'
+GIT_CONFIG_COUNT=abc "$spawn" gc2 fake "$t/brief.md" 2>"$t/gc2.err"; rc=$?
+ok "a non-numeric GIT_CONFIG_COUNT fails closed (exit 2)" '[ $rc -eq 2 ] && grep -q "GIT_CONFIG_COUNT" "$t/gc2.err"'
+
+# --- audit fixes: scout violations (commits, repeat edits), process-group kill, slot tracking
+git checkout -q f.txt
+FAKE_ID=sc FAKE_COMMIT=1 "$spawn" --shape scout sc fake "$t/brief.md"
+ok "a scout that commits is flagged" 'grep -q "^violation" $TD/run/sc.status'
+git reset -q --hard HEAD~1
+echo pre >> f.txt
+FAKE_ID=sr FAKE_EDIT=1 "$spawn" --shape scout sr fake "$t/brief.md"
+ok "a scout editing an already-dirty file is flagged" 'grep -q "^violation" $TD/run/sr.status'
+git checkout -q f.txt
 
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
