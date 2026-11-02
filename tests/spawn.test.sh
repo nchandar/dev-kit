@@ -225,7 +225,7 @@ ok "interrupted spawn closes its herdr tab"          'grep -q "tab close X:t9" "
 ok "interrupted spawn stops its worker"              '! kill -0 "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null'
 ok "interrupted spawn records killed, not running"   'grep -q "^killed" $TD/run/k1.status && grep -q "k1 killed" $TD/ledger.tsv'
 ok "interrupted spawn frees its slot"                '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
-kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; pkill -f "sleep 20" 2>/dev/null; true
+kill "$(cat $DEVKIT_DIR/fakepid.k1)" 2>/dev/null; true
 
 # a hard-killed spawn runs no EXIT trap, so the pane itself must close the tab once the spawn pid is gone
 : > "$HERDR_LOG"
@@ -264,8 +264,6 @@ ok "DEVKIT_TIMEOUT=soon exits 2 naming the knob" '[ $rc -eq 2 ] && grep -q "DEVK
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=0 DEVKIT_MAX_WORKERS=2x "$spawn" e5 fake "$t/brief.md" 2>"$t/e5.err"; rc=$?
 ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2 ] && grep -q "DEVKIT_MAX_WORKERS" "$t/e5.err"'
 
-# --- hardening 2: slot scan is a while loop (seq 1 0 counts down on BSD)
-ok "claim scans slots without BSD-unsafe seq" '! grep -q "seq 1" "$spawn"' # pitfall-ok: src-grep negative assertion, slot tests cover behavior
 # --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
 
 # --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
