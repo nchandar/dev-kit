@@ -40,7 +40,7 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
 [ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
 [ -n "${FAKE_GIT:-}" ] && { git config --get remote.origin.pushurl > "$DEVKIT_DIR/pushurl.out" 2>&1; echo $? > "$DEVKIT_DIR/git.rc"; }
-[ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & }
+[ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & } # sleep-ok: grandchild outlives the fake; the harness kills it
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"

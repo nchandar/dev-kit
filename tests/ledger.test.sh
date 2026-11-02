@@ -110,7 +110,7 @@ ok "failed append exits non-zero" '[ $rc -ne 0 ] || [ "$(id -u)" = 0 ]'
 chmod 644 ".devkit/tasks/$W/ledger.tsv"
 for bad in . ..; do "$ledger" -t "$bad" p d r >/dev/null 2>&1; rc=$?
   ok "task id '$bad' rejected" '[ $rc -eq 2 ] && [ ! -e .devkit/ledger.tsv ]'; done
-S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/dev/null 2>&1; e=$(date +%s)
+S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/dev/null 2>&1; e=$(date +%s) # sleep-ok: simulates a hung mirror
 ok "a hung mirror does not hang the ledger call" '[ $((e-S)) -lt 5 ] && grep -q "mirror" ".devkit/tasks/$W/ledger.tsv"' # sleep-ok: simulates a hung mirror
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
