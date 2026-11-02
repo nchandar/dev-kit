@@ -51,6 +51,7 @@ case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number
 [ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; } # pitfall-ok: decimal-arith CAP validated above
 case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a whole number" >&2; exit 2;; esac
 case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
+case ${GIT_CONFIG_COUNT:-0} in ''|*[!0-9]*) echo "spawn: GIT_CONFIG_COUNT must be a whole number" >&2; exit 2;; esac
 task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
@@ -152,8 +153,8 @@ before=$(git -C "$wd" status --porcelain 2>/dev/null | grep -v ' \.devkit/')
 build_cmd "$wd" "$(make_prompt "$(brieftext)")"
 export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote.
+gn=$((10#${GIT_CONFIG_COUNT:-0})) # 08 is decimal 8, not an octal error
 # NOTE: only remote.<name>.pushurl is rewritten, so `git push <url>` with an explicit URL bypasses this; it is a guardrail, not a sandbox.
-gn=${GIT_CONFIG_COUNT:-0}
 for r in $(git -C "$wd" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done
 [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn # pitfall-ok: decimal-arith internal counter, always decimal
 # herdr view: a tab tails the worker log and the pane is reported as an agent. Execution below is unchanged.

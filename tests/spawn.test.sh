@@ -39,6 +39,7 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
 [ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
+[ -n "${FAKE_GIT:-}" ] && { git config --get remote.origin.pushurl > "$DEVKIT_DIR/pushurl.out" 2>&1; echo $? > "$DEVKIT_DIR/git.rc"; }
 [ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & }
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
@@ -348,6 +349,12 @@ ok "a second spawn of an id that is running with a live pid is refused (exit 2)"
 echo "running 99999999 1" > "$TD/run/dup.status"
 FAKE_ID=dup "$spawn" dup fake "$t/brief.md"; rc=$?
 ok "a stale running status (dead pid) does not block the id" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/dup.status'
+rm -f "$DEVKIT_DIR/git.rc" "$DEVKIT_DIR/pushurl.out"
+( export GIT_CONFIG_COUNT=08; for i in 0 1 2 3 4 5 6 7; do export "GIT_CONFIG_KEY_$i=test.k$i" "GIT_CONFIG_VALUE_$i=v"; done
+  FAKE_ID=gc FAKE_GIT=1 "$spawn" gc fake "$t/brief.md" 2>/dev/null )
+ok "GIT_CONFIG_COUNT=08 is read as decimal 8: git works in the worker and the push guard holds" '[ "$(cat $DEVKIT_DIR/git.rc 2>/dev/null)" = 0 ] && grep -q "push-blocked" $DEVKIT_DIR/pushurl.out'
+GIT_CONFIG_COUNT=abc "$spawn" gc2 fake "$t/brief.md" 2>"$t/gc2.err"; rc=$?
+ok "a non-numeric GIT_CONFIG_COUNT fails closed (exit 2)" '[ $rc -eq 2 ] && grep -q "GIT_CONFIG_COUNT" "$t/gc2.err"'
 
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
