@@ -38,6 +38,8 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_SPAWN:-}" ] && "$FAKE_SPAWN" x${DEVKIT_DEPTH:-} fake /dev/null > "$DEVKIT_DIR/nested.out" 2>&1; echo $? > "$DEVKIT_DIR/nested.rc"
 [ -n "${FAKE_PUSH:-}" ] && { git push origin HEAD >/dev/null 2>&1; echo $? > "$DEVKIT_DIR/push.rc"; }
 [ -n "${FAKE_EDIT:-}" ] && echo changed >> f.txt
+[ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
+[ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & }
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
@@ -333,6 +335,19 @@ rm -rf "$DEVKIT_DIR/run/slot.3" "$DEVKIT_DIR/run/slot.3.lock"
 fresh=$(mktemp -d); (cd "$t" && DEVKIT_DIR="$fresh/.devkit" env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null); rc=$?
 ok "no task creates no run dir" '[ $rc -eq 2 ] && [ ! -e "$fresh/.devkit/run" ]'
 rm -rf "$fresh"
+
+# --- audit fixes: arg validation, GIT_CONFIG_COUNT, duplicate ids
+"$spawn" --shape foo sh1 fake "$t/brief.md" 2>/dev/null; rc=$?
+"$spawn" --shape "" sh2 fake "$t/brief.md" 2>"$t/sh2.err"; rc2=$?
+ok "--shape outside ship|scout exits 2 (also when empty, no shell error)" '[ $rc -eq 2 ] && [ $rc2 -eq 2 ] && ! grep -q "unary" "$t/sh2.err"'
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+echo "running $live 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md" 2>"$t/dup.err"; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a second spawn of an id that is running with a live pid is refused (exit 2)" '[ $rc -eq 2 ] && grep -q "already running" "$t/dup.err"'
+echo "running 99999999 1" > "$TD/run/dup.status"
+FAKE_ID=dup "$spawn" dup fake "$t/brief.md"; rc=$?
+ok "a stale running status (dead pid) does not block the id" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/dup.status'
 
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 

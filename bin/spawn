@@ -33,7 +33,8 @@ fi
 
 shape=ship; wt=0; model=${DEVKIT_MODEL:-}; inline=
 while [ $# -gt 0 ]; do case $1 in
-  --shape) shape=$2; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
+  --shape) shape=${2-}; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
+case $shape in ship|scout) ;; *) echo "spawn: --shape must be ship or scout" >&2; exit 2;; esac
 want=3; [ -n "$inline" ] && want=2
 [ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; } # pitfall-ok: decimal-arith shell count and literal, always decimal
 id=$1 cli=$2 brief=${3:-}
@@ -81,6 +82,9 @@ brieftext() { if [ -n "$inline" ]; then printf '%s' "$inline"; else cat "$brief"
 if [ -n "${DEVKIT_DRYRUN:-}" ]; then build_cmd "$root" "$(make_prompt "$(brieftext)")"; printf '%s\n' "${cmd[@]}"; exit 0; fi
 
 mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
+# two live spawns of one id would clobber its handoff, log and status
+read -r sst spid _ < "$st" 2>/dev/null || true
+if [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null; then echo "spawn: $id is already running (pid $spid); pick another id" >&2; exit 2; fi
 [ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
 
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead/reused pid, no pid after 1s) are reclaimed under a per-slot lock
