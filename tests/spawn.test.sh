@@ -98,7 +98,7 @@ ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
 : > $DEVKIT_DIR/events
 for i in $(seq 1 10); do FAKE_ID=m$i FAKE_SLEEP=8 "$spawn" m$i fake "$t/brief.md" & done
-n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done
+n=0; while [ $n -lt 40 ]; do [ "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null | grep -cv '\.lock$')" -ge 10 ] && break; sleep 0.5; n=$((n+1)); done # sleep-ok: bounded poll (40 tries) for ten slots to be claimed
 FAKE_ID=m11 FAKE_SLEEP=1 "$spawn" m11 fake "$t/brief.md" & wait
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
@@ -230,7 +230,7 @@ DEVKIT_VIEW=herdr FAKE_ID=v9 vrun "$spawn" v9 fake "$t/brief.md"
 pcmd=$(grep "pane run" "$HERDR_LOG" | head -1 | sed 's/^pane run [^ ]* //')
 ok "view: pane command watches the spawn pid" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
 : > "$HERDR_LOG"
-if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi
+if echo "$pcmd" | grep -q "kill -0"; then ( export PATH="$hs:$PATH"; eval "$pcmd" ) & ev=$!; sleep 2; kill -0 $ev 2>/dev/null && kill $ev 2>/dev/null; wait $ev 2>/dev/null || true; fi # sleep-ok: give the pane watchdog time to see the dead spawn pid before killing it
 ok "view: watchdog closes the tab once the spawn pid is gone" 'grep -q "tab close X:t9" "$HERDR_LOG"'
 : > "$HERDR_LOG"
 DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v10 vrun "$spawn" v10 fake "$t/brief.md"
