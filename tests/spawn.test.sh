@@ -41,6 +41,7 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_COMMIT:-}" ] && { echo c >> f.txt; git add f.txt; git -c user.name=t -c user.email=t@t commit -qm scoutcommit; }
 [ -n "${FAKE_GIT:-}" ] && { git config --get remote.origin.pushurl > "$DEVKIT_DIR/pushurl.out" 2>&1; echo $? > "$DEVKIT_DIR/git.rc"; }
 [ -n "${FAKE_GRAND:-}" ] && { ( sleep 60 & echo $! > "$DEVKIT_DIR/grand.${FAKE_ID}"; wait ) & } # sleep-ok: grandchild outlives the fake; the harness kills it
+[ -n "${FAKE_DEEP:-}" ] && { ( ( sleep 60 & echo $! > "$DEVKIT_DIR/deep.${FAKE_ID}"; wait ) & wait ) & } # sleep-ok: two-level grandchild outlives the fake; the test checks it dies
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
@@ -147,6 +148,11 @@ ok "--prompt runs and saves the brief" '[ -s $TD/handoffs/pp.md ] && grep -q "in
 
 # --- watchdog
 s0=$(date +%s); FAKE_ID=to FAKE_SLEEP=30 DEVKIT_TIMEOUT=2 "$spawn" to fake "$t/brief.md"; rc=$?; el=$(( $(date +%s)-s0 ))
+FAKE_ID=td FAKE_DEEP=1 FAKE_SLEEP=30 DEVKIT_TIMEOUT=2 "$spawn" td fake "$t/brief.md" 2>/dev/null; sleep 1 # sleep-ok: let the group kill land
+ok "timeout kills a grandchild two levels down" '[ -s $DEVKIT_DIR/deep.td ] && ! kill -0 "$(cat $DEVKIT_DIR/deep.td)" 2>/dev/null'
+( FAKE_ID=ti FAKE_DEEP=1 FAKE_SLEEP=30 exec "$spawn" ti fake "$t/brief.md" ) 2>/dev/null &
+sp=$!; n=0; while [ ! -s $DEVKIT_DIR/deep.ti ] && [ $n -lt 50 ]; do sleep 0.2; n=$((n+1)); done; kill -TERM $sp; wait $sp 2>/dev/null; sleep 2 # sleep-ok: bounded poll for the grandchild; let the group kill land
+ok "interrupt kills a grandchild two levels down" '[ -s $DEVKIT_DIR/deep.ti ] && ! kill -0 "$(cat $DEVKIT_DIR/deep.ti)" 2>/dev/null'
 ok "DEVKIT_TIMEOUT kills a hung worker quickly" '[ $rc -ne 0 ] && [ $el -lt 15 ]'
 ok "timeout is its own status + noted in handoff" 'grep -q "^timeout" $TD/run/to.status && grep -qi "timed out" $TD/handoffs/to.md'
 ok "slot released after timeout"    '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'

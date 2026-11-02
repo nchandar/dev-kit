@@ -121,8 +121,8 @@ cleanup() { local rc=$?
   trap - EXIT
   if [ -n "$wpid" ] && kill -0 "$wpid" 2>/dev/null; then # interrupted while the worker ran
     [ -z "$guard" ] || { pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; }
-    pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
-    pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null
+    kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
+    kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null
     echo "killed $rc $(date +%s)" > "$st"
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
   fi
@@ -179,11 +179,12 @@ if [ $view = 1 ]; then
     vreport working running
   else view=0; fi
 fi
-( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
-wpid=$!
+# own process group (set -m, only for this launch) so timeout and interrupt can signal the whole tree with kill -- -$wpid
+set -m; ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
+wpid=$!; set +m
 guard=
 if [ "$TMO" -gt 0 ] 2>/dev/null; then # pitfall-ok: decimal-arith TMO validated above
-  ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; pkill -TERM -P "$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; pkill -KILL -P "$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
+  ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
   guard=$!
 fi
 wait "$wpid"; rc=$?; wpid=""

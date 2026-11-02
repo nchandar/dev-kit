@@ -88,7 +88,7 @@ sequenceDiagram
 
 - States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed files outside `.devkit/`).
 - Interrupt (INT, TERM, HUP): spawn stops the worker and its children, closes the herdr tab (or records it under `DEVKIT_VIEW_KEEP`), frees the slot, and writes `killed` to the status and the ledger.
-- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt stops the worker plus direct children only: grandchildren that ignore TERM survive (no process-group kill on macOS).
+- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives.
 
 Defaults live in `bin/defaults` (an env var of the same name overrides it); `tests/defaults.test.sh` keeps this table equal to them.
 
