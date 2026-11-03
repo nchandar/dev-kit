@@ -10,7 +10,7 @@ ok "runs on pull_request"                            '[ -f "$wf" ] && grep -q "p
 ok "runs on push to main"                            '[ -f "$wf" ] && grep -q "push" "$wf" && grep -q "main" "$wf"'
 ok "matrix job tests over ubuntu and macos"          '[ -f "$wf" ] && grep -q "ubuntu-latest" "$wf" && grep -q "macos-latest" "$wf"'
 ok "calls tests/run-all.sh"                          '[ -f "$wf" ] && grep -q "tests/run-all.sh" "$wf"'
-ok "checkout pinned to a full commit SHA"            '[ -f "$wf" ] && grep -qE "actions/checkout@[0-9a-f]{40}" "$wf"'
+ok "checkout pinned to a full commit SHA"            '[ -f "$wf" ] && grep -qE "actions/checkout@[0-9a-f]{40}( |$)" "$wf"'
 ok "no floating action versions"                     '[ ! -f "$wf" ] || ! grep -qE "uses:[[:space:]]*[^ #]*@v[0-9]" "$wf"'
 ok "minimal permissions (contents read)"             '[ -f "$wf" ] && grep -q "contents:[[:space:]]*read" "$wf"'
 ok "concurrency cancel-in-progress"                  '[ -f "$wf" ] && grep -q "cancel-in-progress" "$wf"'

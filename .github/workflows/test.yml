@@ -22,7 +22,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@11bd7198769f6cbd19a7db65b51b62a5d11bd71983 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - run: git config --global user.name "dev-kit CI"
       - run: git config --global user.email "ci@example.com"
       - run: tests/run-all.sh
