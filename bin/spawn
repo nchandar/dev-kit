@@ -122,6 +122,7 @@ claim() { local n d p p2 lock m live s pp
       rm -rf "$lock"
     else
       m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null) # pitfall-ok: portable-cmd GNU-or-BSD fallback pair
+      case $m in ''|*[!0-9]*) m=;; esac # the GNU fallback prints filesystem info, not an mtime; a vanished lock must not reach the arithmetic
       if [ -n "$m" ] && [ $(( $(date +%s) - m )) -gt 5 ]; then rm -rf "$lock"; fi # pitfall-ok: decimal-arith date is decimal, m guarded by -n
     fi
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter

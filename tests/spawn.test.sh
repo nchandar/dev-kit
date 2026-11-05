@@ -304,6 +304,18 @@ s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn"
 ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
+# GNU stat: -c fails if the lock vanished mid-race, and the BSD-style -f fallback then prints multi-line filesystem info, not a number
+sb="$t/stat-stub"; mkdir -p "$sb"
+cat > "$sb/stat" <<'S'
+#!/usr/bin/env bash
+case "$1" in -c) exit 1;; -f) printf '  File: "%s"\n    ID: 0 Namelen: 255\n' "$3";; *) exit 1;; esac
+S
+chmod +x "$sb/stat"
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo $$ > "$DEVKIT_DIR/run/slot.1/pid"
+PATH="$sb:$PATH" DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>"$t/lk3.err"; rc=$?
+ok "a lock whose mtime cannot be read does not kill the spawner" '[ $rc -eq 4 ] && ! grep -q "unbound variable" "$t/lk3.err"'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
 # --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale
 mkdir -p "$DEVKIT_DIR/run/slot.1"
 s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKERS=1 "$spawn" lk2 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
