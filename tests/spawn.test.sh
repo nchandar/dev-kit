@@ -132,6 +132,7 @@ d=$(DEVKIT_DRYRUN=1 "$spawn" --model m2 d2 codex "$t/brief.md" | tr '\n' ' ')
 ok "dry-run codex: exec, bypass approvals+sandbox, -m m2" 'echo "$d" | grep -q "exec" && echo "$d" | grep -q -- "--dangerously-bypass-approvals-and-sandbox" && ! echo "$d" | grep -q -- "workspace-write" && echo "$d" | grep -q -- "-m m2" && echo "$d" | grep -q -- "--ephemeral"'
 d=$(DEVKIT_MODEL=prov/m3 DEVKIT_DRYRUN=1 "$spawn" d3 opencode "$t/brief.md" | tr '\n' ' ')
 ok "dry-run opencode: run --auto, -m from DEVKIT_MODEL" 'echo "$d" | grep -q "run" && echo "$d" | grep -q -- "--auto" && echo "$d" | grep -q -- "-m prov/m3"'
+ok "dry-run opencode: names its own session and title" 'echo "$d" | grep -q -- "-s ses_dk_" && echo "$d" | grep -q -- "--title d3"'
 d=$(DEVKIT_DRYRUN=1 "$spawn" d4 claude "$t/brief.md" | tr '\n' ' ')
 ok "worker prompt asks for learnings in the handoff" 'echo "$d" | grep -q "learnings"'
 ok "worker prompt forbids pushing" 'echo "$d" | grep -q "Never git push"'
@@ -169,7 +170,7 @@ case "$1" in --version) echo "WARNING: could not create PATH aliases" >&2; echo 
 S
 cat > "$stubs/opencode" <<'S'
 #!/usr/bin/env bash
-case "$1" in --version) echo "opencode 7.7";; service) echo "${OC_SERVICE:-http://127.0.0.1:49374}";; *) echo "--auto -m";; esac
+case "$1" in --version) echo "opencode 7.7";; service) echo "${OC_SERVICE:-http://127.0.0.1:49374}";; *) echo "--auto -m -s --title";; esac
 S
 chmod +x "$stubs"/*
 out=$(PATH="$stubs:/usr/bin:/bin" CODEX_STUB_EXTRA="--ephemeral" "$spawn" --doctor 2>&1); rc=$?
@@ -209,6 +210,28 @@ ok "view: Agents panel gets title and display name" 'grep "report-metadata" "$HE
 ok "view: no notification when all is well"      '! grep -q "notification show" "$HERDR_LOG"'
 ok "view: tab closed after a successful run"    'grep -q "tab close X:t9" "$HERDR_LOG"'
 ok "view: worker itself unchanged (done + handoff)" 'grep -q "^done" $TD/run/v1.status && [ -s $TD/handoffs/v1.md ]'
+
+# opencode names its session, so its tab must attach to that live session rather than tail a log
+oc="$t/oc-stub"; mkdir -p "$oc"; export OC_LOG="$t/oc.log"
+cat > "$oc/opencode" <<'S'
+#!/usr/bin/env bash
+echo "$*" >> "$OC_LOG"
+case "$1" in
+  run) p="${@: -1}"; hf=$(printf '%s' "$p" | grep -o '/[^ ]*handoffs/[A-Za-z0-9_-]*\.md' | head -1)
+       [ -n "$hf" ] && echo "handoff from the opencode stub" > "$hf";;
+esac
+exit 0
+S
+chmod +x "$oc/opencode"
+: > "$OC_LOG"; : > "$HERDR_LOG"
+( export PATH="$oc:$hs:$PATH"; DEVKIT_VIEW=herdr "$spawn" oc1 opencode "$t/brief.md" )
+runline=$(grep '^run ' "$OC_LOG" | head -1)
+sid_run=$(printf '%s' "$runline" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1)
+ok "view: opencode run names its session"              '[ -n "$sid_run" ] && grep -q "^done" $TD/run/oc1.status && [ -s $TD/handoffs/oc1.md ]'
+ok "view: opencode tab attaches to that same session"  'echo "$pcmd" | grep -q "exec opencode -s" && echo "$pcmd" | grep -q "$sid_run"'
+ok "view: opencode tab falls back to the log only if the session never appears" 'echo "$pcmd" | grep -q "exec opencode -s" && [ "${pcmd#*tail -n}" != "$pcmd" ]'
+ok "view: opencode tab still closes if the spawner dies" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
 
 DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v2 vrun "$spawn" v2 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_KEEP=1 leaves the tab open" '! grep -q "tab close" "$HERDR_LOG" && grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "idle"'

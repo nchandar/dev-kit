@@ -6,6 +6,8 @@
 # Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
 # Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs (also failed ones), DEVKIT_VIEW_NOTIFY=all notifies on success,
 #   spawn --close-views closes kept tabs. Failures print the id, state and last log lines to stderr.
+#   The opencode adapter names its session (ses_dk_*), so its tab attaches to that live session with
+#   `opencode -s <id>` instead of tailing the log; other CLIs, or an attach that never finds the session, tail the log.
 # Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env knobs (defaults in bin/defaults, table in ARCHITECTURE.md): DEVKIT_MAX_WORKERS (repo-wide), DEVKIT_MAX_DEPTH (nesting), DEVKIT_CHILD_WAIT (nested spawns only), DEVKIT_TIMEOUT (zero turns it off), plus DEVKIT_MODEL, DEVKIT_DRYRUN (print the command only), DEVKIT_DIR
 set -u
 here=$(dirname "$0")
@@ -19,7 +21,7 @@ doctor() { local bad=0 cli v h f need
     case $cli in
       claude)   h=$(claude --help 2>&1);        need="-p --permission-mode --allowedTools --add-dir --no-session-persistence --model --dangerously-skip-permissions";;
       codex)    h=$(codex exec --help 2>&1);    need="-C -s --add-dir --skip-git-repo-check --ephemeral -o -m --dangerously-bypass-approvals-and-sandbox";;
-      opencode) h=$(opencode run --help 2>&1);  need="--auto -m";;
+      opencode) h=$(opencode run --help 2>&1);  need="--auto -m -s --title";;
     esac
     miss=""; for f in $need; do printf '%s\n' "$h" | grep -qE -- "(^|[[:space:],])$f([[:space:],=]|\$)" || miss="$miss $f"; done
     if [ -n "$miss" ]; then printf '%-9s %-22s MISSING%s\n' $cli "$v" "$miss"; bad=1; else printf '%-9s %-22s ok\n' $cli "$v"; fi
@@ -56,6 +58,8 @@ task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger sta
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
 hf=$T/handoffs/$id.md; log=$T/handoffs/$id.log; st=$T/run/$id.status
+# opencode sessions must start with "ses"; a per-run suffix keeps re-spawns from inheriting an old session
+sid="ses_dk_$(printf '%s-%s' "${task:-t}" "$id" | tr -c 'A-Za-z0-9' '_')_$(date +%s)"
 
 # the exact command per CLI, as an array so it can be dry-run tested; stdin is closed at launch (codex waits on it)
 build_cmd() { # $1=workdir $2=prompt
@@ -68,7 +72,7 @@ build_cmd() { # $1=workdir $2=prompt
               [ -z "${DEVKIT_SAFE:-}" ] || perm=(-s workspace-write --add-dir "$T")
               cmd=(codex exec -C "$1" "${perm[@]}" --skip-git-repo-check --ephemeral -o "$T/handoffs/$id.last")
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
-    opencode) cmd=(opencode run --auto)
+    opencode) cmd=(opencode run --auto -s "$sid" --title "$id · $shape")
               [ -z "$model" ] || cmd+=(-m "$model"); cmd+=("$2");;
     fake)     cmd=("$DEVKIT_FAKE" "$2" "$hf");;
   esac; }
@@ -84,7 +88,7 @@ if [ -n "${DEVKIT_DRYRUN:-}" ]; then build_cmd "$root" "$(make_prompt "$(briefte
 
 mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 # two live spawns of one id would clobber its handoff, log and status
-read -r sst spid _ < "$st" 2>/dev/null || true
+if [ -f "$st" ]; then read -r sst spid _ < "$st" 2>/dev/null || true; else sst= spid=; fi
 if [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null; then echo "spawn: $id is already running (pid $spid); pick another id" >&2; exit 2; fi
 [ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
 
@@ -179,7 +183,15 @@ if [ $view = 1 ]; then
   if [ -n "$vpane" ]; then
     # the pane watches the spawn pid itself: a hard kill (kill -9) runs no EXIT trap,
     # so the pane closes its own tab once the spawner is gone (unless the tab is kept)
-    if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then vwatch="tail -n +1 -f '$log'"
+    # opencode names its session, so its tab attaches to the live agent; any other CLI tails the log
+    vattach=""
+    if [ "$cli" = opencode ]; then
+      vattach="for i in \$(seq 1 60); do opencode session list 2>/dev/null | grep -q '^$sid' && exec opencode -s '$sid'; sleep 0.5; done; exec tail -n +1 -f '$log'"
+    fi
+    if [ -n "$vattach" ]; then
+      if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then vwatch="$vattach"
+      else vwatch="( while kill -0 $$ 2>/dev/null; do sleep 1; done; herdr tab close '$vtab' >/dev/null 2>&1 ) >/dev/null 2>&1 & $vattach"; fi
+    elif [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then vwatch="tail -n +1 -f '$log'"
     else vwatch="tail -n +1 -f '$log' & tp=\$!; while kill -0 $$ 2>/dev/null; do sleep 1; done; kill \$tp 2>/dev/null; herdr tab close '$vtab' >/dev/null 2>&1"; fi
     herdr pane run "$vpane" "$vwatch" >/dev/null 2>&1
     herdr pane report-metadata --source dev-kit --agent "$cli" --title "$id: $(brieftext | head -1 | cut -c1-50)" --display-agent "$cli $shape" "$vpane" >/dev/null 2>&1
