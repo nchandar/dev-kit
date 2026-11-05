@@ -65,6 +65,7 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
 - Purpose: run one headless sub-agent on any CLI, brief in, handoff out. Blocks; the caller backgrounds it.
 - Usage: `spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
 - Also: `--doctor` (CLIs installed, adapter flags still valid), `--close-views` (close kept herdr tabs).
+- Herdr view: when herdr is up, the tab tails the worker log. The opencode adapter names its session (`ses_dk_*`) and the tab attaches to it with `opencode -s <id>` instead, so the new tab runs the agent; a session that never appears falls back to the log tail.
 - Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/run/<id>.{status,timedout,tab}`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
 
 ```mermaid
@@ -111,7 +112,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 |---|---|---|
 | claude | `claude -p <prompt> --dangerously-skip-permissions --no-session-persistence` | `--permission-mode acceptEdits --allowedTools Bash Read Edit Write Grep Glob --add-dir <task>` |
 | codex | `codex exec -C <dir> --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --ephemeral -o <task>/handoffs/<id>.last` | `-s workspace-write --add-dir <task>` |
-| opencode | `opencode run --auto [-m model] <prompt>` | none |
+| opencode | `opencode run --auto -s ses_dk_* --title <id> [-m model] <prompt>` | none |
 
 ### 3.5 run (`bin/run`)
 - Purpose: run a command without flooding context. No agent involved.
