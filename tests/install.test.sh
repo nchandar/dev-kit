@@ -38,6 +38,22 @@ mk cm; printf '{\n  // mine\n  "plugin": []\n}\n' > "$(oc cm)"; cp "$(oc cm)" "$
 ok "a commented config is left untouched and the user is told how"  'cmp -s "$(oc cm)" "$t/cm.before" && grep -q "experimental" "$t/o2.out"'
 HOME="$t/oc/keep" "$inst" >/dev/null 2>&1; cp "$(oc keep)" "$t/keep.1"; HOME="$t/oc/keep" "$inst" >/dev/null 2>&1
 ok "rerun leaves the config unchanged"  'cmp -s "$(oc keep)" "$t/keep.1"'
-mkdir -p "$t/nooc"; HOME="$t/nooc" PATH=/usr/bin:/bin "$inst" >/dev/null 2>&1
+# opencode command: one /dev-mode entry in the picker, linked to the repo's command file
+cmd() { echo "$t/oc/$1/.config/opencode/commands/dev-mode.md"; }
+old() { echo "$t/oc/$1/.config/opencode/commands/dev.md"; }
+ok "the /dev-mode command links to the repo file"  '[ "$(readlink "$(cmd fresh)")" = "$here/opencode/commands/dev-mode.md" ] && [ -f "$(cmd fresh)" ]'
+before=$(readlink "$(cmd fresh)"); HOME="$t/oc/fresh" "$inst" >/dev/null 2>&1
+ok "rerun keeps the command link unchanged"  '[ -n "$before" ] && [ "$(readlink "$(cmd fresh)")" = "$before" ]'
+mkdir -p "$t/oc/real/.config/opencode/commands"; echo mine > "$(cmd real)"; HOME="$t/oc/real" "$inst" >/dev/null 2>&1
+ok "a real command file is never replaced"  '[ ! -L "$(cmd real)" ] && grep -qx mine "$(cmd real)"'
+ok "the command file names dev-mode and \$ARGUMENTS"  'grep -q "^description: dev-kit:" "$(cmd fresh)" && grep -q "dev-mode" "$(cmd fresh)" && grep -q "\$ARGUMENTS" "$(cmd fresh)"'
+mkdir -p "$t/oc/mig/.config/opencode/commands"; ln -s "$here/opencode/commands/dev.md" "$(old mig)"; HOME="$t/oc/mig" "$inst" >/dev/null 2>&1
+ok "a repo-pointing old dev.md symlink is removed and replaced"  '[ ! -L "$(old mig)" ] && [ "$(readlink "$(cmd mig)")" = "$here/opencode/commands/dev-mode.md" ]'
+mkdir -p "$t/oc/realold/.config/opencode/commands"; echo mine > "$(old realold)"; HOME="$t/oc/realold" "$inst" >/dev/null 2>&1
+ok "a real old dev.md file is left alone"  '[ ! -L "$(old realold)" ] && grep -qx mine "$(old realold)"'
+mkdir -p "$t/oc/ext/.config/opencode/commands"; ln -s /tmp "$(old ext)"; HOME="$t/oc/ext" "$inst" >/dev/null 2>&1
+ok "a dev.md link pointing elsewhere is left alone"  '[ "$(readlink "$(old ext)")" = /tmp ]'
+mkdir -p "$t/nooc"; HOME="$t/nooc" PATH=/usr/bin:/bin "$inst" >/dev/null 2>&1; rc=$?
 ok "no opencode, no config dir: nothing is created"  '[ ! -e "$t/nooc/.config/opencode" ]'
+ok "no opencode: no commands dir either"  '[ $rc -eq 0 ] && [ ! -e "$t/nooc/.config/opencode/commands" ]'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

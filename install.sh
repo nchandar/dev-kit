@@ -18,6 +18,11 @@ done
 # OpenCode shows a worker's checklist in its side panel only with experimental.todo. Additive: absent keys only, plain JSON only.
 oc_dir="$HOME/.config/opencode"
 if [ -d "$oc_dir" ] || command -v opencode >/dev/null 2>&1; then
+  link "$here/opencode/commands/dev-mode.md" "$oc_dir/commands/dev-mode.md"  # adds the /dev-mode command to opencode's picker
+  # migration: drop only our old /dev link; a real file or a link elsewhere stays.
+  if [ -L "$oc_dir/commands/dev.md" ] && [ "$(readlink "$oc_dir/commands/dev.md")" = "$here/opencode/commands/dev.md" ]; then
+    rm "$oc_dir/commands/dev.md"; echo "migrated: $oc_dir/commands/dev.md -> dev-mode.md"
+  fi
   oc_cfg="$oc_dir/opencode.jsonc"; [ -e "$oc_cfg" ] || [ ! -e "$oc_dir/opencode.json" ] || oc_cfg="$oc_dir/opencode.json"
   hint="set \"experimental\": {\"todo\": true} in $oc_cfg yourself, then run: opencode service restart"
   if ! command -v python3 >/dev/null 2>&1; then echo "opencode: python3 not found; $hint"

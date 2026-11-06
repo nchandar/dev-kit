@@ -10,7 +10,7 @@ git clone https://github.com/nchandar/dev-kit ~/dev-kit
 ~/dev-kit/install.sh
 ~/.agents/dev-kit/bin/spawn --doctor      # checks your CLIs
 ```
-Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.
+Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. It gets a `/dev-mode` command, which routes through dev-mode. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.
 
 ## Skills
 Ask in plain words and run `/dev-mode`, which picks the playbook. Name one to skip triage (`/dev-feature` in Claude Code, or "use dev-debug" in Codex and OpenCode).

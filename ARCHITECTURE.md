@@ -153,6 +153,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 
 ### 3.8 install (`install.sh`)
 - Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.
+- With opencode installed or configured, also symlinks `opencode/commands/dev-mode.md` into `~/.config/opencode/commands/dev-mode.md`, so its picker shows one `/dev-mode` command that routes through dev-mode. A leftover `/dev` symlink pointing at this repo is removed on install; real files and other links stay.
 
 ### 3.9 Parent Stop gate (`bin/stop-gate`)
 - Blocks: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row.

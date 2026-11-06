@@ -23,4 +23,5 @@ ok "never copies a route checklist"            'body | grep -qi "do not copy" &&
 ok "light: at most 330 words"                  '[ -f "$f" ] && [ "$(body | wc -w)" -le 330 ]'
 ok "footer rule has one home, the skill: AGENTS.md has none"  '! grep -q "Once a dev-mode route has started" "$here/AGENTS.md"'
 ok "eval has no rule-injection switch"                  '! grep -q "EVAL_RULE" "$here/evals/route.sh"'
+ok "dev-mode names the playbook by absolute path (works outside this repo)"  'grep -q "~/.agents/dev-kit/skills/dev-<route>/SKILL.md" "$f"'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
