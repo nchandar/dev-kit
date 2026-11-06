@@ -19,7 +19,7 @@ One ledger task per route (`bin/ledger start <slug>`). Playbooks own their steps
 - [ ] 1. Triage, size first: trivial (chat, a one-line edit, running a command; delegation is never trivial) means type none; else standard, or large (unknowns: dev-research first). Type: bug or failing test -> dev-debug; new behavior -> dev-feature; structure-only -> dev-refactor; question or spike -> dev-research; skill or prompt change -> dev-eval; review -> dev-review; delegate -> dev-spawn; queued learnings -> dev-learn. Status ask: ketchup, no route. Vague: library/grill first (sharpen).
 - [ ] 2. Announce `route: <skill>, <size>`, then `bin/ledger mode <skill> "<size>"`. Trivial or none: `route: none`, do it, no ledger.
 - [ ] 3. Mixed request: one task per route, order research, debug, feature; review last.
-- [ ] 4. Read skills/dev-<route>/SKILL.md by path; pass it route, size, request. Do not copy its steps.
+- [ ] 4. Read ~/.agents/dev-kit/skills/dev-<route>/SKILL.md; pass it route, size, request. Do not copy its steps.
 - [ ] 5. Follow its Hand off to line.
 - [ ] 6. Close with its Reply line (library/deep/ketchup, library/deep/writing). Then `bin/ledger done "<summary>"` per task; follow library/state.
 
