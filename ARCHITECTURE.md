@@ -116,6 +116,8 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `DEVKIT_POLL` | 2 | Seconds between handoff checks in interactive mode |
 | `DEVKIT_GRACE` | 10 | Seconds an interactive worker may keep writing after its handoff appears |
 | `DEVKIT_NUDGE_WAIT` | 20 | Seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (ledgered as `nudge`); 0 disables |
+| `DEVKIT_WAIT` | 100 | Seconds `reconcile --wait` polls before giving up (exit 1); under the Bash tool's 120 s default timeout, so repeat it |
+| `DEVKIT_GATE_POLL` | 5 | Seconds between `reconcile --wait` polls |
 | `DEVKIT_VIEW_CLOSE_DELAY` | 2 | Seconds a finished worker's tab stays open before it closes |
 | `DEVKIT_DEPTH` | parent depth + 1 in workers (main agent is 0) | `spawn` refuses at `DEVKIT_MAX_DEPTH` (exit 3) |
 
@@ -151,6 +153,14 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 
 ### 3.8 install (`install.sh`)
 - Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.
+
+### 3.9 Parent Stop gate (`bin/stop-gate`)
+- Blocks: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row.
+- Budget: 3 blocks in a row (under Claude's cap of 8), then fail-open with a stderr warning and a ledger row `gate fail-open`; the counter resets when the gate clears. Anything unexpected also fails open with a stderr line: no executable `ledger` beside the script (symlinked file), malformed input or no `session_id`, a `session_id` outside `A-Za-z0-9_-`, or `reconcile --gate` exiting other than 1. The ledger row goes to every task with outstanding workers.
+- Scoping: `bin/spawn` writes `run/<id>.session` from `CLAUDE_CODE_SESSION_ID`; the hook's `session_id` selects only that session's workers.
+- Workers of tasks already closed with `done` are not gated.
+- Claude only; other CLIs rely on spawn's exit row and `bin/reconcile`. Workers are exempt (`DEVKIT_DEPTH` set).
+- Wiring: `install.sh` prints the hook snippet; the user merges it into `~/.claude/settings.json`.
 
 ## 4. Data model
 

@@ -4,7 +4,7 @@ set -u
 here=$(cd "$(dirname "$0")/.." && pwd); defaults="$here/bin/defaults"; arch="$here/ARCHITECTURE.md"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
-knobs="DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW_CLOSE_DELAY DEVKIT_VIEW DEVKIT_MODE DEVKIT_POLL DEVKIT_GRACE DEVKIT_NUDGE_WAIT"
+knobs="DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW_CLOSE_DELAY DEVKIT_VIEW DEVKIT_MODE DEVKIT_POLL DEVKIT_GRACE DEVKIT_NUDGE_WAIT DEVKIT_WAIT DEVKIT_GATE_POLL"
 val() { env -i "$BASH" -c ". '$defaults' 2>/dev/null; printf %s \"\${$1:-}\""; } # a default, read in a clean environment
 
 ok "bin/defaults exists"                                  '[ -f "$defaults" ]'

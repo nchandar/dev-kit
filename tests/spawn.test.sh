@@ -460,6 +460,18 @@ FAKE_ID=sr FAKE_EDIT=1 "$spawn" --shape scout sr fake "$t/brief.md"
 ok "a scout editing an already-dirty file is flagged" 'grep -q "^violation" $TD/run/sr.status'
 git checkout -q f.txt
 
+# --- run/<id>.session: the parent Stop hook matches workers to their parent session
+CLAUDE_CODE_SESSION_ID=sess-one FAKE_ID=se1 "$spawn" se1 fake "$t/brief.md"
+ok "session id is written to run/<id>.session" '[ "$(cat $TD/run/se1.session)" = sess-one ]'
+env -u CLAUDE_CODE_SESSION_ID FAKE_ID=se2 "$spawn" se2 fake "$t/brief.md"; rc=$?
+ok "no session file when the id is unset, spawn still succeeds" '[ $rc -eq 0 ] && [ ! -e $TD/run/se2.session ]'
+CLAUDE_CODE_SESSION_ID=sess-two FAKE_ID=se1 "$spawn" se1 fake "$t/brief.md"
+ok "respawn overwrites a stale session file" '[ "$(cat $TD/run/se1.session)" = sess-two ]'
+env -u CLAUDE_CODE_SESSION_ID FAKE_ID=se1 "$spawn" se1 fake "$t/brief.md"
+ok "respawn without an id removes a stale session file" '[ ! -e $TD/run/se1.session ]'
+CLAUDE_CODE_SESSION_ID=sess-dry DEVKIT_DRYRUN=1 "$spawn" se3 fake "$t/brief.md" >/dev/null
+ok "dry-run leaves no session file" '[ ! -e $TD/run/se3.session ]'
+
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

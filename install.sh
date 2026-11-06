@@ -45,3 +45,9 @@ PY
     esac
   fi
 fi
+
+# Parent Stop gate: printed only, never applied; the user decides.
+cat <<EOF
+stop-gate: merge this Stop hook into ~/.claude/settings.json to block a parent while its workers are unaccepted:
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"$HOME/.agents/dev-kit/bin/stop-gate","timeout":10}]}]}}
+EOF

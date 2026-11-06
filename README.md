@@ -52,6 +52,7 @@ Tools live in `~/.agents/dev-kit/bin/`.
 |---|---|
 | pick up where I left off | `reconcile` |
 | see what is queued to learn | `learn list`, then ask for `dev-learn` |
+| wait for my workers before ending a turn | `reconcile --wait` (the Stop hook `stop-gate` blocks until each is accepted; see ARCHITECTURE.md 3.9) |
 | run tests without the noise | `run <cmd>` |
 | hand a task to another agent | `spawn --prompt "..." <id> codex` |
 | check my setup | `spawn --doctor` |
