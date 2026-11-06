@@ -4,7 +4,7 @@
 #   reconcile --all      include finished tasks
 #   reconcile <task-id>  detail: resume point, direction, open questions, learnings, recent rows, workers, branches
 #   reconcile --gate [--session S] [-t ID]   workers still running or finished without an `accept` ledger row, one line each; exit 0 clear, 1 outstanding
-#                        scope: --session S = open tasks' workers spawned by that session, else -t ID, else $DEVKIT_TASK
+#                        scope: --session S = that session's workers across tasks (a closed task gates its live running ones only), else -t ID, else $DEVKIT_TASK
 #   reconcile --wait [--session S] [-t ID]   poll every $DEVKIT_GATE_POLL s until none run, max $DEVKIT_WAIT s; then like --gate (timeout also exits 1)
 set -u
 here=$(dirname "$0"); . "$here/defaults" || { echo "reconcile: cannot load $here/defaults" >&2; exit 2; }; B=$("$here/ledger" base); TD=$B/tasks
@@ -19,18 +19,19 @@ workers() { # task dir -> "running killed done failed" counts, or per-worker lin
 rows() { tail -n +2 "$1/ledger.tsv"; }
 lastrow() { rows "$1" | tail -1; }
 
-# outstanding workers of one task dir: running, or exited with no `accept` row newer than their last exit row (a respawned id is outstanding again)
-gate_task() { # dir session-or-empty
-  local d=$1 want=${2:-} s id st pid sess tid; tid=$(basename "$d")
+# outstanding workers of one task dir: running, or exited with no `accept` row newer than their last exit row (a respawned id is outstanding again); a closed task gates running workers only
+gate_task() { # dir session-or-empty [closed=1]
+  local d=$1 want=${2:-} closed=${3:-} s id st pid sess tid; tid=$(basename "$d")
   for s in "$d"/run/*.status; do [ -f "$s" ] || continue; id=$(basename "$s" .status)
     [ -s "$s" ] || continue # spawn writes the status file non-atomically; skip a half-written one
     read -r st pid _ < "$s"
     if [ -n "$want" ]; then sess=$(cat "$d/run/$id.session" 2>/dev/null); [ "$sess" = "$want" ] || continue; fi
     if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then echo "$id running  task=$tid"; continue; else st=killed; fi; fi
+    [ -n "$closed" ] && continue # closed with done: only still-live running workers gate
     awk -F'\t' -v id="$id" '$2=="spawn"{split($3,w," "); if(w[1]==id && w[2]!="nudge" && w[2]!="scout") ex=NR} $2=="accept"{split($3,w," "); if(w[1]==id) ac=NR} END{exit (ac>ex && ac>0)?0:1}' "$d/ledger.tsv" || echo "$id $st, unaccepted  task=$tid"
   done; }
-gate() { # [--session S] [-t ID], any order; scope: session's open tasks, else -t, else -t ID, else $DEVKIT_TASK
-  local want="" task=${DEVKIT_TASK:-} d out="" o
+gate() { # [--session S] [-t ID], any order; scope: session's workers, else -t ID, else $DEVKIT_TASK
+  local want="" task=${DEVKIT_TASK:-} d out="" o closed
   while [ $# -gt 0 ]; do
     case $1 in
       --session) [ -n "${2:-}" ] || { echo "reconcile: --session needs a session id" >&2; exit 2; }; want=$2; shift 2;;
@@ -39,8 +40,9 @@ gate() { # [--session S] [-t ID], any order; scope: session's open tasks, else -
     esac
   done
   if [ -n "$want" ]; then
-    for d in "$TD"/*/; do d=${d%/}; [ -f "$d/ledger.tsv" ] || continue; [ "$(lastrow "$d" | cut -f2)" != done ] || continue
-      o=$(gate_task "$d" "$want"); [ -z "$o" ] || out+="$o"$'\n'; done
+    for d in "$TD"/*/; do d=${d%/}; [ -f "$d/ledger.tsv" ] || continue
+      closed=""; [ "$(lastrow "$d" | cut -f2)" = done ] && closed=1 # closed task: gate_task reports running only
+      o=$(gate_task "$d" "$want" "$closed"); [ -z "$o" ] || out+="$o"$'\n'; done
   else
     [ -n "$task" ] || { echo "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" >&2; exit 2; }
     d=$TD/$task; [ -d "$d" ] || { echo "reconcile: unknown task '$task'" >&2; exit 2; }

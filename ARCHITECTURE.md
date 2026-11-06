@@ -158,7 +158,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Blocks: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row.
 - Budget: 3 blocks in a row (under Claude's cap of 8), then fail-open with a stderr warning and a ledger row `gate fail-open`; the counter resets when the gate clears. Anything unexpected also fails open with a stderr line: no executable `ledger` beside the script (symlinked file), malformed input or no `session_id`, a `session_id` outside `A-Za-z0-9_-`, or `reconcile --gate` exiting other than 1. The ledger row goes to every task with outstanding workers.
 - Scoping: `bin/spawn` writes `run/<id>.session` from `CLAUDE_CODE_SESSION_ID`; the hook's `session_id` selects only that session's workers.
-- Workers of tasks already closed with `done` are not gated.
+- Workers of tasks already closed with `done` are not gated, except one that is still running (pid alive): `reconcile --gate --session S` reports it so the Stop hook holds.
 - Claude only; other CLIs rely on spawn's exit row and `bin/reconcile`. Workers are exempt (`DEVKIT_DEPTH` set).
 - Wiring: `install.sh` prints the hook snippet; the user merges it into `~/.claude/settings.json`.
 

@@ -103,6 +103,22 @@ ok "gate: another session sees nothing"               '[ $rc -eq 0 ]'
 ok "gate: no task and no session is a usage error"    '[ $rc -eq 2 ]'
 rm -f "$GD"/run/*; unset DEVKIT_TASK
 
+# --- regression (PR #8): a closed task's LIVE running worker is still gated under --session
+echo "running $$ 100" > "$GD/run/wc.status"; echo sess-A > "$GD/run/wc.session"
+ok "gate: live running worker blocks on an open task"  '"$rec" --gate --session sess-A | grep -q "wc running"'
+echo "done 0 100" > "$GD/run/wc.status"; "$ledger" -t "$G" spawn "wc done" cli=fake "" done
+ok "gate: finished unaccepted blocks on an open task"  '"$rec" --gate --session sess-A | grep -q "wc done, unaccepted"'
+"$ledger" -t "$G" done "shipped"
+out=$("$rec" --gate --session sess-A); rc=$?
+ok "gate: closed task, finished unaccepted stays clear" '[ $rc -eq 0 ] && [ -z "$out" ]'
+echo "running $$ 100" > "$GD/run/wc.status"
+out=$("$rec" --gate --session sess-A); rc=$?
+ok "gate: closed task, live running worker blocks"     '[ $rc -eq 1 ] && echo "$out" | grep -q "wc running"'
+echo "running 999999 100" > "$GD/run/wc.status"
+out=$("$rec" --gate --session sess-A); rc=$?
+ok "gate: closed task, dead pid reads killed, not gated" '[ $rc -eq 0 ] && [ -z "$out" ]'
+rm -f "$GD"/run/*
+
 # --- --wait: block until no worker in scope is running, then report what is unaccepted
 export DEVKIT_TASK=$G DEVKIT_GATE_POLL=1
 SECONDS=0; out=$("$rec" --wait); rc=$?
