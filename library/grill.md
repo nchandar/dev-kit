@@ -12,6 +12,8 @@ Record each resolved decision with bin/ledger (phase=grill).
 4. Use the project's own words (GLOSSARY.md or domain terms). If a term is overloaded, pin its meaning before moving on.
 5. Stop when every unknown is resolved or explicitly deferred: goal in one sentence, non-goals listed, a command or observation that proves done.
 6. Play back the plan in at most 10 lines and get an ok before you start building (a small, clear edit needs none).
+7. Sharpen (deepen before widening): name what a top professional would do that was not asked, the rawest source they would start from, and what other than you or the user would prove the result right.
+8. Leave choices that belong to the user open; do not decide them.
 
 ## Red Flags
 - Questions the codebase could answer, or with no recommendation attached.

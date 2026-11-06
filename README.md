@@ -13,19 +13,21 @@ git clone https://github.com/nchandar/dev-kit ~/dev-kit
 Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.
 
 ## Skills
-Just ask in plain words; the matching skill runs. Name one to be explicit (`/dev-feature` in Claude Code, or "use dev-debug" in Codex and OpenCode).
+Ask in plain words and run `/dev-mode`, which picks the playbook. Name one to skip triage (`/dev-feature` in Claude Code, or "use dev-debug" in Codex and OpenCode).
 
 | Skill | Say something like | What it does | You get |
 |---|---|---|---|
-| `dev-mode` | "/dev-mode fix the login bug and add a remember-me option" | triage by type and size, announce the route, chain the loops, stay on route, one closing answer | the right loops run in order, with a status footer |
-| `dev-feature` | "add rate limiting", "refactor the parser" | recon, options, spec, thin slices, test first, review, verify, ship | code, tests, a ledger trail |
+| `dev-mode` | "/dev-mode fix the login bug and add a remember-me option" | triage by type and size, announce the route, hand off to its playbook, stay on route, one closing answer | the right loops run in order, with a status footer |
+| `dev-feature` | "add rate limiting", "add CSV export" | recon, options, spec, thin slices, test first, review, verify, ship | code, tests, a ledger trail |
+| `dev-refactor` | "refactor the parser", "split this file, no behavior change" | pin behavior, subtract first, small green steps, prove the output is unchanged | a reshaped codebase and its equivalence proof |
 | `dev-debug` | "login test fails", "crashes on empty input" | recon, hypotheses, repro, root cause, doubt, regression test, fix options, fix, review | a fix and its failing-then-passing test |
 | `dev-research` | "compare Redis and Postgres", "how does auth work" | grill, research plus external standard pass, checkpoint, report with labeled options | `report.md` with a build handoff, plus `report.html` for systems |
 | `dev-review` | "review my branch" | Standards and Spec scouts in parallel, blast radius | findings with file:line |
-| `dev-spawn` | "open a codex instance and run X" | one headless worker per task on claude, codex or opencode | a short handoff with evidence |
+| `dev-spawn` | "open a codex instance and run X" | one worker per task (interactive herdr tab, headless fallback) on claude, codex or opencode | a short handoff with evidence |
+| `dev-eval` | "did that skill change help?" | blind candidate runs, a blind judge, a recommendation | a verdict: promote, drop or rerun |
 | `dev-learn` | "learn from this" | dedupes queued lessons, drafts a library change on a branch | a diff you approve |
 
-Every skill has the same shape: a checklist the agent copies into its task list, with skipped steps kept and explained.
+Route skills are playbooks with one shape: You own, Reads (the library files and when), a Checklist the agent opens as a visible todo list and ticks off (skipped steps stay, with a reason), Hand off to, and Reply. They are explicit-only: type `/dev-mode` and it picks one, or type `/dev-debug` and the like directly.
 
 ```mermaid
 flowchart LR
@@ -60,6 +62,9 @@ Workers skip permission prompts but can never push.
 | Variable | Effect |
 |---|---|
 | `DEVKIT_VIEW=off` | no herdr tabs for workers |
+| `DEVKIT_MODE` | `auto` runs claude, codex and opencode as their interactive TUI in a herdr tab when herdr is up; `headless` forces `-p`; `interactive` fails (exit 2) without herdr |
+| `DEVKIT_POLL`, `DEVKIT_GRACE` | seconds between handoff checks in interactive mode (2); seconds a worker may keep writing after its handoff appears (10) |
+| `DEVKIT_NUDGE_WAIT` | seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (20); 0 disables |
 | `DEVKIT_MODEL` | model name for workers (cheaper runs) |
 | `DEVKIT_SAFE=1` | restricted worker permissions |
 | `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT` | hung-worker timeout, live workers, nesting depth, nested slot wait; defaults are in the ARCHITECTURE.md env table |

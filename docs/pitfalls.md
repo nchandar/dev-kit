@@ -26,3 +26,4 @@ Read this file at recon (dev-debug step 1); check it with tests/pitfalls.test.sh
 | pg-18 | slot claim lost its slot under a stall | tests/spawn.test.sh | 2026-11-02 |
 | pg-19 | repo scan passed a dir to a per-file grep and flagged nothing | bounded-retry | 2026-11-02 |
 | pg-20 | stat fallback printed filesystem info on Linux when the lock vanished; set -u arithmetic killed the spawner | tests/spawn.test.sh | 2026-11-05 |
+| pg-21 | eval scored opencode stderr tool traces (repo files hold sample `route:` lines) instead of the model answer | tests/route-eval.test.sh | 2026-11-05 |

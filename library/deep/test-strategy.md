@@ -15,6 +15,10 @@
 8. Use literal expected values, never ones recomputed with the code's own logic.
 9. Isolate: each test builds and cleans its own state; no order dependence.
 10. Flaky test policy: a flake is a bug. Quarantine it the same day, with the user's approval, an owner and a ledger row, find the cause (shared state, real clock, async race, ordering), fix or delete. Never retry-until-green; it hides real races.
+11. A never-happens assertion (no charge, no email, no call) needs a twin case where it does happen; otherwise the test cannot see the call.
+12. What a mocked external service receives is behavior; assert the payload against the requirement, not against a value the code computed.
+13. Tests and evals that read local state (inbox, home dir, env) set their own state dir, so real data cannot leak in.
+14. Agent-eval assertions check properties (route named, footer present), not exact outcomes; never loosen a property to pass.
 
 ## Red Flags
 - Mocks of internal classes, or assertions on call counts.

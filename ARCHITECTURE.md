@@ -13,7 +13,7 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Agent-agnostic: Claude Code, Codex and OpenCode all use it | Tied to one vendor |
 
 - The agent CLIs are the runtimes: they run the agent loop and call the models.
-- This toolkit never calls a model. It guides the agent, records what happened, and launches other CLIs headlessly.
+- This toolkit never calls a model. It guides the agent, records what happened, and launches other CLIs (interactive in a herdr tab, headless as the fallback).
 
 ## 2. Big picture
 
@@ -22,7 +22,7 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Layer | What lives there | Who reads it |
 |---|---|---|
 | Entry rules | `AGENTS.md` (routes and always-rules, max 6144 B), `CLAUDE.md` | Main agent, every session |
-| Skills | `skills/dev-*/SKILL.md`: seven skills: an entry point (dev-mode) and six routes, each a checklist | Main agent, one per task |
+| Skills | `skills/dev-*/SKILL.md`: nine skills: an entry point (dev-mode) and eight routes, each a checklist | Main agent, one per task |
 | Library | `library/`: principles, core, deep, recipes | Main agent or workers, on demand |
 | Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, lint-budget | Agents run them; people can too |
 | Per-task files | `.devkit/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |
@@ -62,11 +62,18 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
 - Footer line `learnings queued: N (run dev-learn)` when the inbox is non-empty.
 
 ### 3.4 spawn (`bin/spawn`)
-- Purpose: run one headless sub-agent on any CLI, brief in, handoff out. Blocks; the caller backgrounds it.
+- Purpose: run one sub-agent on any CLI (a herdr tab TUI when herdr is up, else headless), brief in, handoff out. Blocks; the caller backgrounds it.
 - Usage: `spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
 - Also: `--doctor` (CLIs installed, adapter flags still valid), `--close-views` (close kept herdr tabs).
 - Herdr view: when herdr is up, the tab tails the worker log. The opencode adapter names its session (`ses_dk_*`) and the tab attaches to it with `opencode -s <id>` instead, so the new tab runs the agent; a session that never appears falls back to the log tail.
-- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/run/<id>.{status,timedout,tab}`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
+- Interactive (`DEVKIT_MODE`, default `auto`): with herdr up and a real CLI (claude, codex, opencode; never `fake`, never `DEVKIT_VIEW=off`), the worker is the normal TUI in a herdr tab, so its todo or plan panel shows. Flow: `tab create --env` (depth, task, dir, push-guard pair and set knobs; the pane shell is herdr's, so spawn's exports do not reach it) then `agent start <id> --kind <cli> -- <flags>` then one `agent prompt` line "Read <task>/briefs/<id>.prompt and follow it". No `-p`, `exec` or `run`.
+  - Flags: claude `--dangerously-skip-permissions -n <id>`; codex `-C <wd>` plus `-c projects."<dir>".trust_level="trusted"` (repo and worktree) to skip the trust dialog; opencode `--auto -s <sid>`, model through `OPENCODE_CONFIG_CONTENT` in the tab env (the TUI has no `-m`).
+  - Done is a non-empty handoff (polled every `DEVKIT_POLL`, then `DEVKIT_GRACE`), then the tab closes. A failed start, a timeout, a pane gone, or an agent unknown to herdr, for 3 polls with no handoff (`failed`) and a spawn killed by TERM/INT/HUP all write the stub from `herdr pane read`, notify, then close the tab, so no stale tab is left (`DEVKIT_VIEW_KEEP=1` keeps and records it for `--close-views`). A tab that cannot be created while herdr is up is a loud `failed`, never a quiet headless run. Agent state alone is never done.
+  - A scout that changes files in a tab is a ledger warning, not `violation` (a person may type there). `DEVKIT_MODE=headless` or herdr down keeps the old path; `interactive` without herdr exits 2.
+  - Task list guard: the short `agent prompt` line repeats the checklist instruction ("before any other tool call", naming TaskCreate, TodoWrite, update_plan, todowrite). After `DEVKIT_NUDGE_WAIT` seconds spawn reads the pane; if no task list is drawn it re-sends the instruction once and ledgers a `nudge` row. claude tabs get `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, without which no task tools exist.
+  - Eval: `evals/spawn-interactive.sh` (manual, costs tokens; `--list` shows the cases; runs from a worker too: it uses its own sandbox DEVKIT_DIR and drops the inherited depth and task) spawns a trivial scout per installed CLI and asserts tab created, agent detected, ticked `## Checklist`, tab closed, exit 0. `tests/spawn-eval.test.sh` checks its scoring with fakes.
+  - opencode todo panel: needs `experimental.todo` in the global opencode config (install.sh sets it); `--doctor` warns when it is missing.
+- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/briefs/<id>.prompt`, `<task>/run/<id>.{status,timedout,tab,checklist}`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
 
 ```mermaid
 sequenceDiagram
@@ -78,7 +85,7 @@ sequenceDiagram
   S->>S: claim slot (atomic mkdir, up to the worker cap)
   S->>S: optional git worktree devkit/task-id
   S->>S: push guard (dead pushurl), build CLI command, status=running
-  S->>W: launch headless, stdin closed, log to handoffs/id.log
+  S->>W: launch (interactive TUI in a herdr tab; headless, stdin closed, log to handoffs/id.log, as the fallback)
   S-->>S: timeout guard (TERM, then KILL after 5 s)
   W->>L: bin/ledger rows for its decisions
   W->>S: writes handoffs/id.md
@@ -105,6 +112,10 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `DEVKIT_SAFE` | unset | Restricted permissions instead of skipping them |
 | `DEVKIT_DRYRUN` | unset | Print the CLI command and exit |
 | `DEVKIT_VIEW` | herdr | `off` disables the tab; `DEVKIT_VIEW_KEEP=1` keeps it; `DEVKIT_VIEW_NOTIFY=all` notifies on success |
+| `DEVKIT_MODE` | auto | `auto` runs claude, codex and opencode as its interactive TUI in a herdr tab when herdr is up; `headless` forces `-p`; `interactive` fails (exit 2) without herdr |
+| `DEVKIT_POLL` | 2 | Seconds between handoff checks in interactive mode |
+| `DEVKIT_GRACE` | 10 | Seconds an interactive worker may keep writing after its handoff appears |
+| `DEVKIT_NUDGE_WAIT` | 20 | Seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (ledgered as `nudge`); 0 disables |
 | `DEVKIT_VIEW_CLOSE_DELAY` | 2 | Seconds a finished worker's tab stays open before it closes |
 | `DEVKIT_DEPTH` | parent depth + 1 in workers (main agent is 0) | `spawn` refuses at `DEVKIT_MAX_DEPTH` (exit 3) |
 
@@ -132,7 +143,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 ### 3.7 lint-budget (`bin/lint-budget`)
 - Purpose: keep what agents load small and consistent. `bin/lint-budget [root] [--partial]`.
 - Checks:
-  - `AGENTS.md` at most 6144 B; 4 to 8 skills, each at most 150 lines, `name` = folder = `dev-*`, one-line description, descriptions total at most 4096 B.
+  - `AGENTS.md` at most 6144 B; 4 to 12 skills, each at most 150 lines, `name` = folder = `dev-*`, one-line description, descriptions total at most 4096 B.
   - Skill sections: When to Use, Checklist, Rationalizations, Red Flags, Verification; a `bin/ledger` mention; a `library/state` reference (except dev-learn).
   - Core library: each file at most 80 lines (sections When to Use, Steps, Red Flags, Verification), total at most 32768 B.
   - Deep: at most 45 lines each, total 65536 B. Recipes: at most 45 lines each, total 49152 B, each indexed.
@@ -155,6 +166,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
     briefs/<wid>.md            worker briefs (main agent, or spawn --prompt)
     handoffs/<wid>.md          worker report (worker; spawn if missing); .log/.last raw output
     run/<wid>.status           running|done|failed|timeout|violation (spawn)
+    run/<wid>.checklist        n/m closed items of the worker checklist, or missing (spawn)
     runs/NNN.log, wt/<wid>/    command logs (run), worker worktrees (spawn)
 ```
 
@@ -169,19 +181,27 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 
 ## 5. Skills
 
-The six routes start with the same preamble: start or resume a task, read `.devkit/memory.md`, copy the checklist into the task list, ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
+The eight routes start with the same preamble: start or resume a task, read `.devkit/memory.md`, open the checklist as the host todo list (a checklist in `state.md` when the host has none), ledger after every step, close with `bin/ledger done` or a `next` row. All but dev-learn end with `library/state`.
+
+### Playbook shape
+Each route skill (`dev-feature`, `dev-debug`, `dev-refactor`, `dev-research`, `dev-review`, `dev-spawn`, `dev-eval`, `dev-learn`) is a playbook with the same parts, in order: one-line `description` starting "Use when" (when, never how), `**You own:**`, `**Reads:**` (always files, then if-conditions with real `library/` paths), the Checklist (the to-do list source), `**Hand off to:**` (the chain rule), `**Reply:**` (what the final answer contains). The eight playbooks carry `disable-model-invocation: true`: the model never picks one by description, dev-mode reads the chosen playbook by path, and users can still type `/dev-x`. dev-mode itself stays model-visible: OpenCode honors the flag by hiding the skill from its skill tool, which is how it loads dev-mode (measured: opencode routing 15/31 with dev-mode flagged). `tests/playbook-shape.test.sh` enforces the shape.
 
 ### dev-mode
-- Triggers: `/dev-mode <request>`, explicit only (no hook). Entry point; it owns no work of its own.
-- Steps: triage size first (trivial means no route, no ledger), then type; announce `route: <skill>, <size>`; mixed requests split into one task per route (research, debug, feature, review last); run each route's own skill; chain; close with result, evidence, open risks.
+- Triggers: `/dev-mode <request>`, explicit only (no hook). Entry point; it only classifies (size, type, status ask, vague request), announces, splits mixed requests and reads the chosen playbook by path. Chaining and the closing answer live in each playbook's Hand off to and Reply lines.
+- Steps: triage size first (trivial means no route, no ledger), then type; announce `route: <skill>, <size>`; mixed requests split into one task per route (research, debug, feature, review last); read the playbook by path; follow its Hand off to and Reply.
 - Stays on track with a footer on every in-route reply: `route: <skill>, step N/M, next: <step>`; gates are the only pauses.
 - Reads: state. Checked by `tests/dev-mode.test.sh` (content) and `evals/route.sh` (routing and drift against the real claude, costs tokens).
 
 ### dev-feature
-- Triggers: new behavior, behavior change, refactor.
+- Triggers: new behavior, behavior change. Structure-only change goes to dev-refactor.
 - Steps: principles skim, recon/options/clarify (fresh research report wins, else dev-research with clarify skipped and checkpoint folded into options), spec, quality bar, plan, per-slice red/green, parallel slices via spawn, observability/ui/docs checks, dev-review, verify, ship.
 - Reads: principles, grill, spec, architecture, quality-bar, plan, tdd, observability, ui-browser, docs-grounding, verify, git-ship, state.
-- Outputs: `spec.md`, `plan.json`, commits. Refactor variant: final output must equal the baseline.
+- Outputs: `spec.md`, `plan.json`, commits.
+
+### dev-refactor
+- Triggers: structure-only change; behavior must not change.
+- Steps: goal and invariant, pin behavior (baseline output, characterization tests), target shape (sketch for boundary-crossing work), subtract first, small green steps with one commit each, spot-check renames, prove output equals baseline, keep only what lowers reader load, review, ship.
+- Reads: principles, deep/sketch, explain-html, simplify, verify, git-ship, state. Outputs: baseline, equivalence proof, ordered commits.
 
 ### dev-debug
 - Triggers: failing test, broken build, regression, error in logs.
@@ -205,6 +225,11 @@ The six routes start with the same preamble: start or resume a task, read `.devk
 - Steps: pick shape, write brief (max 40 lines), worktrees for parallel writers, run each worker as its own background command, read only handoffs, accept only evidence-backed reports, handle dropouts, merge ship branches yourself.
 - Reads: state. Uses `bin/spawn`, `bin/run`, `bin/reconcile`. Outputs: handoffs and accept/reject ledger rows.
 
+### dev-eval
+- Triggers: "did that skill or prompt change help", comparing two variants.
+- Steps: frame variant and rubric (judge only), sanitized environments outside the repo, one organic prompt, N candidates via dev-spawn on different CLIs, one blind judge, check what each really did, read every output, report promote/drop/rerun.
+- Reads: principles, state. Outputs: `report.md` with the verdict.
+
 ### dev-learn
 - Triggers: `bin/learn count` above 0, a task just closed, or "learn from this".
 - Steps: list, dedupe against the library, classify (principle, recipe, project), generalize and scrub, draft on a branch in a separate worktree, lint and test, show the diff and ask, merge `--ff-only` only if approved, record outcomes.
@@ -214,9 +239,9 @@ The six routes start with the same preamble: start or resume a task, read `.devk
 
 | Tier | Files | When read |
 |---|---|---|
-| Principles digest | `principles.md`: 18 numbered rules in four groups, each pointing to a deeper file | Step 0 of dev-feature, dev-debug, dev-review (about 700 tokens) |
+| Principles digest | `principles.md`: 25 numbered rules in five groups, each pointing to a deeper file | Step 0 of dev-feature, dev-refactor, dev-debug, dev-review, dev-eval (about 700 tokens) |
 | Core (18) | See below | At the checklist step that names it |
-| Deep (17) | See below | Only when a principle's trigger matches |
+| Deep (25) | See below | Only when a principle's trigger matches |
 | Recipes | `index.md` plus `publish-repo-safely.md` | When building, deploying or setting up tooling |
 
 Core files (each has a trigger section and a ledger phase):
@@ -242,6 +267,7 @@ Deep files:
 | Architecture | `model-the-domain`, `api-contracts`, `boundaries-and-types`, `idempotent-resumable`, `shared-mutable-state`, `reader-load`, `decision-records` |
 | Prove | `test-strategy`, `build-the-lever`, `explain-the-number`, `definition-of-done` |
 | Discipline | `encode-lessons`, `context-guard`, `five-axis-review` |
+| Apps, writing, long runs | `sketch`, `blast-radius`, `app-verification-recipe`, `experience-first`, `typescript`, `writing`, `ketchup`, `overnight` |
 
 Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe has When to Load, Steps, Gotchas, Verified.
 
@@ -259,7 +285,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 
 **Delegate**
 1. The main agent writes a brief and runs `bin/spawn` (own background command per worker, up to the worker cap).
-2. The worker runs headless in its own worktree with pushes blocked.
+2. The worker runs (interactive in a herdr tab, headless as the fallback) in its own worktree with pushes blocked.
 3. It writes a handoff; spawn records the status and a ledger row.
 4. The main agent reads only the handoff, verifies a claim, and merges any branch itself.
 

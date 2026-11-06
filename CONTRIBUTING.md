@@ -31,7 +31,7 @@ Enforced by `bin/lint-budget`:
 | `AGENTS.md` size | 6144 B |
 | Skill descriptions, total | 4096 B (each one line) |
 | Skill file | 150 lines |
-| Skill count | 4 to 8 |
+| Skill count | 4 to 12 |
 | Core library file | 80 lines |
 | Core library, total | 32768 B |
 | `library/deep/` file / total | 45 lines / 65536 B |
@@ -77,6 +77,7 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | `run` | Log plus short summary wrapper |
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
+| `pstack-adoption` | Wiring of the pstack-derived skills and deep files |
 
 Real-agent evals cost a few cents each. Run them after changing skills, `spawn` or the learning flow:
 | Script | Checks |

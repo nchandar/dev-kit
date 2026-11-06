@@ -11,7 +11,7 @@ Record each check with bin/ledger (phase=verify, evidence=command + key output l
 4. Run the project's tests, lint and typecheck too: necessary, not sufficient.
 5. Bug: the original repro now passes. Refactor: output equals the saved baseline.
 6. Diff hygiene: see library/git-ship.
-7. When a check fails, suspect your observation method before the system, but never soften the result.
+7. When a check fails, suspect your observation method before the system, but never soften the result. A "pre-existing failure" claim is a hypothesis: reproduce it on the base first (two such claims were real bugs).
 8. Report unrun or inconclusive checks plainly as not-run.
 
 ## Red Flags

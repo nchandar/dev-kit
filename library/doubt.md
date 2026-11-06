@@ -10,11 +10,13 @@ Record each objection and its disposition with bin/ledger (phase=doubt).
 3. DOUBT: instruct "find the strongest reason this is wrong; try to disprove, not approve." Run via dev-spawn as a scout.
 4. RECONCILE: per objection record confirmed (fix it), refuted (evidence: command or file:line) or unresolved (ask the user).
 5. STOP after 2 rounds (a round is one scout pass, your triage and the fixes); a fix that changes the claim gets a fresh scout. Still contested means escalate to the user.
+6. A finding or doubt survives only if a run proves it (a command, a test, a repro). Otherwise mark it unproven.
 
 ## Red Flags
 - Briefing the scout with your reasoning or evidence for the claim, or dismissing objections without evidence.
 - More than 2 rounds; using doubt on every trivial step.
 - "I already checked": the same context shares the same blind spots.
+- A finding kept open that was never proven by a run.
 
 ## Verification
 - Every objection has a disposition backed by evidence; confirmed ones were fixed and re-verified.
