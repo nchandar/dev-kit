@@ -70,4 +70,91 @@ mkdir -p "$t/inbox"; printf 'time\tproject\ttask\tscope\tlesson\tref\tfrom\nT\tp
 out=$("$rec")
 ok "list footer shows queued learnings"            'echo "$out" | tail -1 | grep -q "learnings queued: 1"'
 
+# --- --gate: outstanding workers for the parent Stop hook
+G=$("$ledger" start gate-task "g"); GD=$("$ledger" -t "$G" path); mkdir -p "$GD/run" "$GD/handoffs"
+export DEVKIT_TASK=$G
+out=$("$rec" --gate); rc=$?
+ok "gate: no workers is clear (exit 0)"               '[ $rc -eq 0 ] && [ -z "$out" ]'
+echo "running $$ 100" > "$GD/run/w1.status"
+out=$("$rec" --gate); rc=$?
+ok "gate: a live running worker blocks (exit 1)"      '[ $rc -eq 1 ] && echo "$out" | grep -q "w1 running"'
+echo "done 0 100" > "$GD/run/w1.status"; echo r > "$GD/handoffs/w1.md"; "$ledger" -t "$G" spawn "w1 done" cli=fake "" done
+out=$("$rec" --gate); rc=$?
+ok "gate: finished but unaccepted blocks"             '[ $rc -eq 1 ] && echo "$out" | grep -q "w1 done, unaccepted"'
+"$ledger" -t "$G" accept "w1 accepted" "evidence checked" "" pass
+out=$("$rec" --gate); rc=$?
+ok "gate: an accept row clears the worker"            '[ $rc -eq 0 ] && [ -z "$out" ]'
+"$ledger" -t "$G" spawn "w1 done" "respawned" "" done
+ok "gate: a respawned id is outstanding again"        '"$rec" --gate | grep -q "w1 done, unaccepted"'
+"$ledger" -t "$G" accept "w1 rejected" "no evidence" "" fail
+ok "gate: a reject row also clears (parent decided)"  '"$rec" --gate >/dev/null'
+echo "killed 143 100" > "$GD/run/w2.status"; "$ledger" -t "$G" spawn "w2 killed" interrupted "" killed
+ok "gate: killed worker is outstanding until decided" '"$rec" --gate | grep -q "w2 killed, unaccepted"'
+echo "running 999999 100" > "$GD/run/w3.status"; "$ledger" -t "$G" accept "w2 rejected" dead "" fail
+out=$("$rec" --gate)
+ok "gate: dead pid reads killed, not running"         'echo "$out" | grep -q "w3 killed, unaccepted" && ! echo "$out" | grep -q "w3 running"'
+# --session scopes by run/<id>.session across open tasks
+rm -f "$GD"/run/*.status; echo "running $$ 100" > "$GD/run/ws.status"; echo sess-A > "$GD/run/ws.session"
+unset DEVKIT_TASK
+ok "gate: --session matches its own worker"          '"$rec" --gate --session sess-A | grep -q "ws running"'
+"$rec" --gate --session sess-B >/dev/null; rc=$?
+ok "gate: another session sees nothing"               '[ $rc -eq 0 ]'
+"$rec" --gate >/dev/null 2>&1; rc=$?
+ok "gate: no task and no session is a usage error"    '[ $rc -eq 2 ]'
+rm -f "$GD"/run/*; unset DEVKIT_TASK
+
+# --- --wait: block until no worker in scope is running, then report what is unaccepted
+export DEVKIT_TASK=$G DEVKIT_GATE_POLL=1
+SECONDS=0; out=$("$rec" --wait); rc=$?
+ok "wait: returns at once when clear"                 '[ $rc -eq 0 ] && [ -z "$out" ] && [ $SECONDS -lt 1 ]'
+"$ledger" -t "$G" spawn "w4 done" cli=fake "" done; "$ledger" -t "$G" accept "w4 accepted" ok "" pass
+echo "running $$ 100" > "$GD/run/w4.status"
+(sleep 2; echo "done 0 100" > "$GD/run/w4.status") & # sleep-ok: flips the status while --wait polls
+SECONDS=0; out=$("$rec" --wait); rc=$?; el=$SECONDS
+ok "wait: blocks until the running worker finishes"   '[ $rc -eq 0 ] && [ -z "$out" ] && [ $el -ge 1 ]'
+"$ledger" -t "$G" spawn "w5 done" cli=fake "" done
+echo "running $$ 100" > "$GD/run/w5.status"
+(sleep 2; echo "done 0 100" > "$GD/run/w5.status") & # sleep-ok: flips the status while --wait polls
+out=$("$rec" --wait); rc=$?
+ok "wait: lists a finished but unaccepted worker"     '[ $rc -eq 1 ] && echo "$out" | grep -q "w5 done, unaccepted"'
+echo "running $$ 100" > "$GD/run/w5.status"
+SECONDS=0; out=$(DEVKIT_WAIT=2 "$rec" --wait 2>&1); rc=$?; el=$SECONDS
+ok "wait: times out with exit 1 and says so"          '[ $rc -eq 1 ] && echo "$out" | grep -q "timed out" && echo "$out" | grep -q "w5 running" && [ $el -le 4 ]'
+unset DEVKIT_TASK; echo "running $$ 100" > "$GD/run/ws.status"; echo sess-A > "$GD/run/ws.session"
+out=$("$rec" --wait --session sess-B); rc=$?
+ok "wait: --session scopes like gate"                 '[ $rc -eq 0 ] && [ -z "$out" ]'
+"$rec" --wait >/dev/null 2>&1; rc=$?
+ok "wait: no task and no session is a usage error"    '[ $rc -eq 2 ]'
+rm -f "$GD"/run/*
+
+# --- knob validation, -t scope, --session arguments, half-written status
+export DEVKIT_TASK=$G
+for kv in DEVKIT_WAIT=5m DEVKIT_GATE_POLL=x; do
+  out=$(env "$kv" "$rec" --wait 2>&1); rc=$?
+  ok "wait: bad $kv is a usage error (exit 2)"       '[ $rc -eq 2 ] && echo "$out" | grep -q "whole number"'
+done
+unset DEVKIT_TASK
+echo "running $$ 100" > "$GD/run/wt.status"
+out=$("$rec" -t "$G" --gate); rc=$?
+ok "gate: -t before --gate picks the task"            '[ $rc -eq 1 ] && echo "$out" | grep -q "wt running"'
+out=$("$rec" --gate -t "$G"); rc=$?
+ok "gate: -t after --gate picks the task"             '[ $rc -eq 1 ] && echo "$out" | grep -q "wt running"'
+"$rec" --gate -t nope >/dev/null 2>&1; rc=$?
+ok "gate: -t with an unknown task is exit 2"          '[ $rc -eq 2 ]'
+"$rec" --gate -t >/dev/null 2>&1; rc=$?
+ok "gate: -t without an id is exit 2"                 '[ $rc -eq 2 ]'
+echo "done 0 100" > "$GD/run/wt.status"; "$ledger" -t "$G" spawn "wt done" cli=fake "" done
+out=$(DEVKIT_GATE_POLL=1 "$rec" --wait -t "$G"); rc=$?
+ok "wait: -t picks the task"                          '[ $rc -eq 1 ] && echo "$out" | grep -q "wt done, unaccepted"'
+for m in --gate --wait; do
+  "$rec" $m --session >/dev/null 2>&1; rc=$?
+  ok "$m: --session without an argument is exit 2"    '[ $rc -eq 2 ]'
+  "$rec" $m --session "" >/dev/null 2>&1; rc=$?
+  ok "$m: --session with an empty argument is exit 2" '[ $rc -eq 2 ]'
+done
+: > "$GD/run/half.status"; "$ledger" -t "$G" accept "wt accepted" ok "" pass
+out=$("$rec" --gate -t "$G"); rc=$?
+ok "gate: an empty (half-written) status file is skipped" '[ $rc -eq 0 ] && [ -z "$out" ]'
+rm -f "$GD"/run/*
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

@@ -3,8 +3,11 @@
 #   reconcile            one line per OPEN task in this repo (use at session start)
 #   reconcile --all      include finished tasks
 #   reconcile <task-id>  detail: resume point, direction, open questions, learnings, recent rows, workers, branches
+#   reconcile --gate [--session S] [-t ID]   workers still running or finished without an `accept` ledger row, one line each; exit 0 clear, 1 outstanding
+#                        scope: --session S = open tasks' workers spawned by that session, else -t ID, else $DEVKIT_TASK
+#   reconcile --wait [--session S] [-t ID]   poll every $DEVKIT_GATE_POLL s until none run, max $DEVKIT_WAIT s; then like --gate (timeout also exits 1)
 set -u
-here=$(dirname "$0"); B=$("$here/ledger" base); TD=$B/tasks
+here=$(dirname "$0"); . "$here/defaults" || { echo "reconcile: cannot load $here/defaults" >&2; exit 2; }; B=$("$here/ledger" base); TD=$B/tasks
 cut_() { printf '%s' "$1" | cut -c1-"$2"; }
 workers() { # task dir -> "running killed done failed" counts, or per-worker lines with -v
   local d=$1 mode=${2:-count} r=0 k=0 f=0 s st pid id
@@ -16,7 +19,53 @@ workers() { # task dir -> "running killed done failed" counts, or per-worker lin
 rows() { tail -n +2 "$1/ledger.tsv"; }
 lastrow() { rows "$1" | tail -1; }
 
+# outstanding workers of one task dir: running, or exited with no `accept` row newer than their last exit row (a respawned id is outstanding again)
+gate_task() { # dir session-or-empty
+  local d=$1 want=${2:-} s id st pid sess tid; tid=$(basename "$d")
+  for s in "$d"/run/*.status; do [ -f "$s" ] || continue; id=$(basename "$s" .status)
+    [ -s "$s" ] || continue # spawn writes the status file non-atomically; skip a half-written one
+    read -r st pid _ < "$s"
+    if [ -n "$want" ]; then sess=$(cat "$d/run/$id.session" 2>/dev/null); [ "$sess" = "$want" ] || continue; fi
+    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then echo "$id running  task=$tid"; continue; else st=killed; fi; fi
+    awk -F'\t' -v id="$id" '$2=="spawn"{split($3,w," "); if(w[1]==id && w[2]!="nudge" && w[2]!="scout") ex=NR} $2=="accept"{split($3,w," "); if(w[1]==id) ac=NR} END{exit (ac>ex && ac>0)?0:1}' "$d/ledger.tsv" || echo "$id $st, unaccepted  task=$tid"
+  done; }
+gate() { # [--session S] [-t ID], any order; scope: session's open tasks, else -t, else -t ID, else $DEVKIT_TASK
+  local want="" task=${DEVKIT_TASK:-} d out="" o
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --session) [ -n "${2:-}" ] || { echo "reconcile: --session needs a session id" >&2; exit 2; }; want=$2; shift 2;;
+      -t) [ -n "${2:-}" ] || { echo "reconcile: -t needs a task id" >&2; exit 2; }; task=$2; shift 2;;
+      *) shift;;
+    esac
+  done
+  if [ -n "$want" ]; then
+    for d in "$TD"/*/; do d=${d%/}; [ -f "$d/ledger.tsv" ] || continue; [ "$(lastrow "$d" | cut -f2)" != done ] || continue
+      o=$(gate_task "$d" "$want"); [ -z "$o" ] || out+="$o"$'\n'; done
+  else
+    [ -n "$task" ] || { echo "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" >&2; exit 2; }
+    d=$TD/$task; [ -d "$d" ] || { echo "reconcile: unknown task '$task'" >&2; exit 2; }
+    out=$(gate_task "$d" ""); [ -z "$out" ] || out+=$'\n'
+  fi
+  [ -z "$out" ] || printf '%s' "$out"; [ -z "$out" ]; }
+wait_() { # same scope as gate; poll until nothing runs or DEVKIT_WAIT elapses
+  local out rc cap=$DEVKIT_WAIT poll=$DEVKIT_GATE_POLL
+  case $cap$poll in *[!0-9]*) echo "reconcile --wait: DEVKIT_WAIT and DEVKIT_GATE_POLL must be a whole number of seconds" >&2; exit 2;; esac
+  [ "$poll" -gt 0 ] || { echo "reconcile --wait: DEVKIT_GATE_POLL must be at least 1" >&2; exit 2; }
+  cap=$((10#$cap)); poll=$((10#$poll)) # force decimal: 08/09 are not octal
+  SECONDS=0
+  while :; do
+    out=$(gate "$@"); rc=$?; [ $rc -ne 2 ] || exit 2
+    printf '%s' "$out" | grep -q ' running ' || break
+    if [ "$SECONDS" -ge "$cap" ]; then echo "reconcile --wait: timed out after ${cap}s, workers still running" >&2; break; fi
+    sleep "$poll"
+  done
+  [ -z "$out" ] || printf '%s\n' "$out"; [ -z "$out" ]; }
+
 case ${1:-} in
+  -t) case ${3:-} in --gate|--wait) ;; *) echo "reconcile: -t goes with --gate or --wait" >&2; exit 2;; esac
+    t=${2:-}; m=$3; shift 3; case $m in --gate) gate -t "$t" "$@"; exit $?;; *) wait_ -t "$t" "$@"; exit $?;; esac;;
+  --gate) shift; gate "$@"; exit $?;;
+  --wait) shift; wait_ "$@"; exit $?;;
   ""|--all)
     [ -d "$TD" ] && ls "$TD"/*/ledger.tsv >/dev/null 2>&1 || { echo "no tasks in this repo. Start one: bin/ledger start <slug>"; exit 0; }
     for d in "$TD"/*/; do d=${d%/}; id=$(basename "$d"); [ -f "$d/ledger.tsv" ] || continue

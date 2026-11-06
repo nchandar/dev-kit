@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Claude Code Stop hook: block the parent's turn end while its workers are running or unaccepted.
+#   stdin: hook JSON (session_id). exit 0 = allow stop, exit 2 = block with the stderr message.
+# Workers (DEVKIT_DEPTH) and sessions without workers pass. Blocks 3 times in a row, then fails open (ledgered).
+# Anything unexpected (no ledger beside the script, odd input, reconcile failing) also fails open: a broken hook must never block.
+set -u
+here=${0%/*}; MAX=3
+[ -z "${DEVKIT_DEPTH:-}" ] || exit 0
+[ -x "$here/ledger" ] || { echo "stop-gate: $here/ledger not found (symlinked script?), gate disabled (fail-open)" >&2; exit 0; }
+sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)
+case $sid in ""|*[!A-Za-z0-9_-]*) exit 0;; esac # session_id becomes a filename
+cnt=$("$here/ledger" base)/run/gate-$sid.count
+out=$("$here/reconcile" --gate --session "$sid" 2>&1); rc=$?
+[ $rc -ne 0 ] || { rm -f "$cnt"; exit 0; }
+[ $rc -eq 1 ] || { echo "stop-gate: reconcile --gate failed (exit $rc), fail-open: $(printf '%s' "$out" | head -3 | tr '\n' ' ')" >&2; exit 0; }
+n=$(cat "$cnt" 2>/dev/null); n=$((10#${n:-0}+1)); mkdir -p "${cnt%/*}"; echo "$n" > "$cnt"
+if [ "$n" -le "$MAX" ]; then
+  { echo "stop-gate: workers you spawned are not accepted yet ($n/$MAX):"; printf '%s\n' "$out" | sed 's/^/  /'
+    echo "Run: bin/reconcile --wait --session $sid  (the wait is capped; if workers still run, repeat it)"
+    echo "Then read each handoff and write: bin/ledger -t <task> accept \"<id> accepted|rejected\" <reason>"; } >&2
+  exit 2
+fi
+rm -f "$cnt"
+echo "stop-gate: $MAX blocks spent, fail-open with workers unaccepted:" >&2; printf '%s\n' "$out" | sed 's/^/  /' >&2
+for task in $(printf '%s\n' "$out" | sed -n 's/.*task=//p' | sort -u); do
+  "$here/ledger" -t "$task" gate fail-open "stop allowed after $MAX blocks, unaccepted: $(printf '%s' "$out" | tr '\n' ';' | cut -c1-200)" "" fail
+done
+exit 0

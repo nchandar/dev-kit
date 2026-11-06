@@ -237,6 +237,8 @@ if [ $wt = 1 ]; then
   fi
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
+# the parent Stop hook matches workers to their session; a respawn must not keep a stale id
+rm -f "$T/run/$id.session"; [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] || echo "$CLAUDE_CODE_SESSION_ID" > "$T/run/$id.session" 2>/dev/null || true
 # HEAD plus content hashes of tracked changes and untracked files, so commits and repeat edits show up too
 snap() { { git -C "$wd" rev-parse HEAD 2>/dev/null; git -C "$wd" diff HEAD -- . ':(exclude).devkit' 2>/dev/null
   git -C "$wd" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | grep -v '^\.devkit/' | while IFS= read -r f; do printf '%s ' "$f"; git hash-object -- "$wd/$f"; done; } | git hash-object --stdin; }

@@ -19,7 +19,7 @@ Requirements: bash 3.2 or newer, git 2.31 or newer. Standard Unix tools only (no
 | `library/*.md` | Core how-to files, read when a checklist step names them |
 | `library/deep/` | Long tail, loaded only when a trigger matches |
 | `library/recipes/` | Repeatable procedures with commands, plus `index.md` |
-| `bin/` | Tools: ledger, reconcile, spawn, state, learn, run, lint-budget |
+| `bin/` | Tools: ledger, reconcile, spawn, state, learn, run, lint-budget, stop-gate |
 | `tests/` | One script suite per tool, plus `run-all.sh` |
 | `evals/` | Real-agent end-to-end checks (cost tokens) |
 | `docs/` | `flow.svg` (README hero), `architecture.svg` (detailed, animated) and `architecture.html` (interactive walkthrough) |
@@ -77,6 +77,7 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | `run` | Log plus short summary wrapper |
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
+| `stop-gate` | Parent Stop hook: blocks on unaccepted workers, budget, fail-open |
 | `pstack-adoption` | Wiring of the pstack-derived skills and deep files |
 
 Real-agent evals cost a few cents each. Run them after changing skills, `spawn` or the learning flow:
