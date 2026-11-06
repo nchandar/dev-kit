@@ -19,4 +19,5 @@ Record the page path with bin/ledger (phase=explain).
 - External scripts or fonts; walls of text; unreadable colors in dark mode.
 
 ## Verification
+- Rendered and looked at (stale numbers in untouched text show only when rendered); for a README, a plain SVG with CSS or SMIL animates without JS, dot drawn behind the boxes.
 - The page works offline; every node and arrow maps to a real file or call; steps play in order; both tables are present; the ledger has the path.

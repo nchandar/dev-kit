@@ -2,7 +2,10 @@ dev-debug	The checkout test fails with a null pointer after the last merge
 dev-debug	Users get a 500 when uploading files over 5 MB
 dev-debug	npm run build breaks with a type error since yesterday
 dev-feature	Add dark mode to the settings page
-dev-feature	Refactor the payment module to use the new client
+dev-refactor	Refactor the payment module to use the new client
+dev-refactor	Extract the duplicated validation into one module without changing behavior
+dev-refactor	Split the 900-line utils file into cohesive modules, no behavior change
+dev-refactor	Rename the Order class to Purchase everywhere and tidy the folder layout
 dev-feature	Add CSV export to the reports screen
 dev-research	How does our auth middleware decide when a session expires?
 dev-research	Should we use Postgres or DynamoDB for the event log? Compare them
@@ -23,3 +26,6 @@ dev-debug	The login test fails; once it is fixed, add a remember-me option
 dev-research	Look into whether we should switch to websockets and then build it
 dev-debug	Fix the failing build and then review the diff
 dev-research	Compare two queue libraries and implement the winner
+dev-eval	Did my change to the debug skill make the agent better? Compare the old and new version
+dev-eval	Test whether the new grill wording gets better answers from the agent
+dev-eval	Run a blind comparison of two versions of this prompt and tell me which to keep

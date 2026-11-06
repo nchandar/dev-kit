@@ -56,10 +56,10 @@ expect "colliding descriptions fail" 1 "$t/m"
 mut; rm -rf "$t/m/skills/dev-spawn" "$t/m/skills/dev-review"
 expect "fewer than 4 skills fails" 1 "$t/m"
 expect "fewer than 4 skills ok with --partial" 0 "$t/m" --partial
-mut; for n in a b c; do skill "$t/m" "dev-x$n" "unique$n alpha$n beta$n"; done
-expect "8 skills ok" 0 "$t/m"
-mut; for n in a b c d; do skill "$t/m" "dev-x$n" "unique$n alpha$n beta$n"; done
-expect "more than 8 skills fails" 1 "$t/m"
+mut; for n in a b c d e f g; do skill "$t/m" "dev-x$n" "unique$n alpha$n beta$n"; done
+expect "12 skills ok" 0 "$t/m"
+mut; for n in a b c d e f g h; do skill "$t/m" "dev-x$n" "unique$n alpha$n beta$n"; done
+expect "more than 12 skills fails" 1 "$t/m"
 mut; skill "$t/m" feature "build features slice by slice" "" dev-feature
 expect "name without dev- prefix fails" 1 "$t/m"
 mut; skill "$t/m" dev-other "build features slice by slice" "" dev-feature

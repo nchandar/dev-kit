@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Routing eval for dev-mode: does claude announce the right route, and keep the footer on off-topic follow-ups?
 # Costs a few dollars of tokens per run. Usage: evals/route.sh [--list]
-# Env: EVAL_ONLY=drift (skip routing), EVAL_AGENT (claude|opencode), EVAL_CLAUDE, EVAL_OPENCODE, EVAL_MODEL (opencode: provider/model), EVAL_JOBS (4), EVAL_BAR (23 of 25), EVAL_DRIFT_BAR (5 of 6)
+# Env: EVAL_ONLY=drift (skip routing), EVAL_AGENT (claude|opencode), EVAL_CLAUDE, EVAL_OPENCODE, EVAL_MODEL (opencode: provider/model), EVAL_JOBS (4), EVAL_BAR (29 of 31), EVAL_DRIFT_BAR (5 of 6)
 set -u
 here=$(cd "$(dirname "$0")" && pwd); cases=$here/route.cases; drift=$here/route.drift
 nc=$(wc -l < "$cases" | tr -d ' '); nd=$(wc -l < "$drift" | tr -d ' ')
@@ -11,7 +11,7 @@ export CL=${EVAL_CLAUDE:-claude} OC=${EVAL_OPENCODE:-opencode} AGENT=${EVAL_AGEN
 export NOTE="EVAL MODE: use no tools and do not do the work. Reply with only the announce line (route: <skill>, <size>) and, unless the route is none, the footer line."
 export NOTE2="EVAL MODE: use no tools and do not do the work. Treat the route as just started at step 1 of 6; reply with the announce line and the footer. Answer later questions briefly."
 # opencode has no slash-command injection: the model must load the skill itself, so it may not be told "use no tools"
-export NOTE_OC="EVAL MODE: do not do the work. Load the dev-mode skill with the skill tool, then reply with only the announce line (route: <skill>, <size>) and, unless the route is none, the footer line."
+export NOTE_OC="EVAL MODE: use only the skill tool; do not read files, search or run commands. Load the dev-mode skill, then reply with only the announce line (route: <skill>, <size>) and, unless the route is none, the footer line."
 export NOTE2_OC="You may use only the skill tool, to load dev-mode. Do not do the work. Treat the route as just started at step 1 of 6; reply with the announce line and the footer. Answer later questions briefly."
 export tmp=$(mktemp -d) res=$(mktemp -d); trap 'rm -rf "$tmp" "$res"' EXIT
 (cd "$tmp" && git init -q)
@@ -20,7 +20,9 @@ run_route() { # n: one single-turn classification
   local exp req out got r
   IFS=$'\t' read -r exp req < <(sed -n "${1}p" "$cases")
   if [ "$AGENT" = opencode ]; then
-    out=$(cd "$tmp" && "$OC" run ${MODEL:+-m "$MODEL"} "Use the dev-mode skill for this request: $req"$'\n\n'"$NOTE_OC" 2>&1 </dev/null)
+    # opencode prints its answer on stdout and tool traces on stderr; the traces can echo
+    # repo files that hold sample "route: ..." lines, so score only the answer
+    out=$(cd "$tmp" && "$OC" run ${MODEL:+-m "$MODEL"} "Use the dev-mode skill for this request: $req"$'\n\n'"$NOTE_OC" 2>/dev/null </dev/null)
   else
     out=$(cd "$tmp" && "$CL" -p "/dev-mode $req"$'\n\n'"$NOTE" --no-session-persistence ${MODEL:+--model "$MODEL"} 2>&1 </dev/null)
   fi
@@ -43,7 +45,7 @@ run_drift() { # n: a route, then two off-topic questions; the footer must stay o
     for k in 1 2; do printf 'FAIL\tdrift %s.%s\tno session id from the first call\n' "$id" "$k" > "$res/d$1.$k"; cut -c1-150 "$res/d$1.$k" >&2; done; return
   fi
   for q in "$q1" "$q2"; do k=$((k+1))
-    if [ "$AGENT" = opencode ]; then out=$(cd "$tmp" && "$OC" run ${MODEL:+-m "$MODEL"} -s "$sid" "$q" 2>&1 </dev/null)
+    if [ "$AGENT" = opencode ]; then out=$(cd "$tmp" && "$OC" run ${MODEL:+-m "$MODEL"} -s "$sid" "$q" 2>/dev/null </dev/null)
     else out=$(cd "$tmp" && "$CL" -p "$q" --resume "$sid" ${MODEL:+--model "$MODEL"} 2>&1 </dev/null); fi
     printf '%s\n' "$out" | grep -q -E 'route: dev-[a-z]+, step [0-9]+/[0-9]+, next:' && r=PASS || r=FAIL
     printf '%s\tdrift %s.%s\t%s\n' "$r" "$id" "$k" "$q" > "$res/d$1.$k"
@@ -59,5 +61,5 @@ if [ "${EVAL_ONLY:-}" = drift ]; then # cheap loop while tuning the footer rule
   echo "routing skipped, drift $dp/$((nd*2)) (bar ${EVAL_DRIFT_BAR:-5})"
   [ "$dp" -ge "${EVAL_DRIFT_BAR:-5}" ]; exit
 fi
-echo "routing $rp/$nc (bar ${EVAL_BAR:-23}), drift $dp/$((nd*2)) (bar ${EVAL_DRIFT_BAR:-5})"
-[ "$rp" -ge "${EVAL_BAR:-23}" ] && [ "$dp" -ge "${EVAL_DRIFT_BAR:-5}" ]
+echo "routing $rp/$nc (bar ${EVAL_BAR:-29}), drift $dp/$((nd*2)) (bar ${EVAL_DRIFT_BAR:-5})"
+[ "$rp" -ge "${EVAL_BAR:-29}" ] && [ "$dp" -ge "${EVAL_DRIFT_BAR:-5}" ]

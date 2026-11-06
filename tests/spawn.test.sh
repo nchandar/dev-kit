@@ -4,6 +4,7 @@ set -u
 unset DEVKIT_DEPTH  # these suites must pass when run from inside a worker too
 # a worker also inherits its model, tunables and the push guard; none may change what this suite measures
 unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
+export DEVKIT_MODE=headless  # this suite pins the headless path; tests/spawn-interactive.test.sh covers the tab path
 for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
 here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"
 pass=0; fail=0
@@ -44,6 +45,7 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_DEEP:-}" ] && { ( ( sleep 60 & echo $! > "$DEVKIT_DIR/deep.${FAKE_ID}"; wait ) & wait ) & } # sleep-ok: two-level grandchild outlives the fake; the test checks it dies
 sleep "${FAKE_SLEEP:-0}"
 [ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
+[ -n "${FAKE_CHECKLIST:-}" ] && printf '\n## Checklist\n%b\n' "$FAKE_CHECKLIST" >> "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
 F
 chmod +x "$t/fake"; export DEVKIT_FAKE="$t/fake"
@@ -118,6 +120,35 @@ ok "prompt tells a worker below the limit it may spawn"  'grep -q "may spawn" "$
 DEVKIT_MAX_DEPTH=1 DEVKIT_DRYRUN=1 "$spawn" p2 fake "$t/brief.md" > "$t/p2.out"
 ok "prompt tells a worker at the limit not to spawn"      'grep -q "Do not spawn" "$t/p2.out" && ! grep -q "may spawn" "$t/p2.out"'
 
+# worker playbook: a route line in the brief sends the worker to that playbook; it loads the playbook's checklist itself (any CLI)
+DEVKIT_DRYRUN=1 "$spawn" c1 fake "$t/brief.md" > "$t/c1.out"
+ok "prompt tells the worker to open the playbook checklist in its host todo list"  'grep -q "host todo list" "$t/c1.out" && grep -q "Checklist" "$t/c1.out"'
+ok "no route in the brief: ship workers follow dev-feature by path"  'grep -q "skills/dev-feature/SKILL.md" "$t/c1.out"'
+ok "the prompt does not inline a checklist"  '! sed "/--- BRIEF ---/,\$d" "$t/c1.out" | grep -q -- "- \[ \]"'
+ok "the checklist is the FIRST thing the prompt asks for, before any other tool call"  'sed -n 2p "$t/c1.out" | grep -q "^FIRST ACTION, before any other tool call" && sed -n 2p "$t/c1.out" | grep -q "host todo list" && sed -n 2p "$t/c1.out" | grep -q "skills/dev-feature/SKILL.md"'
+ok "the first line names the todo tools and the deferred-tool load"  'sed -n 2p "$t/c1.out" | grep -q "TaskCreate" && sed -n 2p "$t/c1.out" | grep -q "TodoWrite" && sed -n 2p "$t/c1.out" | grep -q "update_plan" && sed -n 2p "$t/c1.out" | grep -q "ToolSearch"'
+ok "prompt asks the handoff to end with ## Checklist, ticked"  'grep -q "## Checklist" "$t/c1.out"'
+printf 'do it\nroute: dev-debug\n' > "$t/brief-rt.md"
+DEVKIT_DRYRUN=1 "$spawn" c6 fake "$t/brief-rt.md" > "$t/c6.out"
+DEVKIT_DRYRUN=1 "$spawn" c6c claude "$t/brief-rt.md" > "$t/c6c.out"; DEVKIT_DRYRUN=1 "$spawn" c6x codex "$t/brief-rt.md" > "$t/c6x.out"; DEVKIT_DRYRUN=1 "$spawn" c6o opencode "$t/brief-rt.md" > "$t/c6o.out"
+ok "a brief naming a route sends the worker to that playbook, on every CLI"  'grep -q "skills/dev-debug/SKILL.md" "$t/c6.out" "$t/c6c.out" "$t/c6x.out" "$t/c6o.out" && ! grep -q "skills/dev-feature" "$t/c6.out"\'
+FAKE_ID=c3 FAKE_CHECKLIST='- [x] 1. a\n- [-] 2. b (skipped: n/a)' "$spawn" c3 fake "$t/brief.md" > "$t/c3.out" 2>"$t/c3.err"
+ok "closed checklist is tallied 2/2"  'grep -q "checklist: 2/2" "$t/c3.out" && grep -q "^2/2" $TD/run/c3.checklist'
+FAKE_ID=c4 FAKE_CHECKLIST='- [x] 1. a\n- [ ] 2. b' "$spawn" c4 fake "$t/brief.md" > "$t/c4.out" 2>"$t/c4.err"
+ok "an open item is tallied 1/2 and warned about"  'grep -q "checklist: 1/2" "$t/c4.out" && grep -qi "checklist.*open" "$t/c4.err"'
+FAKE_ID=c5 "$spawn" c5 fake "$t/brief.md" > "$t/c5.out" 2>"$t/c5.err"
+ok "a handoff with no checklist is flagged missing"  'grep -q "^missing" $TD/run/c5.checklist && grep -qi "checklist.*missing" "$t/c5.err"'
+
+FAKE_ID=c7 FAKE_CHECKLIST='  * [X] 1. a\n- [x] 2. b' "$spawn" c7 fake "$t/brief.md" > "$t/c7.out" 2>/dev/null
+ok "tally accepts [X], * bullets and indentation"  'grep -q "checklist: 2/2" "$t/c7.out"'
+printf 'see "route: dev-nope" in prose\n' > "$t/brief-bad.md"; printf 'x\nroute: dev-nope\n' > "$t/brief-bad2.md"
+DEVKIT_DRYRUN=1 "$spawn" c8 fake "$t/brief-bad.md" > "$t/c8.out"; DEVKIT_DRYRUN=1 "$spawn" c9 fake "$t/brief-bad2.md" > "$t/c9.out"
+ok "a route line that is prose or names no playbook falls back to the shape default"  '! grep -q "skills/dev-nope" "$t/c8.out" "$t/c9.out" && grep -q "skills/dev-feature" "$t/c8.out" "$t/c9.out"'
+DEVKIT_DRYRUN=1 "$spawn" --shape scout c10 fake "$t/brief.md" > "$t/c10.out"
+ok "default playbook: ship follows dev-feature, scout follows dev-research"  'grep -q "skills/dev-feature/SKILL.md" "$t/c1.out" && grep -q "skills/dev-research/SKILL.md" "$t/c10.out"'
+FAKE_ID=c11 FAKE_NOHANDOFF=1 FAKE_SLEEP=0 "$spawn" c11 fake "$t/brief.md" > "$t/c11.out" 2>"$t/c11.err"
+ok "no checklist noise when the worker wrote no handoff"  '! grep -qi "checklist" "$t/c11.err"'
+
 FAKE_ID=in "$spawn" in fake "$t/brief.md" < "$t/brief.md"
 ok "worker stdin is closed (no hang on stdin)" 'grep -q "stdin=null$" $TD/handoffs/in.md'
 
@@ -132,6 +163,7 @@ d=$(DEVKIT_DRYRUN=1 "$spawn" --model m2 d2 codex "$t/brief.md" | tr '\n' ' ')
 ok "dry-run codex: exec, bypass approvals+sandbox, -m m2" 'echo "$d" | grep -q "exec" && echo "$d" | grep -q -- "--dangerously-bypass-approvals-and-sandbox" && ! echo "$d" | grep -q -- "workspace-write" && echo "$d" | grep -q -- "-m m2" && echo "$d" | grep -q -- "--ephemeral"'
 d=$(DEVKIT_MODEL=prov/m3 DEVKIT_DRYRUN=1 "$spawn" d3 opencode "$t/brief.md" | tr '\n' ' ')
 ok "dry-run opencode: run --auto, -m from DEVKIT_MODEL" 'echo "$d" | grep -q "run" && echo "$d" | grep -q -- "--auto" && echo "$d" | grep -q -- "-m prov/m3"'
+ok "dry-run opencode: names its own session and title" 'echo "$d" | grep -q -- "-s ses_dk_" && echo "$d" | grep -q -- "--title d3"'
 d=$(DEVKIT_DRYRUN=1 "$spawn" d4 claude "$t/brief.md" | tr '\n' ' ')
 ok "worker prompt asks for learnings in the handoff" 'echo "$d" | grep -q "learnings"'
 ok "worker prompt forbids pushing" 'echo "$d" | grep -q "Never git push"'
@@ -158,6 +190,7 @@ ok "timeout is its own status + noted in handoff" 'grep -q "^timeout" $TD/run/to
 ok "slot released after timeout"    '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 
 # --- doctor, with stub CLIs on PATH
+mkdir -p "$t/hm/.config/opencode"; echo '{"experimental":{"todo":true}}' > "$t/hm/.config/opencode/opencode.jsonc"; export HOME="$t/hm" # hermetic: the doctor reads the global opencode config
 stubs="$t/stubs"; mkdir -p "$stubs"
 cat > "$stubs/claude" <<'S'
 #!/usr/bin/env bash
@@ -169,7 +202,7 @@ case "$1" in --version) echo "WARNING: could not create PATH aliases" >&2; echo 
 S
 cat > "$stubs/opencode" <<'S'
 #!/usr/bin/env bash
-case "$1" in --version) echo "opencode 7.7";; service) echo "${OC_SERVICE:-http://127.0.0.1:49374}";; *) echo "--auto -m";; esac
+case "$1" in --version) echo "opencode 7.7";; service) echo "${OC_SERVICE:-http://127.0.0.1:49374}";; *) echo "--auto -m -s --title";; esac
 S
 chmod +x "$stubs"/*
 out=$(PATH="$stubs:/usr/bin:/bin" CODEX_STUB_EXTRA="--ephemeral" "$spawn" --doctor 2>&1); rc=$?
@@ -209,6 +242,28 @@ ok "view: Agents panel gets title and display name" 'grep "report-metadata" "$HE
 ok "view: no notification when all is well"      '! grep -q "notification show" "$HERDR_LOG"'
 ok "view: tab closed after a successful run"    'grep -q "tab close X:t9" "$HERDR_LOG"'
 ok "view: worker itself unchanged (done + handoff)" 'grep -q "^done" $TD/run/v1.status && [ -s $TD/handoffs/v1.md ]'
+
+# opencode names its session, so its tab must attach to that live session rather than tail a log
+oc="$t/oc-stub"; mkdir -p "$oc"; export OC_LOG="$t/oc.log"
+cat > "$oc/opencode" <<'S'
+#!/usr/bin/env bash
+echo "$*" >> "$OC_LOG"
+case "$1" in
+  run) p="${@: -1}"; hf=$(printf '%s' "$p" | grep -o '/[^ ]*handoffs/[A-Za-z0-9_-]*\.md' | head -1)
+       [ -n "$hf" ] && echo "handoff from the opencode stub" > "$hf";;
+esac
+exit 0
+S
+chmod +x "$oc/opencode"
+: > "$OC_LOG"; : > "$HERDR_LOG"
+( export PATH="$oc:$hs:$PATH"; DEVKIT_VIEW=herdr "$spawn" oc1 opencode "$t/brief.md" )
+runline=$(grep '^run ' "$OC_LOG" | head -1)
+sid_run=$(printf '%s' "$runline" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
+pcmd=$(grep "pane run" "$HERDR_LOG" | head -1)
+ok "view: opencode run names its session"              '[ -n "$sid_run" ] && grep -q "^done" $TD/run/oc1.status && [ -s $TD/handoffs/oc1.md ]'
+ok "view: opencode tab attaches to that same session"  'echo "$pcmd" | grep -q "exec opencode -s" && echo "$pcmd" | grep -q "$sid_run"'
+ok "view: opencode tab falls back to the log only if the session never appears" 'echo "$pcmd" | grep -q "exec opencode -s" && [ "${pcmd#*tail -n}" != "$pcmd" ]'
+ok "view: opencode tab still closes if the spawner dies" 'echo "$pcmd" | grep -q "kill -0" && echo "$pcmd" | grep -q "tab close"'
 
 DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v2 vrun "$spawn" v2 fake "$t/brief.md"
 ok "view: DEVKIT_VIEW_KEEP=1 leaves the tab open" '! grep -q "tab close" "$HERDR_LOG" && grep "report-agent" "$HERDR_LOG" | tail -1 | grep -q "idle"'
@@ -279,6 +334,18 @@ ok "a stale slot is reclaimed under its lock, lock released" '[ -s $TD/handoffs/
 mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
 s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=3 DEVKIT_MAX_WORKERS=1 "$spawn" lk1 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
 ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 3 ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# GNU stat: -c fails if the lock vanished mid-race, and the BSD-style -f fallback then prints multi-line filesystem info, not a number
+sb="$t/stat-stub"; mkdir -p "$sb"
+cat > "$sb/stat" <<'S'
+#!/usr/bin/env bash
+case "$1" in -c) exit 1;; -f) printf '  File: "%s"\n    ID: 0 Namelen: 255\n' "$3";; *) exit 1;; esac
+S
+chmod +x "$sb/stat"
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo $$ > "$DEVKIT_DIR/run/slot.1/pid"
+PATH="$sb:$PATH" DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>"$t/lk3.err"; rc=$?
+ok "a lock whose mtime cannot be read does not kill the spawner" '[ $rc -eq 4 ] && ! grep -q "unbound variable" "$t/lk3.err"'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale

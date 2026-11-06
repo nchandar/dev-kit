@@ -2,7 +2,7 @@
 Name the principle behind any non-obvious choice in bin/ledger (phase=principle).
 
 ## When to Use
-- Step 0 of dev-feature, dev-debug and dev-review. Skim, apply what fits, and open a deep file only when its trigger matches; the list exists so you do not load them all.
+- Step 0 of dev-feature, dev-refactor, dev-debug, dev-review and dev-eval. Skim, apply what fits, and open a deep file only when its trigger matches; the list exists so you do not load them all.
 
 ## Steps
 Think before building
@@ -30,6 +30,15 @@ Work with discipline
 16. Never lower the bar to get green. An instruction you keep repeating becomes a check (library/deep/encode-lessons).
 17. Keep bulk output out of your context; log it or delegate it (library/deep/context-guard).
 18. Review correctness, clarity, architecture, security and performance, starting from the tests (library/deep/five-axis-review).
+
+Apps, writing, long runs
+19. Sketch the shape before code that crosses a boundary: usage first, two real designs (library/deep/sketch).
+20. Name the one fact a change is safe because of and prove it by running code (library/deep/blast-radius).
+21. Write a runnable recipe to launch and drive the app once, then reuse it (library/deep/app-verification-recipe).
+22. Justify each control by the core loop and finish the states and details (library/deep/experience-first).
+23. In TypeScript parse at the edge, ban casts, end switches with never (library/deep/typescript).
+24. Write for the reader: one idea per sentence, no filler (library/deep/writing).
+25. Run unattended work on a checkable predicate, an iteration cap and a ledger (library/deep/overnight).
 
 ## Red Flags
 - Loading every deep file up front instead of on a matching trigger.

@@ -14,6 +14,7 @@
 6. Deprecation is a decision too. Record: why the old thing no longer earns its upkeep, the replacement (never deprecate without a working one), consumer count, advisory or compulsory, and the removal condition.
 7. Migrate in steps that can be reversed: build the replacement, announce, move consumers one by one (adapter, strangler, or flag), confirm zero usage by metrics, then remove. The owner of the old system carries the migration work.
 8. Schema changes: expand, backfill, switch reads, contract. Additive first; the drop is its own later deploy, because data cannot be rolled back.
+9. Internal-only API (no external consumers, confirmed by search): migrate every caller and delete the old API in the same wave; update tests to the new contract and delete tests that only pinned old internals. Any unseen consumer means the reversible migration step above applies instead.
 
 ## Red Flags
 - A record that lists only the winner.

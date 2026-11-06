@@ -1,6 +1,7 @@
 ---
 name: dev-learn
-description: Turn queued learnings into library improvements: dedupe, generalize, draft on a branch, and merge only after your approval.
+description: Use when queued learnings should become library edits for your approval.
+disable-model-invocation: true
 ---
 # dev-learn
 
@@ -8,11 +9,15 @@ Paths: the `bin/` tools and the `library/` folder live in `~/.agents/dev-kit/`; 
 
 Task: no `DEVKIT_TASK` set? Run `~/.agents/dev-kit/bin/ledger start <slug>` first (it prints your id) and prefix dev-kit commands with `DEVKIT_TASK=<id>`. `<task>` below is `.devkit/tasks/<id>` at the repo root; never write run files anywhere else.
 
-Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=learn). The dev-kit repo is the live library, so nothing is edited there until the user approves.
+Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; else a checklist in <task>/state.md) with this checklist verbatim, and tick items as steps finish. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=learn). The dev-kit repo is the live library, so nothing is edited there until the user approves.
 
 ## When to Use
 - `bin/learn count` is above 0 (`reconcile` says "learnings queued"), a task just closed, or the user says "learn from this".
 - Not for project-specific facts: those stay in `.devkit/memory.md`.
+
+**You own:** library edits drafted from queued learnings; nothing merges without the user's approval.
+
+**Reads:** always library/principles (step 0), library/state. To classify a lesson: library/recipes/index and library/deep/encode-lessons.
 
 ## Checklist
 - [ ] 1. List: `~/.agents/dev-kit/bin/learn list`. Nothing queued: stop and say so.
@@ -23,6 +28,10 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
 - [ ] 6. Check in `$W`: `bin/lint-budget` and `tests/run-all.sh` pass.
 - [ ] 7. Commit on the branch (conventional message, no AI trailer). Show the user `git -C ~/.agents/dev-kit diff main..learn/<slug>` and ask before applying. They may edit or reject.
 - [ ] 8. Approved: `git -C ~/.agents/dev-kit merge --ff-only learn/<slug>`, remove the worktree and branch, then `learn done <id> promoted` per lesson. Rejected: remove the worktree and branch, `learn done <id> dropped`. Ask before any push. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+
+**Hand off to:** none; it ends at the approval gate.
+
+**Reply:** what was drafted, the diff, and what needs the user's approval.
 
 ## Rationalizations
 | Excuse | Rebuttal |

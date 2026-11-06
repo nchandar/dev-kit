@@ -1,6 +1,7 @@
 ---
 name: dev-review
-description: Review a diff on two independent axes, Standards and Spec, with parallel scout reviewers and a blast-radius check.
+description: Use when a diff, branch or PR needs review before merge, on correctness, standards and the spec.
+disable-model-invocation: true
 ---
 # dev-review
 
@@ -8,11 +9,15 @@ Paths: the `bin/` tools and the `library/` folder live in `~/.agents/dev-kit/`; 
 
 Task: no `DEVKIT_TASK` set? Run `~/.agents/dev-kit/bin/ledger start <slug>` first (it prints your id) and prefix dev-kit commands with `DEVKIT_TASK=<id>`. `<task>` below is `.devkit/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.devkit/memory.md` if it exists.
 
-Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=review).
+Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; else a checklist in <task>/state.md) with this checklist verbatim, and tick items as steps finish. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=review).
 
 ## When to Use
 - Before merging or committing a non-trivial diff, after a ship worker returns, or when reviewing a branch or PR.
 - Tiny diff: self-review with the same axes and ledger that you did.
+
+**You own:** findings on two axes (Standards and Spec) with a recorded disposition for each.
+
+**Reads:** always library/principles (step 0), library/simplify, library/doubt, library/state, library/deep/blast-radius. If the diff touches security: library/security. If it touches performance: library/performance.
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
@@ -22,10 +27,14 @@ Copy the checklist verbatim into your task list. A skipped step stays listed wit
   - Standards: repo conventions, then smells (duplication, mystery names, speculative generality, feature envy, shotgun changes). Repo rules override smells. Skip what tooling enforces. Also library/simplify, and library/security or library/performance when the diff touches those.
   - Spec: per requirement, met / partly / missing / extra, with file:line.
 - [ ] 4. Run both via dev-spawn (scout shape) in parallel and wait for both reports.
-- [ ] 5. Blast radius: for each changed contract, find callers and dependents beyond the diff; prove one "safe because" fact by running code.
+- [ ] 5. Blast radius: follow library/deep/blast-radius for each changed contract.
 - [ ] 6. Merge: dedupe, order by severity (bug, regression, standards, nit), drop anything without file:line.
 - [ ] 7. Risky change? library/doubt on your merged conclusion.
 - [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+
+**Hand off to:** the calling route if any, else the user, to fix blockers; there is no next playbook.
+
+**Reply:** findings ordered by severity, each with file:line; the one safe-because fact with its level; each disposition.
 
 ## Rationalizations
 | Excuse | Rebuttal |

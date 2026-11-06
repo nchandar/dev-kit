@@ -1,6 +1,7 @@
 ---
 name: dev-feature
-description: Build a feature or refactor end to end: clarify, spec, thin slices, test-first per slice, review, verify, ship.
+description: Use when adding or changing behavior: a new feature, a behavior change, or a user-visible improvement.
+disable-model-invocation: true
 ---
 # dev-feature
 
@@ -8,29 +9,34 @@ Paths: the `bin/` tools and the `library/` folder live in `~/.agents/dev-kit/`; 
 
 Task: no `DEVKIT_TASK` set? Run `~/.agents/dev-kit/bin/ledger start <slug>` first (it prints your id) and prefix dev-kit commands with `DEVKIT_TASK=<id>`. `<task>` below is `.devkit/tasks/<id>` at the repo root; never write run files anywhere else. Also read `.devkit/memory.md` if it exists.
 
-Copy the checklist verbatim into your task list. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=feature).
+Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; else a checklist in <task>/state.md) with this checklist verbatim, and tick items as steps finish. A skipped step stays listed with a reason. Run `bin/ledger` after every step (phase=feature).
 
 ## When to Use
-- New behavior, a behavior change, or a refactor (see Refactor variant).
+- New behavior or a behavior change. Structure-only change: use dev-refactor.
 - Not for a bug (use dev-debug) or a question (use dev-research).
+
+**You own:** a new or changed behavior, from an approved spec to verified, reviewed commits.
+
+**Reads:** always library/principles (step 0), library/spec, library/plan, library/tdd, library/verify, library/git-ship, library/state. If no CONSTRAINTS.md: library/quality-bar. If the spec needs a flow shown: library/explain-html. If an interface or data shape is involved: library/architecture. If code crosses a function boundary: library/deep/sketch. If a runtime path is touched: library/observability. If user-visible: library/ui-browser. If building an app: library/deep/app-verification-recipe, library/deep/typescript for TypeScript, library/deep/experience-first for UI feel. If an external library: library/docs-grounding. If building, deploying or setting up tooling: library/recipes/index.
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
-- [ ] 1. Recon, options, clarify: fresh research report wins; else run dev-research (clarify skipped, checkpoint folds into options). List 2-3 options + recommendation; grill to approved goal, non-goals, check. Unknowns loop back to recon, up to 3 rounds. Refresh state.md.
+- [ ] 1. Recon, options, clarify: fresh research report wins; else follow skills/dev-research/SKILL.md (clarify skipped, checkpoint folds into options). List 2-3 options + recommendation; grill to approved goal, non-goals, check. Unknowns loop back to recon, up to 3 rounds. Refresh state.md.
   - Fresh report: user-named path, else newest `.devkit/tasks/*/report.md` for this request.
   - dev-research run: code plus the external industry-standard/cutting-edge pass.
-- [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture.
+- [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture. Show the flow on an explain-html page (library/explain-html) for the user's confirmation unless trivial; code crossing a function boundary? follow library/deep/sketch first.
 - [ ] 3. Quality bar: no `CONSTRAINTS.md`? follow library/quality-bar; run the baseline.
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.
 - [ ] 5. Per slice, in order: follow library/tdd (red, green), then run the slice check. Ledger red and green. Refresh state.md at each plan checkpoint.
 - [ ] 6. Independent slices: run in parallel worktrees via dev-spawn (ship shape); you merge, workers never do.
-- [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding.
-- [ ] 8. Review: run dev-review on the full diff; fix blockers.
+- [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding. Building an app? also library/deep/app-verification-recipe; TypeScript: library/deep/typescript; UI: library/deep/experience-first.
+- [ ] 8. Review: follow skills/dev-review/SKILL.md on the full diff; fix blockers.
 - [ ] 9. Verify: follow library/verify against the spec's acceptance criteria.
 - [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
-## Refactor variant
-Replace steps 1 to 2 with: state the structural goal and the invariant. Save baseline output of the real artifact first. Characterization tests where coverage is thin. Small steps, tests green after each, one commit per step. Migrate all callers, then delete the old path. At step 9 the output must equal the baseline (also library/simplify).
+**Hand off to:** dev-review on the full diff, then ship. A structure-only change goes to dev-refactor instead.
+
+**Reply:** what changed for users, each acceptance check with its command and real output, open risks, the commits.
 
 ## Rationalizations
 | Excuse | Rebuttal |

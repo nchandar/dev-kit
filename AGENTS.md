@@ -1,14 +1,17 @@
 # dev-kit
 
-Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, copy its checklist verbatim into your task list (your tool's todo list, or ledger rows if it has none; skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
+Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; else a checklist in `<task>/state.md`) with its checklist verbatim and tick items as steps finish (skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
 
 ## Routes
-- dev-mode: entry point for any request: triage by type and size, announce the route, chain the loops, close with one answer.
-- dev-feature: build or refactor: clarify, spec, slices, test-first, review, verify, ship.
+Route skills are explicit-only playbooks (You own, Reads, Checklist, Hand off to, Reply). dev-mode classifies and reads the playbook by path; a user may also type one directly.
+- dev-mode: entry point for any request: triage by type and size, announce the route, hand off to its playbook, close with one answer.
+- dev-feature: build a feature: clarify, spec, slices, test-first, review, verify, ship.
+- dev-refactor: structure-only change: pin behavior, small green steps, prove output unchanged, keep only what lowers reader load.
 - dev-debug: bug or failing test: repro, root cause, doubt, regression test, fix.
 - dev-research: question or spike; report as .md/.html; changes no code.
 - dev-review: Standards + Spec scouts in parallel, blast radius.
-- dev-spawn: delegate to headless sub-agents (parallel and nestable, within the limits in ARCHITECTURE.md).
+- dev-spawn: delegate to sub-agents (parallel and nestable, within the limits in ARCHITECTURE.md).
+- dev-eval: test whether a skill or prompt change helps: blind candidates, blind judge, recommendation.
 - dev-learn: queued learnings into library edits, merged only with the user's approval.
 If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first.
 
@@ -24,6 +27,7 @@ If a route matches, you MUST use it; never implement directly. Unclear request: 
 - Done means `library/verify` evidence, never "it builds".
 - State assumptions; stop and ask on conflicting requirements; push back on bad ideas; keep it simple; touch only what was asked.
 - The main agent spawns; a worker may spawn too until the depth limit (`DEVKIT_MAX_DEPTH`). Workers report up via handoff files.
+- Workers run interactive in a herdr tab (`DEVKIT_MODE=auto`); headless is only the fallback when herdr is down. Never pick -p/exec/run by hand.
 
 ## Library (read on demand)
 grill spec plan tdd debug-method doubt verify quality-bar architecture docs-grounding simplify security performance observability git-ship ui-browser

@@ -33,7 +33,7 @@ text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
 <rect class="pill" x="908" y="12" width="72" height="22" rx="11" style="animation:pillon 24s linear infinite;animation-delay:18s"/>
 <text class="pl" x="944.0" y="27">4 Learn</text>
 <rect class="pan" x="564" y="52" width="416" height="84" rx="10" style="animation:pa123 24s linear infinite;"/>
-<text class="pt" x="576" y="70">SKILLS (listed, 7)</text>
+<text class="pt" x="576" y="70">SKILLS (listed, 9)</text>
 <rect class="pan" x="124" y="56" width="250" height="72" rx="10" style="animation:pa1 24s linear infinite;"/>
 <text class="pt" x="136" y="74">MAIN AGENT (any CLI)</text>
 <rect class="pan" x="20" y="160" width="300" height="200" rx="10" style="animation:pa14 24s linear infinite;"/>
@@ -81,12 +81,14 @@ text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
 <rect class="chip" x="574" y="108" width="129" height="24" rx="6"/><text class="t" x="638.5" y="124" style="font-size:11.5px">dev-review</text>
 <rect class="chip" x="711" y="108" width="129" height="24" rx="6"/><text class="t" x="775.5" y="124" style="font-size:11.5px">dev-spawn</text>
 <rect class="chip" x="848" y="108" width="129" height="24" rx="6"/><text class="t" x="912.5" y="124" style="font-size:11.5px">dev-learn</text>
+<rect class="chip" x="574" y="136" width="129" height="24" rx="6"/><text class="t" x="638.5" y="152" style="font-size:11.5px">dev-refactor</text>
+<rect class="chip" x="711" y="136" width="129" height="24" rx="6"/><text class="t" x="775.5" y="152" style="font-size:11.5px">dev-eval</text>
 <rect class="chip" x="32" y="186" width="276" height="34" rx="7" style="animation:ca1 24s linear infinite;"/>
 <text class="t" x="170.0" y="201.0">principles.md</text><text class="s" x="170.0" y="215.0">digest, read first (step 0)</text>
 <rect class="chip" x="32" y="228" width="276" height="34" rx="7" style=""/>
 <text class="t" x="170.0" y="243.0">core</text><text class="s" x="170.0" y="257.0">18 how-to files, named by checklist steps</text>
 <rect class="chip" x="32" y="270" width="276" height="34" rx="7" style=""/>
-<text class="t" x="170.0" y="285.0">deep/</text><text class="s" x="170.0" y="299.0">17 long-tail files, loaded on a trigger</text>
+<text class="t" x="170.0" y="285.0">deep/</text><text class="s" x="170.0" y="299.0">25 long-tail files, loaded on a trigger</text>
 <rect class="chip" x="32" y="312" width="276" height="34" rx="7" style="animation:ca4 24s linear infinite;"/>
 <text class="t" x="170.0" y="327.0">recipes/</text><text class="s" x="170.0" y="341.0">reusable procedures + index</text>
 <rect class="chip" x="352" y="198" width="98" height="40" rx="7" style="animation:ca2 24s linear infinite;"/>
