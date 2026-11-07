@@ -17,7 +17,7 @@ workers() { # task dir -> "running killed done failed" counts, or per-worker lin
   done
   [ "$mode" = count ] && echo "$r running, $k killed, $f finished"; }
 rows() { tail -n +2 "$1/ledger.tsv"; }
-lastrow() { rows "$1" | tail -1; }
+lastrow() { rows "$1" | awk -F'\t' '$2!="prune"{r=$0} END{if(r!="")print r}'; } # prune is post-close housekeeping, never state
 
 # outstanding workers of one task dir: running, or exited with no `accept` row newer than their last exit row (a respawned id is outstanding again); a closed task gates running workers only
 gate_task() { # dir session-or-empty [closed=1]

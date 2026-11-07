@@ -59,7 +59,11 @@ case ${1:-} in
     depth=${DEVKIT_DEPTH:-0}
     case $depth in ''|*[!0-9]*) echo "ledger: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not close the shared task; write its handoff instead" >&2; exit 3;; esac
     [ "$((10#$depth))" -eq 0 ] || { echo "ledger: a worker (DEVKIT_DEPTH=$depth) must not close the shared task; write its handoff instead" >&2; exit 3; }
-    append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done; exit 0;;
+    append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done
+    n=0
+    while IFS= read -r l; do case $l in "branch refs/heads/devkit/$task-"*) n=$((n+1));; esac; done < <(git worktree list --porcelain 2>/dev/null) # pitfall-ok: decimal-arith internal counter, always decimal
+    [ "$n" -eq 0 ] || echo "ledger: $n worker worktree(s) left for this task; run: bin/spawn --prune --yes (add --discard if merged by squash)" >&2
+    exit 0;;
 esac
 [ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start are reserved)"
 append "$D/ledger.tsv" "$@"

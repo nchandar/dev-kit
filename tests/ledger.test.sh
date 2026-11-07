@@ -125,4 +125,17 @@ for bad in . ..; do "$ledger" -t "$bad" p d r >/dev/null 2>&1; rc=$?
 S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/dev/null 2>&1; e=$(date +%s) # sleep-ok: simulates a hung mirror
 ok "a hung mirror does not hang the ledger call" '[ $((e-S)) -lt 5 ] && grep -q "mirror" ".devkit/tasks/$W/ledger.tsv"' # sleep-ok: simulates a hung mirror
 
+# --- done warns when this task's worker worktrees are left behind
+P=$(mktemp -d); ( cd "$P" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+PW=$(cd "$P" && "$ledger" start prune-warn "x")
+err=$( cd "$P" && "$ledger" -t "$PW" done "no worktrees" 2>&1 >/dev/null ); rc=$?
+ok "done with no worker worktrees is silent"        '[ $rc -eq 0 ] && [ -z "$err" ]'
+( cd "$P" && git worktree add -q "$P/wt" -b "devkit/$PW-x" 2>/dev/null )
+err=$( cd "$P" && "$ledger" -t "$PW" done "leftovers" 2>&1 >/dev/null ); rc=$?
+ok "done warns about 1 leftover worker worktree"    '[ $rc -eq 0 ] && echo "$err" | grep -q "1 worker worktree" && echo "$err" | grep -q "prune --yes"'
+ok "done row is still written when it warns"        'tail -1 "$P/.devkit/tasks/$PW/ledger.tsv" | awk -F"\t" "\$2==\"done\" && \$3==\"leftovers\"{f=1} END{exit !f}"'
+NG=$(mktemp -d); NGID=$(cd "$NG" && "$ledger" start nongit-warn "x")
+err=$( cd "$NG" && "$ledger" -t "$NGID" done "no git" 2>&1 >/dev/null ); rc=$?
+ok "done outside a git repo is silent, exit 0"      '[ $rc -eq 0 ] && [ -z "$err" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

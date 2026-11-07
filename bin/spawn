@@ -3,6 +3,7 @@
 # Usage: bin/spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
+#        bin/spawn --prune [-t TASK] [--yes] [--discard] [ID ...]  remove accepted workers' worktrees (dry run unless --yes)
 # Needs DEVKIT_TASK (from `ledger start`). Per-task files live in .devkit/tasks/<task>/; worker slots are repo-wide.
 # Herdr view (default when herdr is up): DEVKIT_VIEW=off disables, DEVKIT_VIEW_KEEP=1 keeps tabs (also failed ones; otherwise every failed, timed-out or killed worker closes its tab after notifying), DEVKIT_VIEW_NOTIFY=all notifies on success,
 #   spawn --close-views closes kept tabs. Failures print the id, state and last log lines to stderr.
@@ -37,6 +38,53 @@ doctor() { local bad=0 cli v h f need
 if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open by DEVKIT_VIEW_KEEP=1
   [ -n "${DEVKIT_TASK:-}" ] || { echo "spawn: no task. Set DEVKIT_TASK" >&2; exit 2; }
   for f in "$("$here/ledger" -t "$DEVKIT_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
+fi
+if [ "${1:-}" = --prune ]; then # remove accepted workers' worktrees; dry run unless --yes, --discard waives only the merged check
+  shift; ptask=${DEVKIT_TASK:-}; prune_yes=0; prune_discard=0; pids=
+  while [ $# -gt 0 ]; do case $1 in
+    -t) ptask=${2-}; shift 2;; --yes) prune_yes=1; shift;; --discard) prune_discard=1; shift;;
+    -*) echo "spawn: --prune: unknown option '$1'" >&2; exit 2;; *) case $1 in *[!A-Za-z0-9_-]*|"") echo "spawn: --prune: bad id '$1'" >&2; exit 2;; esac; pids="$pids $1"; shift;; esac; done
+  [ -n "$ptask" ] || { echo "spawn: no task. Pass --prune -t <id> or set DEVKIT_TASK" >&2; exit 2; }
+  PT=$("$here/ledger" -t "$ptask" path) || exit 2
+  [ -n "$pids" ] || for d in "$PT"/wt/*; do [ -d "$d" ] && pids="$pids ${d##*/}"; done
+  # (c) same rule as reconcile --gate: an accept row newer than the worker's last spawn row
+  accepted() { awk -F'\t' -v id="$1" '$2=="spawn"{split($3,w," "); if(w[1]==id && w[2]!="nudge" && w[2]!="scout") ex=NR} $2=="accept"{split($3,w," "); if(w[1]==id) ac=NR} END{exit (ac>ex && ac>0)?0:1}' "$PT/ledger.tsv" 2>/dev/null; }
+  aheado() { local n; git rev-parse --verify -q "refs/heads/$1" >/dev/null || { echo 0; return 0; }
+    n=$(git rev-list --count "HEAD..$1" 2>/dev/null) || return 1; echo "$n"; }
+  nrem=0; nkeep=0; did=0
+  for id in $pids; do case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: --prune: bad id '$id'" >&2; exit 2;; esac; done
+  for id in $pids; do
+    wd=$PT/wt/$id; [ -d "$wd" ] || continue
+    br=devkit/$ptask-$id; reason=
+    if ! wbr=$(git -C "$wd" rev-parse --abbrev-ref HEAD 2>/dev/null); then reason="not a git worktree"
+    elif [ "$wbr" != "$br" ]; then reason="on branch $wbr, not $br"
+    elif [ -f "$PT/run/$id.status" ] && { sst= spid=; read -r sst spid _ < "$PT/run/$id.status" 2>/dev/null; [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null; }; then reason="running (pid $spid)"
+    elif ! dst=$(git -C "$wd" status --short 2>/dev/null); then reason="git status failed"
+    elif [ -n "$dst" ]; then reason="worktree not clean"
+    elif ! accepted "$id"; then reason="not accepted since its last spawn"
+    elif [ "$prune_discard" = 0 ] && [ "$(aheado "$br")" != 0 ]; then reason="commits not on HEAD; if merged by squash or abandoned rerun with --discard"
+    fi
+    if [ -z "$reason" ] && [ "$prune_yes" = 1 ] && ! git worktree remove "$wd" 2>/dev/null; then reason="removal failed"; fi
+    if [ -n "$reason" ]; then echo "$id  keep  $reason"; nkeep=$((nkeep+1)); continue; fi # pitfall-ok: decimal-arith internal counter
+    if [ "$prune_yes" = 1 ]; then
+      if git rev-parse --verify -q "refs/heads/$br" >/dev/null && ! delmsg=$(git branch -D "$br" 2>&1); then
+        delmsg=$(printf '%s\n' "$delmsg" | head -1)
+        echo "$id  keep  worktree removed but branch delete failed: $delmsg"
+        nkeep=$((nkeep+1)) # pitfall-ok: decimal-arith internal counter
+        "$here/ledger" -t "$ptask" prune "$id prune-partial" "worktree removed; branch delete failed" "$wd" partial 2>/dev/null || true
+        continue
+      fi
+      "$here/ledger" -t "$ptask" prune "$id pruned" "worktree and branch removed" "$wd" pruned 2>/dev/null || true
+      did=1
+    fi
+    echo "$id  remove  accepted; clean"; nrem=$((nrem+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  [ "$did" = 0 ] || git worktree prune >/dev/null 2>&1
+  if [ $((nrem+nkeep)) -gt 0 ]; then # pitfall-ok: decimal-arith internal counters
+    if [ "$prune_yes" = 1 ]; then echo "prune: $nrem removed, $nkeep keep"
+    else echo "prune: $nrem remove, $nkeep keep (dry run; rerun with --yes)"; fi
+  fi
+  exit 0
 fi
 
 shape=ship; wt=0; model=${DEVKIT_MODEL:-}; inline=

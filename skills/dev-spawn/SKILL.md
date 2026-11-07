@@ -29,7 +29,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 5. Read only `<task>/handoffs/<id>.md`; open the `.log` only if it failed. Several workers in one batch: say nothing about a single handoff while others still run; when all have finished or dropped out, give ONE combined answer, never per-worker commentary.
 - [ ] 6. Accept a report only if it ends `PASS`, `ISSUES` or `BLOCKED` with evidence (command, file:line) and spawn printed `checklist: n/n` (missing or open items: read the handoff, then reject or ask). No evidence: reject and respawn once; a second miss is a gap, and a gap is not a pass. Then `bin/ledger accept "<id> accepted|rejected" <reason>`; the Stop hook blocks you until every worker you spawned has one; `bin/reconcile --wait` waits for running ones.
 - [ ] 7. Dropout: continue with the others and note it. Run `bin/reconcile` to see all states.
-- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Ledger what you accepted or rejected. Merge ship branches yourself; discard worktrees you do not merge. After merging or discarding, run `bin/spawn --prune --yes`. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 ## Phrases to commands
 Any CLI can be the main agent and any CLI the worker; it is always the same bash command. If the user does not name a CLI, use the one you are running in.
