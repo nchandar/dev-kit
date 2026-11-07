@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
 #   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id; refused inside a worker (exit 3)
-#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phase names path, done, base, start are reserved)
+#   ledger current                                      print this session's open task, else exit 1 (uses $CLAUDE_CODE_SESSION_ID)
+#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phase names path, done, base, start, current are reserved)
 #   ledger [-t id] done [summary]                       mark the task finished; refused inside a worker (exit 3)
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
-# Task: -t id, else $DEVKIT_TASK. No task is an error: there is no shared fallback ledger.
+# Task: -t id, else $DEVKIT_TASK, else the session pointer. No task is an error: there is no shared fallback ledger.
+# The pointer lives at $(ledger base)/run/session-<sid>.task; start rewrites it, only outside workers.
 # $DEVKIT_DIR overrides the .devkit location. $DEVKIT_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
 set -u
 die() { echo "ledger: $*" >&2; exit 2; }
@@ -32,7 +34,44 @@ append() { # file phase decision reason evidence result
   return 0; }
 
 B=$(base)
+session_id() { # $CLAUDE_CODE_SESSION_ID when it is safe for a filename, else nothing
+  local s=${CLAUDE_CODE_SESSION_ID:-}
+  case $s in ''|*[!A-Za-z0-9_-]*) : ;; *) printf '%s' "$s";; esac; }
+is_main() { # 0 for the main agent (depth 0 or unset, decimal), 1 for anything else
+  local d=${DEVKIT_DEPTH:-0}
+  case $d in ''|*[!0-9]*) return 1;; esac
+  [ "$((10#$d))" -eq 0 ]; }
+pointer_task() { # print the raw pointer id for this session, else fail
+  local s p id=""
+  s=$(session_id); [ -n "$s" ] || return 1
+  p="$B/run/session-$s.task"; [ -f "$p" ] || return 1
+  IFS= read -r id <"$p" || :
+  printf '%s' "$id"; }
+open_task() { # id: 0 when its dir exists and its last non-prune row is not done
+  local id=$1 f="$B/tasks/$1" phase
+  case $id in ''|.|..|*/*) return 1;; esac
+  [ -d "$f" ] || return 1
+  phase=$(awk -F'\t' 'NR>1 && $2!="prune"{p=$2} END{if(p!="")print p}' "$f/ledger.tsv" 2>/dev/null)
+  [ -n "$phase" ] && [ "$phase" != done ]; }
+current() { # print the session's open task, else nothing (exit 1); workers never use the pointer
+  local id
+  is_main || return 1
+  id=$(pointer_task) || return 1
+  open_task "$id" || return 1
+  printf '%s\n' "$id"; }
+write_pointer() { # id: atomically remember the task for this session; never fails start
+  local s p
+  s=$(session_id); [ -n "$s" ] || return 0
+  p="$B/run/session-$s.task"
+  { mkdir -p "$B/run" && printf '%s\n' "$1" > "$p.tmp.$$" && mv -f "$p.tmp.$$" "$p"; } 2>/dev/null \
+    || rm -f "$p.tmp.$$" 2>/dev/null
+  return 0; }
+
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }
+if [ "${1:-}" = current ]; then
+  if id=$(current); then printf '%s\n' "$id"; exit 0; fi
+  exit 1
+fi
 if [ "${1:-}" = start ]; then
   depth=${DEVKIT_DEPTH:-0}
   case $depth in ''|*[!0-9]*) echo "ledger: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not start a task; log to its own DEVKIT_TASK" >&2; exit 3;; esac
@@ -45,12 +84,20 @@ if [ "${1:-}" = start ]; then
   done
   append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "" open
   printf "$STATE_TEMPLATE" > "$B/tasks/$id/state.md"; exclude_local "$B"
+  write_pointer "$id"
   echo "$id"; exit 0
 fi
 task=${DEVKIT_TASK:-}
 if [ "${1:-}" = path ] && [ "${2:-}" = -t ]; then task=${3:-}; set -- path
 elif [ "${1:-}" = -t ]; then task=${2:-}; shift 2; fi
-[ -n "$task" ] || die "no task. Run: ledger start <slug>, then pass -t <id> or set DEVKIT_TASK"
+if [ -z "$task" ]; then task=$(current) || task=; fi
+if [ -z "$task" ]; then
+  if is_main && pid=$(pointer_task) && [ -n "$pid" ]; then
+    case $pid in .|..|*/*) ;; *)
+      die "your session's last task $pid is closed (or gone); run: ledger start <slug>, or pass -t <id>";; esac
+  fi
+  die "no task. Run: ledger start <slug>, then pass -t <id> or set DEVKIT_TASK, or just run ledger start"
+fi
 case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')";; esac
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
@@ -62,7 +109,7 @@ case ${1:-} in
     append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done
     n=0
     while IFS= read -r l; do case $l in "branch refs/heads/devkit/$task-"*) n=$((n+1));; esac; done < <(git worktree list --porcelain 2>/dev/null) # pitfall-ok: decimal-arith internal counter, always decimal
-    [ "$n" -eq 0 ] || echo "ledger: $n worker worktree(s) left for this task; run: bin/spawn --prune --yes (add --discard if merged by squash)" >&2
+    [ "$n" -eq 0 ] || echo "ledger: $n worker worktree(s) left for this task; run: $(printf '%q' "$(cd "$(dirname "$0")" && pwd)/spawn") --prune -t $task --yes (add --discard if merged by squash)" >&2
     exit 0;;
 esac
 [ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start are reserved)"

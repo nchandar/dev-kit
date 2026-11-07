@@ -2,6 +2,7 @@
 # Tests for bin/spawn --prune using real git worktrees. Usage: tests/spawn-prune.test.sh
 set -u
 unset DEVKIT_DEPTH  # this suite must pass when run from inside a worker too
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
 export DEVKIT_MODE=headless DEVKIT_VIEW=off
 for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
@@ -92,6 +93,28 @@ ok "a bad id anywhere exits 2"                               '[ $rc -eq 2 ]'
 ok "a bad id anywhere leaves both worktrees in place"        '[ -d "$TD/wt/keepa" ] && [ -d "$TD/wt/keepb" ]'
 ok "a bad id anywhere leaves both branches in place"         'git rev-parse --verify -q refs/heads/devkit/$TA-keepa >/dev/null && git rev-parse --verify -q refs/heads/devkit/$TA-keepb >/dev/null'
 ok "a bad id anywhere writes no prune rows for the valid ids" '! grep -q -E "keep[ab] (pruned|prune-partial)" "$TD/ledger.tsv"'
+
+# --- session pointer fallback: -t, then $DEVKIT_TASK, then `ledger current`
+PSS=sess-prune; PP=$(CLAUDE_CODE_SESSION_ID=$PSS "$ledger" start ptr-prune x); PPD="$DEVKIT_DIR/tasks/$PP"; mkdir -p "$PPD/run"
+mkwt "$PPD" "$PP" pw1; acc "$PP" pw1; st "$PPD" pw1
+mkwt "$TD2" "$TB" ex1; acc "$TB" ex1; st "$TD2" ex1
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune 2>&1); rc=$?
+ok "pointer only: the dry run lists the pointed task's worker" '[ $rc -eq 0 ] && printf "%s\n" "$out" | grep -q "^pw1  remove" && ! printf "%s\n" "$out" | grep -q "^ex1"'
+ok "pointer only: the dry run removes nothing"                '[ -d "$PPD/wt/pw1" ]'
+out=$(DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune 2>&1); rc=$?
+ok "DEVKIT_TASK wins over the pointer"                        '[ $rc -eq 0 ] && printf "%s\n" "$out" | grep -q "^ex1  remove" && ! printf "%s\n" "$out" | grep -q "^pw1"'
+out=$(DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune -t "$TA" 2>&1); rc=$?
+ok "-t wins over both DEVKIT_TASK and the pointer"            '[ $rc -eq 0 ] && ! printf "%s\n" "$out" | grep -q "^pw1" && ! printf "%s\n" "$out" | grep -q "^ex1"'
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune -t "" 2>&1); rc=$?
+ok "an empty -t does not fall back to the pointer (exit 2)"   '[ $rc -eq 2 ] && ! printf "%s\n" "$out" | grep -q "^pw1" && [ -d "$PPD/wt/pw1" ]'
+out=$(env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$spawn" --prune 2>&1); rc=$?
+ok "no pointer keeps the old message"                         '[ $rc -eq 2 ] && printf "%s\n" "$out" | grep -q "spawn: no task. Pass --prune -t <id> or set DEVKIT_TASK"'
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune --yes 2>&1); rc=$?
+ok "--yes with only the pointer removes the pointed task's worker" '[ $rc -eq 0 ] && [ ! -e "$PPD/wt/pw1" ] && ! git rev-parse --verify -q refs/heads/devkit/$PP-pw1 >/dev/null && [ "$(grep -c "pw1 pruned" "$PPD/ledger.tsv")" -eq 1 ]'
+ok "--yes with only the pointer leaves another task's worker alone" '[ -d "$TD2/wt/ex1" ]'
+"$ledger" -t "$PP" done "closed" >/dev/null 2>&1
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune 2>&1); rc=$?
+ok "a closed pointer gives the clear message naming the task" '[ $rc -eq 2 ] && printf "%s\n" "$out" | grep -q "last task $PP is closed (or gone)"'
 
 out=$(env -u DEVKIT_TASK "$spawn" --prune 2>&1); rc=$?
 ok "no task exits 2" '[ $rc -eq 2 ] && printf "%s\n" "$out" | grep -qi "no task"'

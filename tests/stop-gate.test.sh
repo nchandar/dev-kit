@@ -2,6 +2,7 @@
 # Tests for bin/stop-gate (Claude Code Stop hook adapter). Usage: tests/stop-gate.test.sh
 set -u
 unset DEVKIT_DEPTH  # a worker running this suite must still be able to start fixture tasks
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 here=$(cd "$(dirname "$0")/.." && pwd); gate="$here/bin/stop-gate"; ledger="$here/bin/ledger"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }

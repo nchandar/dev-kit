@@ -12,7 +12,7 @@ Ask yourself one thing: what would a cold-start agent need to continue that the 
 4. Learnings: the moment you find something reusable, add `- [ ] lesson | scope: project|general|recipe | ref: pointer`. project means true only of this repo; general means an engineering lesson any project would want; recipe means a repeatable procedure with commands (build, deploy, setup).
 5. Run `bin/state check` and fix what it reports. It enforces: state.md at most 60 lines, bullets at most 140 characters, Direction at most 3 lines, no Next section, no tabs or carriage returns.
 Closeout, before `bin/ledger done`:
-- This task's worker worktrees: `bin/spawn --prune --yes` (add `--discard` if merged by squash).
+- This task's worker worktrees: `bin/spawn --prune -t <task> --yes` (add `--discard` if merged by squash).
 6. Final pass: drop stale Findings, keep Open questions honest.
 7. Project learnings go into `.devkit/memory.md` (suggested headings: Build and run, Gotchas, Architecture notes; at most 80 lines; each bullet a pointer or a `command`), then mark them `[x]`.
 8. `bin/learn queue` sends general and recipe learnings to the local inbox. Tell the user "N learnings queued, run dev-learn". The shared library changes only with their approval.

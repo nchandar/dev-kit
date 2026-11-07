@@ -2,6 +2,7 @@
 # Tests for bin/run. Usage: tests/run.test.sh
 set -u
 unset DEVKIT_DEPTH  # a worker running this suite must still be able to start fixture tasks
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 here=$(cd "$(dirname "$0")/.." && pwd); run="$here/bin/run"; ledger="$here/bin/ledger"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
@@ -42,5 +43,26 @@ for i in 1 2 3 4 5 6; do "$run" sh -c "echo par$i" >/dev/null & done; wait
 ok "parallel runs keep separate logs" '[ "$(cat $TD/runs/*.log | grep -c "^par")" -eq 6 ]'
 n0=$(ls $TD/runs | wc -l); "$run" true >/dev/null
 ok "a new run gets a new log" '[ "$(ls $TD/runs | wc -l)" -gt "$n0" ]'
+
+# --- session pointer fallback: $DEVKIT_TASK, then `ledger current` (no -t in run)
+PS=sess-run; PT=$(CLAUDE_CODE_SESSION_ID=$PS "$ledger" start ptr-run "x"); PTD=".devkit/tasks/$PT"
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PS "$run" echo via-pointer); rc=$?
+ok "no DEVKIT_TASK: the session pointer supplies the task" '[ $rc -eq 0 ] && [ -d "$PTD/runs" ]'
+ok "the pointer run is ledgered in that task"              'awk -F"\t" "\$2==\"run\"" "$PTD/ledger.tsv" | grep -q "via-pointer"'
+out=$(DEVKIT_TASK=${TD##*/} CLAUDE_CODE_SESSION_ID=$PS "$run" echo explicit-wins); rc=$?
+ok "DEVKIT_TASK wins over the pointer"                     '[ $rc -eq 0 ] && grep -q "explicit-wins" $TD/runs/*.log && ! grep -q "explicit-wins" "$PTD"/runs/*.log 2>/dev/null'
+env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$run" true >/dev/null 2>"$t/run-notask.err"; rc=$?
+ok "no pointer: the existing no-task error"                '[ $rc -eq 2 ] && grep -q "run: no task. Run: ledger start <slug>" "$t/run-notask.err"'
+"$ledger" -t "$PT" done "closed" >/dev/null 2>&1
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PS "$run" true >/dev/null 2>"$t/run-closed.err"; rc=$?
+ok "closed pointer: the clear error names the task"        '[ $rc -eq 2 ] && grep -q "last task $PT is closed (or gone)" "$t/run-closed.err"'
+
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m wt-base; mkdir -p "$t/sub/deep"
+WS=sess-run-dir; WT=$(CLAUDE_CODE_SESSION_ID=$WS "$ledger" start ptr-dir "x"); WTD="$t/.devkit/tasks/$WT"
+git worktree add -q "$t/wt-run" -b wt-run-b
+( cd "$t/sub/deep" && env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$WS "$run" echo from-subdir >/dev/null ); rc=$?
+ok "run resolves the pointer from a subdirectory of the repo"      '[ $rc -eq 0 ] && grep -q "from-subdir" "$WTD"/runs/*.log'
+( cd "$t/wt-run" && env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$WS "$run" echo from-worktree >/dev/null ); rc=$?
+ok "run resolves the pointer from a git worktree of the repo"      '[ $rc -eq 0 ] && grep -q "from-worktree" "$WTD"/runs/*.log'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

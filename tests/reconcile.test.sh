@@ -2,6 +2,7 @@
 # Tests for bin/reconcile. Usage: tests/reconcile.test.sh
 set -u
 unset DEVKIT_DEPTH  # a worker running this suite must still be able to start fixture tasks
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 here=$(cd "$(dirname "$0")/.." && pwd); rec="$here/bin/reconcile"; ledger="$here/bin/ledger"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
@@ -195,5 +196,38 @@ Q=$("$ledger" start prune-open "q")
 "$ledger" -t "$Q" prune "w2 pruned" "worktree removed" "/tmp/w2" pruned
 out=$("$rec")
 ok "prune: open task keeps its previous phase as the last one" 'echo "$out" | grep "$Q" | grep -q "plan: s1 open"'
+
+# --- session pointer fallback for --gate task scope (--session is unchanged)
+RS=sess-rec; RG=$(CLAUDE_CODE_SESSION_ID=$RS "$ledger" start ptr-gate "x"); RGD=$("$ledger" -t "$RG" path); mkdir -p "$RGD/run"
+echo "running $$ 100" > "$RGD/run/rp.status"
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$RS "$rec" --gate); rc=$?
+ok "no DEVKIT_TASK: the pointer supplies the task"  '[ $rc -eq 1 ] && echo "$out" | grep -q "rp running"'
+EG=$(CLAUDE_CODE_SESSION_ID=$RS "$ledger" start explicit-gate "x"); EGD=$("$ledger" -t "$EG" path); mkdir -p "$EGD/run"
+echo "running $$ 100" > "$EGD/run/eg.status"
+out=$(DEVKIT_TASK=$EG CLAUDE_CODE_SESSION_ID=$RS "$rec" --gate); rc=$?
+ok "DEVKIT_TASK wins over the pointer"             '[ $rc -eq 1 ] && echo "$out" | grep -q "eg running" && ! echo "$out" | grep -q "rp running"'
+out=$(CLAUDE_CODE_SESSION_ID=$RS "$rec" -t "$EG" --gate); rc=$?
+ok "-t wins over the pointer"                      '[ $rc -eq 1 ] && echo "$out" | grep -q "eg running" && ! echo "$out" | grep -q "rp running"'
+env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$rec" --gate >/dev/null 2>"$t/rec-notask.err"; rc=$?
+ok "no pointer: the existing gate usage error"     '[ $rc -eq 2 ] && grep -q "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" "$t/rec-notask.err"'
+"$ledger" -t "$EG" done "closed" >/dev/null 2>&1
+out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$RS "$rec" --gate 2>&1); rc=$?
+ok "closed pointer: the clear error names the task" '[ $rc -eq 2 ] && echo "$out" | grep -q "last task $EG is closed (or gone)"'
+rm -f "$RGD"/run/* "$EGD"/run/*
+
+# --session S is unchanged by a pointer; plain list ignores it
+SS=sess-rec-s; SA=$(CLAUDE_CODE_SESSION_ID=$SS "$ledger" start sess-a "x"); SAD=$("$ledger" -t "$SA" path); mkdir -p "$SAD/run"
+echo "running $$ 100" > "$SAD/run/sw.status"; echo "$SS" > "$SAD/run/sw.session"
+EO=$(CLAUDE_CODE_SESSION_ID=$SS "$ledger" start sess-other "x"); EOD=$("$ledger" -t "$EO" path); mkdir -p "$EOD/run"
+echo "running $$ 100" > "$EOD/run/so.status"; echo "other-session" > "$EOD/run/so.session"
+out_with=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SS "$rec" --gate --session "$SS"); rc_with=$?
+out_without=$(env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$rec" --gate --session "$SS"); rc_without=$?
+ok "--session S: same output and exit with and without a pointer" '[ $rc_with -eq $rc_without ] && [ "$out_with" = "$out_without" ] && echo "$out_with" | grep -q "sw running"'
+ok "--session S: the pointer's task does not widen the scope"     '! echo "$out_with" | grep -q "so running"'
+out_with=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SS "$rec" --gate --session none-here); rc_with=$?
+ok "--session of an unknown session stays clear despite a pointer" '[ $rc_with -eq 0 ] && [ -z "$out_with" ]'
+l_with=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SS "$rec"); l_without=$(env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$rec")
+ok "plain reconcile (list) is unaffected by a pointer"            '[ "$l_with" = "$l_without" ] && echo "$l_with" | grep -q "$SA"'
+rm -f "$SAD"/run/* "$EOD"/run/*
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

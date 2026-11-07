@@ -7,6 +7,7 @@ ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && mkdir -p sub/deep
 unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK DEVKIT_DEPTH
+unset CLAUDE_CODE_SESSION_ID
 
 A=$(cd sub/deep && "$ledger" start fix-login "first look")
 ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".devkit/tasks/$A" ]'
@@ -132,10 +133,128 @@ err=$( cd "$P" && "$ledger" -t "$PW" done "no worktrees" 2>&1 >/dev/null ); rc=$
 ok "done with no worker worktrees is silent"        '[ $rc -eq 0 ] && [ -z "$err" ]'
 ( cd "$P" && git worktree add -q "$P/wt" -b "devkit/$PW-x" 2>/dev/null )
 err=$( cd "$P" && "$ledger" -t "$PW" done "leftovers" 2>&1 >/dev/null ); rc=$?
-ok "done warns about 1 leftover worker worktree"    '[ $rc -eq 0 ] && echo "$err" | grep -q "1 worker worktree" && echo "$err" | grep -q "prune --yes"'
+ok "done warns about 1 leftover worker worktree"    '[ $rc -eq 0 ] && echo "$err" | grep -q "1 worker worktree" && echo "$err" | grep -q "^ledger: .*run: /.*/spawn --prune -t $PW --yes" && sp=$(echo "$err" | sed -n "s/^.*run: //;s/ --prune.*//p") && [ -x "$sp" ]'
 ok "done row is still written when it warns"        'tail -1 "$P/.devkit/tasks/$PW/ledger.tsv" | awk -F"\t" "\$2==\"done\" && \$3==\"leftovers\"{f=1} END{exit !f}"'
 NG=$(mktemp -d); NGID=$(cd "$NG" && "$ledger" start nongit-warn "x")
 err=$( cd "$NG" && "$ledger" -t "$NGID" done "no git" 2>&1 >/dev/null ); rc=$?
 ok "done outside a git repo is silent, exit 0"      '[ $rc -eq 0 ] && [ -z "$err" ]'
+
+# --- slice 1: the session pointer and `ledger current`
+S1=sess-one; A1=$(CLAUDE_CODE_SESSION_ID=$S1 "$ledger" start ptr-a "x")
+ok "start writes this session's pointer with the exact task id" '[ -f ".devkit/run/session-$S1.task" ] && [ "$(cat ".devkit/run/session-$S1.task")" = "$A1" ]'
+ok "the pointer is exactly one line and no temp is left"      '[ "$(wc -l < ".devkit/run/session-$S1.task" | tr -d " ")" -eq 1 ] && [ -z "$(ls -1 .devkit/run/*.tmp.* 2>/dev/null)" ]'
+out=$(CLAUDE_CODE_SESSION_ID=$S1 "$ledger" current); rc=$?
+ok "current prints the open task id and exits 0"              '[ $rc -eq 0 ] && [ "$out" = "$A1" ]'
+
+before=$(ls -1 .devkit/run 2>/dev/null | wc -l | tr -d " ")
+N0=$("$ledger" start ptr-none "x")
+ok "start without a session id writes no pointer"             '[ -n "$N0" ] && [ "$(ls -1 .devkit/run 2>/dev/null | wc -l | tr -d " ")" = "$before" ]'
+
+n0=$(ls -1 .devkit/run 2>/dev/null | wc -l | tr -d " ")
+CLAUDE_CODE_SESSION_ID='../x' "$ledger" start ptr-bad1 >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID='a b' "$ledger" start ptr-bad2 >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID='a/b' "$ledger" start ptr-bad3 >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID='' "$ledger" start ptr-bad4 >/dev/null 2>&1
+ok "unsafe session ids (../x, space, slash, empty) write no pointer" '[ "$(ls -1 .devkit/run 2>/dev/null | wc -l | tr -d " ")" = "$n0" ]'
+ok "nothing is written outside .devkit/run"                   '[ -z "$(find . -name "session-*.task" ! -path "./.devkit/run/*" -print -quit 2>/dev/null)" ]'
+ok "the pointer dir is under .devkit/run and git-ignored"     'case "$t/.devkit/run/session-$S1.task" in "$t"/.devkit/run/*) true;; *) false;; esac && [ -z "$(git status --porcelain -- .devkit)" ]'
+
+out=$(env -u CLAUDE_CODE_SESSION_ID "$ledger" current); rc=$?
+ok "current: no session id exits 1 with empty stdout"         '[ $rc -eq 1 ] && [ -z "$out" ]'
+out=$(CLAUDE_CODE_SESSION_ID=sess-noptr "$ledger" current); rc=$?
+ok "current: no pointer exits 1 with empty stdout"            '[ $rc -eq 1 ] && [ -z "$out" ]'
+: > .devkit/run/session-sess-empty.task
+out=$(CLAUDE_CODE_SESSION_ID=sess-empty "$ledger" current); rc=$?
+ok "current: empty pointer exits 1 with empty stdout"         '[ $rc -eq 1 ] && [ -z "$out" ]'
+printf 'no-such-task\n' > .devkit/run/session-sess-garbage.task
+out=$(CLAUDE_CODE_SESSION_ID=sess-garbage "$ledger" current); rc=$?
+ok "current: garbage pointer exits 1 with empty stdout"       '[ $rc -eq 1 ] && [ -z "$out" ]'
+printf '../x\n' > .devkit/run/session-sess-badid.task
+out=$(CLAUDE_CODE_SESSION_ID=sess-badid "$ledger" current); rc=$?
+ok "current: pointer holding a bad id exits 1"                '[ $rc -eq 1 ] && [ -z "$out" ]'
+printf 'a/b\n' > .devkit/run/session-sess-badid2.task
+out=$(CLAUDE_CODE_SESSION_ID=sess-badid2 "$ledger" current); rc=$?
+ok "current: pointer holding a slash id exits 1"              '[ $rc -eq 1 ] && [ -z "$out" ]'
+
+SC=sess-closed; TC=$(CLAUDE_CODE_SESSION_ID=$SC "$ledger" start ptr-closed)
+CLAUDE_CODE_SESSION_ID=$SC "$ledger" done "closed" >/dev/null 2>&1
+out=$(CLAUDE_CODE_SESSION_ID=$SC "$ledger" current); rc=$?
+ok "current: closed task exits 1 with empty stdout"           '[ $rc -eq 1 ] && [ -z "$out" ]'
+SD=sess-deleted; TD=$(CLAUDE_CODE_SESSION_ID=$SD "$ledger" start ptr-deleted)
+rm -rf ".devkit/tasks/$TD"
+out=$(CLAUDE_CODE_SESSION_ID=$SD "$ledger" current); rc=$?
+ok "current: deleted task dir exits 1 with empty stdout"      '[ $rc -eq 1 ] && [ -z "$out" ]'
+out=$(CLAUDE_CODE_SESSION_ID=$S1 DEVKIT_DEPTH=1 "$ledger" current); rc=$?
+ok "current: worker depth 1 exits 1 with empty stdout"        '[ $rc -eq 1 ] && [ -z "$out" ]'
+out=$(CLAUDE_CODE_SESSION_ID=$S1 DEVKIT_DEPTH=08 "$ledger" current); rc=$?
+ok "current: worker depth 08 exits 1 with empty stdout"       '[ $rc -eq 1 ] && [ -z "$out" ]'
+out=$(CLAUDE_CODE_SESSION_ID=$S1 DEVKIT_DEPTH=0 "$ledger" current); rc=$?
+ok "current: depth 0 (main agent) still resolves"             '[ $rc -eq 0 ] && [ "$out" = "$A1" ]'
+
+SA=sess-a; SB=sess-b
+TA=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" start ptr-a1)
+TB=$(CLAUDE_CODE_SESSION_ID=$SB "$ledger" start ptr-b1)
+ok "two sessions keep independent pointers"                   '[ "$(cat ".devkit/run/session-$SA.task")" = "$TA" ] && [ "$(cat ".devkit/run/session-$SB.task")" = "$TB" ]'
+TA2=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" start ptr-a2)
+ok "a second start moves only its own pointer"                '[ "$(cat ".devkit/run/session-$SA.task")" = "$TA2" ] && [ "$(cat ".devkit/run/session-$SB.task")" = "$TB" ]'
+
+CLAUDE_CODE_SESSION_ID=$SA "$ledger" -t "$A1" probe-twins "-t" "explicit"
+ok "-t wins over the pointer"                                 'grep -q "probe-twins" ".devkit/tasks/$A1/ledger.tsv" && ! grep -q "probe-twins" ".devkit/tasks/$TA2/ledger.tsv"'
+CLAUDE_CODE_SESSION_ID=$SA DEVKIT_TASK=$A1 "$ledger" probe-envwins "env" "x"
+ok "DEVKIT_TASK wins over the pointer"                        'grep -q "probe-envwins" ".devkit/tasks/$A1/ledger.tsv" && ! grep -q "probe-envwins" ".devkit/tasks/$TA2/ledger.tsv"'
+CLAUDE_CODE_SESSION_ID=$SA "$ledger" probe-pointed why "x"
+ok "a row with no task lands in the pointed task"             'grep -q "probe-pointed" ".devkit/tasks/$TA2/ledger.tsv" && ! grep -q "probe-pointed" ".devkit/tasks/$A1/ledger.tsv"'
+out=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" path); rc=$?
+ok "path resolves from the pointer"                           '[ $rc -eq 0 ] && [ "$out" = "$t/.devkit/tasks/$TA2" ]'
+CLAUDE_CODE_SESSION_ID=$SA "$ledger" accept w1 "ok"
+ok "accept resolves from the pointer"                         'grep -q "accept" ".devkit/tasks/$TA2/ledger.tsv"'
+CLAUDE_CODE_SESSION_ID=$SA "$ledger" done "via pointer"; rc=$?
+ok "done resolves from the pointer"                           '[ $rc -eq 0 ] && tail -1 ".devkit/tasks/$TA2/ledger.tsv" | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
+out=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" current); rc=$?
+ok "after done the pointer stops resolving"                   '[ $rc -eq 1 ] && [ -z "$out" ]'
+err=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" probe-x y z 2>&1 >/dev/null); rc=$?
+ok "closed pointer gives the clear error"                     '[ $rc -eq 2 ] && printf "%s" "$err" | grep -q "last task $TA2 is closed (or gone)" && printf "%s" "$err" | grep -q "ledger start <slug>" && printf "%s" "$err" | grep -q "pass -t <id>"'
+ok "the other session is unaffected by that close"            '[ "$(CLAUDE_CODE_SESSION_ID=$SB "$ledger" current)" = "$TB" ]'
+
+SG=sess-gone; TG=$(CLAUDE_CODE_SESSION_ID=$SG "$ledger" start ptr-gone)
+rm -rf ".devkit/tasks/$TG"
+err=$(CLAUDE_CODE_SESSION_ID=$SG "$ledger" probe-y y z 2>&1 >/dev/null); rc=$?
+ok "gone pointer task gives the clear error"                  '[ $rc -eq 2 ] && printf "%s" "$err" | grep -q "last task $TG is closed (or gone)"'
+err=$(CLAUDE_CODE_SESSION_ID=sess-noptr "$ledger" probe-z y z 2>&1 >/dev/null); rc=$?
+ok "no pointer keeps the no-task error and mentions start"    '[ $rc -eq 2 ] && printf "%s" "$err" | grep -q "no task. Run: ledger start <slug>" && printf "%s" "$err" | grep -q "or just run ledger start"'
+
+SP=sess-prune; TP=$(CLAUDE_CODE_SESSION_ID=$SP "$ledger" start ptr-prune)
+CLAUDE_CODE_SESSION_ID=$SP "$ledger" -t "$TP" done "x" >/dev/null 2>&1
+CLAUDE_CODE_SESSION_ID=$SP "$ledger" -t "$TP" prune "post-close" "x" >/dev/null 2>&1
+out=$(CLAUDE_CODE_SESSION_ID=$SP "$ledger" current); rc=$?
+ok "a prune row after done keeps the task closed"             '[ $rc -eq 1 ] && [ -z "$out" ]'
+SN=sess-prune-open; TN=$(CLAUDE_CODE_SESSION_ID=$SN "$ledger" start ptr-prune-open)
+CLAUDE_CODE_SESSION_ID=$SN "$ledger" -t "$TN" prune "housekeeping" "x" >/dev/null 2>&1
+out=$(CLAUDE_CODE_SESSION_ID=$SN "$ledger" current); rc=$?
+ok "a prune row does not close an open task"                  '[ $rc -eq 0 ] && [ "$out" = "$TN" ]'
+
+SE=sess-sub; TE=$(CLAUDE_CODE_SESSION_ID=$SE "$ledger" start ptr-sub)
+out=$(cd sub/deep && CLAUDE_CODE_SESSION_ID=$SE "$ledger" current); rc=$?
+ok "current resolves from a subdirectory"                     '[ $rc -eq 0 ] && [ "$out" = "$TE" ]'
+(cd sub/deep && CLAUDE_CODE_SESSION_ID=$SE "$ledger" probe-subdir y z)
+ok "a row from a subdirectory lands in the pointed task"      'grep -q "probe-subdir" ".devkit/tasks/$TE/ledger.tsv" && [ ! -d sub/deep/.devkit ]'
+out=$(cd wt1 && CLAUDE_CODE_SESSION_ID=$SE "$ledger" current); rc=$?
+ok "current resolves from a linked worktree"                  '[ $rc -eq 0 ] && [ "$out" = "$TE" ]'
+(cd wt1 && CLAUDE_CODE_SESSION_ID=$SE "$ledger" probe-wt y z)
+ok "a row from a worktree lands in the pointed task"          'grep -q "probe-wt" ".devkit/tasks/$TE/ledger.tsv" && [ ! -d wt1/.devkit ]'
+
+DD=$(mktemp -d)
+AD=$(cd "$t" && CLAUDE_CODE_SESSION_ID=sess-dd DEVKIT_DIR="$DD/.devkit" "$ledger" start ptr-dd)
+ok "start writes the pointer under DEVKIT_DIR"                '[ "$(cat "$DD/.devkit/run/session-sess-dd.task")" = "$AD" ]'
+out=$(cd "$t" && CLAUDE_CODE_SESSION_ID=sess-dd DEVKIT_DIR="$DD/.devkit" "$ledger" current); rc=$?
+ok "current respects DEVKIT_DIR"                              '[ $rc -eq 0 ] && [ "$out" = "$AD" ]'
+(cd "$t" && CLAUDE_CODE_SESSION_ID=sess-dd DEVKIT_DIR="$DD/.devkit" "$ledger" probe-dd y z)
+ok "rows resolve under DEVKIT_DIR from the pointer"           'grep -q "probe-dd" "$DD/.devkit/tasks/$AD/ledger.tsv"'
+
+PF=$(mktemp -d); ( cd "$PF" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+mkdir -p "$PF/.devkit" && : > "$PF/.devkit/run"
+out=$(cd "$PF" && CLAUDE_CODE_SESSION_ID=sess-fail "$ledger" start ptr-fail 2>"$t/ptr-fail.err"); rc=$?
+ok "a failing pointer write does not fail start"              '[ $rc -eq 0 ] && [[ $out == ptr-fail-* ]] && [ -f "$PF/.devkit/run" ] && [ ! -s "$PF/.devkit/run" ]'
+ok "a failing pointer write stays silent"                     '[ ! -s "$t/ptr-fail.err" ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
