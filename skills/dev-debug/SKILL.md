@@ -26,7 +26,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 2. Reproduce with a command, via library/debug-method (stop-the-line, preserve evidence). No repro, no fix.
 - [ ] 3. Localize and find the root cause at file:line (library/debug-method). Check the same fault elsewhere. Crosses components? show the failure path on an explain-html page (library/explain-html).
 - [ ] 4. Doubt: run library/doubt on the root-cause claim with a fresh scout; settle every objection. Refresh `<task>/state.md` (library/state).
-- [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason. A bug is closed only with a regression test plus a docs/pitfalls.md row (or a new pitfalls rule); read docs/pitfalls.md at recon.
+- [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason, then add neighbor tests (sibling cases of the same fault class, boundary values, what must not change): several tests per bug, not one. A bug is closed only with those regression tests plus a docs/pitfalls.md row (or a new pitfalls rule); read docs/pitfalls.md at recon.
 - [ ] 6. List 2-3 fix options with a recommendation and ask the user's pick; then the smallest fix, no drive-by edits. Test green, then the full suite.
 - [ ] 7. Verify: follow library/verify; the original repro passes, plus one adjacent case. Then follow skills/dev-review/SKILL.md on the diff and fix blockers.
 - [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
