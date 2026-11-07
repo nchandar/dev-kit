@@ -2,6 +2,7 @@
 # Tests for bin/spawn using a fake agent CLI (no tokens). Usage: tests/spawn.test.sh
 set -u
 unset DEVKIT_DEPTH  # these suites must pass when run from inside a worker too
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 # a worker also inherits its model, tunables and the push guard; none may change what this suite measures
 unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
 export DEVKIT_MODE=headless  # this suite pins the headless path; tests/spawn-interactive.test.sh covers the tab path
@@ -91,8 +92,16 @@ ok "slots released afterwards"     '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/
 
 DEVKIT_TASK=$TB FAKE_ID=a "$spawn" a fake "$t/brief.md"
 ok "same worker id in another task does not collide" '[ -s "$DEVKIT_DIR/tasks/$TB/handoffs/a.md" ] && [ -s $TD/handoffs/a.md ] && ! cmp -s "$DEVKIT_DIR/tasks/$TB/handoffs/a.md" /dev/null'
-env -u DEVKIT_TASK "$spawn" q fake "$t/brief.md" 2>/dev/null; rc=$?
+env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$spawn" q fake "$t/brief.md" 2>/dev/null; rc=$?
 ok "spawn without a task exits 2"  '[ $rc -eq 2 ]'
+# --- session pointer fallback: $DEVKIT_TASK, then `ledger current`
+SP=sess-spawn; PT=$(CLAUDE_CODE_SESSION_ID=$SP "$ledger" start ptr-spawn "x"); PTD=$DEVKIT_DIR/tasks/$PT
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SP FAKE_ID=ps "$spawn" ps fake "$t/brief.md"; rc=$?
+ok "no DEVKIT_TASK: the pointer supplies the task" '[ $rc -eq 0 ] && [ -s "$PTD/handoffs/ps.md" ] && grep -q "ps done" "$PTD/ledger.tsv"'
+DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$SP FAKE_ID=ex "$spawn" ex fake "$t/brief.md"; rc=$?
+ok "DEVKIT_TASK wins over the pointer"             '[ $rc -eq 0 ] && [ -s "$DEVKIT_DIR/tasks/$TB/handoffs/ex.md" ] && [ ! -e "$PTD/handoffs/ex.md" ]'
+"$ledger" -t "$PT" done "closed" >/dev/null 2>&1
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SP "$spawn" q2 fake "$t/brief.md" >/dev/null 2>"$t/sp-closed.err"; rc=$?ok "closed pointer: the clear error names the task" '[ $rc -eq 2 ] && grep -q "last task $PT is closed (or gone)" "$t/sp-closed.err"'
 DEVKIT_TASK=$TB FAKE_ID=iso "$spawn" iso fake "$t/brief.md"
 ok "spawn logs only to its own task's ledger" 'grep -q "iso done" "$DEVKIT_DIR/tasks/$TB/ledger.tsv" && ! grep -q "iso" $TD/ledger.tsv'
 
@@ -300,6 +309,15 @@ DEVKIT_VIEW_KEEP=1 DEVKIT_VIEW=herdr FAKE_ID=v8 FAKE_NOHANDOFF=1 vrun "$spawn" v
 ok "view: DEVKIT_VIEW_KEEP=1 keeps a failed tab and remembers it" '! grep -q "tab close" "$HERDR_LOG" && [ -s $TD/run/v8.tab ]'
 : > "$HERDR_LOG"; ( export PATH="$hs:$PATH"; "$spawn" --close-views )
 ok "view: --close-views closes kept tabs and forgets them" 'grep -q "tab close X:t9" "$HERDR_LOG" && [ ! -e $TD/run/v8.tab ]'
+# --close-views falls back through the session pointer too
+CS=sess-cv; CT=$(CLAUDE_CODE_SESSION_ID=$CS "$ledger" start ptr-cv "x"); CTD=$DEVKIT_DIR/tasks/$CT; mkdir -p "$CTD/run"
+echo X:t9 > "$CTD/run/cv.tab"
+: > "$HERDR_LOG"
+( export PATH="$hs:$PATH"; env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$CS "$spawn" --close-views ); rc=$?
+ok "--close-views: no DEVKIT_TASK, the pointer supplies the task" '[ $rc -eq 0 ] && [ ! -e "$CTD/run/cv.tab" ] && grep -q "tab close X:t9" "$HERDR_LOG"'
+"$ledger" -t "$CT" done "closed" >/dev/null 2>&1
+( export PATH="$hs:$PATH"; env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$CS "$spawn" --close-views 2>"$t/cv-closed.err" ); rc=$?
+ok "--close-views: closed pointer errors clearly" '[ $rc -eq 2 ] && grep -q "last task $CT is closed (or gone)" "$t/cv-closed.err"'
 # an interrupted spawn must not leave its tab, an orphan worker, a held slot or a stale "running" status
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH"; DEVKIT_VIEW=herdr FAKE_ID=k1 FAKE_SLEEP=20 exec "$spawn" k1 fake "$t/brief.md" ) 2>/dev/null &
@@ -493,6 +511,39 @@ env -u CLAUDE_CODE_SESSION_ID FAKE_ID=se1 "$spawn" se1 fake "$t/brief.md"
 ok "respawn without an id removes a stale session file" '[ ! -e $TD/run/se1.session ]'
 CLAUDE_CODE_SESSION_ID=sess-dry DEVKIT_DRYRUN=1 "$spawn" se3 fake "$t/brief.md" >/dev/null
 ok "dry-run leaves no session file" '[ ! -e $TD/run/se3.session ]'
+
+# --- session pointer fallback: -t/DEVKIT_TASK, then `ledger current` (main path and --close-views)
+SPS=sess-spawn; SP=$(CLAUDE_CODE_SESSION_ID=$SPS "$ledger" start ptr-spawn x); SPD="$DEVKIT_DIR/tasks/$SP"
+cat > "$t/fake-env" <<'F'
+#!/usr/bin/env bash
+printf 'task=%s\n' "${DEVKIT_TASK:-}" > "$DEVKIT_DIR/envtask.$FAKE_ID"
+printf "ok\n\n## Checklist\n- [x] done\n" > "$2"
+F
+chmod +x "$t/fake-env"
+env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$spawn" pn fake "$t/brief.md" >/dev/null 2>"$t/pn.err"; rc=$?
+ok "spawn: no pointer and no DEVKIT_TASK keeps the old error and exit 2" '[ $rc -eq 2 ] && grep -q "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" "$t/pn.err"'
+env -u DEVKIT_TASK DEVKIT_DEPTH=1 CLAUDE_CODE_SESSION_ID=$SPS "$spawn" pw fake "$t/brief.md" >/dev/null 2>"$t/pw.err"; rc=$?
+ok "spawn: a worker environment never uses the pointer" '[ $rc -eq 2 ] && grep -q "spawn: no task. Run: ledger start" "$t/pw.err"'
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SPS FAKE_ID=sq1 DEVKIT_FAKE="$t/fake-env" "$spawn" sq1 fake "$t/brief.md"; rc=$?
+ok "spawn: only the pointer: the worker runs in the pointed task" '[ $rc -eq 0 ] && [ -s "$SPD/handoffs/sq1.md" ] && grep -q "^done 0" "$SPD/run/sq1.status" && [ ! -e "$TD/handoffs/sq1.md" ]'
+ok "spawn: the worker's own environment has DEVKIT_TASK set to the pointed task" '[ "$(cat "$DEVKIT_DIR/envtask.sq1")" = "task=$SP" ]'
+DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$SPS FAKE_ID=pe DEVKIT_FAKE="$t/fake-env" "$spawn" pe fake "$t/brief.md"; rc=$?
+ok "spawn: DEVKIT_TASK wins over the pointer" '[ $rc -eq 0 ] && [ -s "$DEVKIT_DIR/tasks/$TB/handoffs/pe.md" ] && [ ! -e "$SPD/handoffs/pe.md" ] && [ "$(cat "$DEVKIT_DIR/envtask.pe")" = "task=$TB" ]'
+"$ledger" -t "$SP" done "closed" >/dev/null 2>&1
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SPS "$spawn" pc fake "$t/brief.md" >/dev/null 2>"$t/pc.err"; rc=$?
+ok "spawn: a closed pointer errors clearly, naming the task, exit 2" '[ $rc -eq 2 ] && grep -q "last task $SP is closed (or gone)" "$t/pc.err" && [ ! -e "$SPD/handoffs/pc.md" ]'
+
+# --close-views: a herdr stub records which tab it was told to close
+cv="$t/cvbin"; mkdir -p "$cv"; export CV_LOG="$t/cv.log"; : > "$CV_LOG"
+printf '#!/usr/bin/env bash\necho "$*" >> "$CV_LOG"\nexit 0\n' > "$cv/herdr"; chmod +x "$cv/herdr"
+CVS=sess-cv; CVT=$(CLAUDE_CODE_SESSION_ID=$CVS "$ledger" start ptr-cv x); CVD="$DEVKIT_DIR/tasks/$CVT"; mkdir -p "$CVD/run" "$TD/run"
+echo tab-ptr > "$CVD/run/v1.tab"; echo tab-exp > "$TD/run/v2.tab"
+env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID PATH="$cv:$PATH" "$spawn" --close-views >/dev/null 2>"$t/cv0.err"; rc=$?
+ok "close-views: no pointer keeps the old error" '[ $rc -eq 2 ] && grep -q "spawn: no task. Set DEVKIT_TASK" "$t/cv0.err" && [ ! -s "$CV_LOG" ]'
+DEVKIT_TASK=$TA CLAUDE_CODE_SESSION_ID=$CVS PATH="$cv:$PATH" "$spawn" --close-views; rc=$?
+ok "close-views: explicit DEVKIT_TASK wins over the pointer" '[ $rc -eq 0 ] && grep -q "tab close tab-exp" "$CV_LOG" && ! grep -q "tab-ptr" "$CV_LOG" && [ ! -e "$TD/run/v2.tab" ] && [ -f "$CVD/run/v1.tab" ]'
+env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$CVS PATH="$cv:$PATH" "$spawn" --close-views; rc=$?
+ok "close-views: only the pointer closes the pointed task's tab" '[ $rc -eq 0 ] && grep -q "tab close tab-ptr" "$CV_LOG" && [ ! -e "$CVD/run/v1.tab" ]'
 
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 

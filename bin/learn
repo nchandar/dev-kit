@@ -21,8 +21,14 @@ case $cmd in
     p=$(pending); [ -n "$p" ] || { echo "no learnings queued"; exit 0; }
     printf '%s\n' "$p" | awk -F'\t' '{ printf "%s  %-7s %s (%s) [%s]\n", $1, $5, $6, $7, $3 }';;
   queue)
-    task=${DEVKIT_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
-    [ -n "$task" ] || die "no task (set DEVKIT_TASK or pass -t)"
+    task=${DEVKIT_TASK:-}
+    if [ "${1:-}" = -t ]; then task=${2:-}
+    elif [ -z "$task" ]; then task=$("$here/ledger" current 2>/dev/null) || task=; fi
+    if [ -z "$task" ]; then
+      m=$("$here/ledger" path 2>&1 >/dev/null)
+      case $m in *"is closed (or gone)"*) echo "learn: ${m#ledger: }" >&2;; *) echo "learn: no task (set DEVKIT_TASK or pass -t)" >&2;; esac
+      exit 2
+    fi
     D=$("$here/ledger" -t "$task" path 2>/dev/null) || die "unknown task '$task'"
     S=$D/state.md; [ -f "$S" ] || die "no state.md in $task"
     base=$("$here/ledger" base); project=$(basename "$(dirname "$base")")

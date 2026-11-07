@@ -167,6 +167,19 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Removes a task's finished worker worktrees and `devkit/<task>-*` branches: dry run by default (one `<id>  remove|keep  <reason>` line each), `--yes` removes. Removable only when the worker is not running, its worktree is clean, an `accept` ledger row is newer than its `spawn` row, and its branch has no commits ahead of HEAD (`--discard` waives only that last check, for squash or cherry-pick merges).
 - `bin/ledger done` warns once on stderr when such branches remain, naming this command; the done row and exit code stay unchanged. Silent when none remain, outside git, or in a worker.
 
+### 3.11 Session default task (`bin/ledger` pointer)
+- One pointer file per session at `$(ledger base)/run/session-<sid>.task`, keyed by `CLAUDE_CODE_SESSION_ID`; `ledger start` writes it, `ledger current` reads it.
+- Task resolution order: `-t` id, then `DEVKIT_TASK`, then the session pointer, then an error telling the caller to start one.
+- Only open tasks resolve; a closed or gone task gives a clear `last task <id> is closed (or gone)` message.
+- Workers (`DEVKIT_DEPTH` set) never use the pointer. A session id outside `^[A-Za-z0-9_-]+$` counts as no session.
+- Two terminals sharing one session id share one pointer, and the last `start` wins, by design.
+
+### 3.12 Worker isolation guard (`bin/spawn`)
+- Prompt rule for `--worktree` workers: edit and commit only inside the own worktree, with relative paths; the main checkout is read-only.
+- Before the run, snapshot the main checkout's branch, HEAD, `status --short` and a `diff HEAD` checksum (`.devkit` excluded; a re-edit of an already dirty file shows only in the checksum).
+- After the run, a changed snapshot warns on stderr, logs an `isolation-violation` spawn row in the task ledger and appends the warning to the worker handoff; state and exit code stay unchanged.
+- When a worker is done, an opencode worker's session is deleted too (best effort), so a finished agent keeps acting nowhere.
+
 ## 4. Data model
 
 ```

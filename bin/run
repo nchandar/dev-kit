@@ -6,7 +6,14 @@ set -u
 here=$(dirname "$0"); tail_n=15
 [ "${1:-}" = -n ] && { tail_n=${2:-15}; shift 2; }
 [ $# -ge 1 ] || { echo "usage: run [-n N] <command> [args...]" >&2; exit 2; }
-task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "run: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
+# Task: -t is not an option here, so $DEVKIT_TASK, else the session pointer
+task=${DEVKIT_TASK:-}
+[ -n "$task" ] || task=$("$here/ledger" current 2>/dev/null) || task=
+if [ -z "$task" ]; then
+  m=$("$here/ledger" path 2>&1 >/dev/null)
+  case $m in *"is closed (or gone)"*) echo "run: ${m#ledger: }" >&2;; *) echo "run: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2;; esac
+  exit 2
+fi
 D=$("$here/ledger" -t "$task" path) || exit 2
 mkdir -p "$D/runs"
 # claim the log name atomically (noclobber), bounded, so parallel runs never share a log

@@ -8,8 +8,14 @@
 set -u
 here=$(dirname "$0")
 [ "${1:-}" = check ] || { echo "usage: state check [-t id]" >&2; exit 2; }
-shift; task=${DEVKIT_TASK:-}; [ "${1:-}" = -t ] && task=${2:-}
-[ -n "$task" ] || { echo "state: no task (set DEVKIT_TASK or pass -t)" >&2; exit 2; }
+shift; task=${DEVKIT_TASK:-}
+if [ "${1:-}" = -t ]; then task=${2:-}
+elif [ -z "$task" ]; then task=$("$here/ledger" current 2>/dev/null) || task=; fi
+if [ -z "$task" ]; then
+  m=$("$here/ledger" path 2>&1 >/dev/null)
+  case $m in *"is closed (or gone)"*) echo "state: ${m#ledger: }" >&2;; *) echo "state: no task (set DEVKIT_TASK or pass -t)" >&2;; esac
+  exit 2
+fi
 D=$("$here/ledger" -t "$task" path 2>/dev/null) || { echo "state: unknown task '$task'" >&2; exit 2; }
 M=$("$here/ledger" base)/memory.md
 PTR='(^|[^A-Za-z0-9])L[0-9]+([^A-Za-z0-9]|$)|ledger@[0-9TZ:-]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+|[A-Za-z0-9_-]+\.(md|html|tsv|json|log|sh):?[0-9]*|https?://'

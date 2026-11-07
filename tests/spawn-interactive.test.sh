@@ -2,6 +2,7 @@
 # Tests for bin/spawn interactive mode (herdr tab + agent start) with a stub herdr and stub CLIs. No tokens, no real herdr.
 set -u
 unset DEVKIT_DEPTH DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY DEVKIT_MODE DEVKIT_POLL DEVKIT_GRACE GIT_CONFIG_COUNT
+unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
 for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
 here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"
 pass=0; fail=0
@@ -121,7 +122,14 @@ ok "opencode: the model travels as OPENCODE_CONFIG_CONTENT in the tab env" 'grep
 DEVKIT_MODE=interactive DEVKIT_DRYRUN=1 irun "$spawn" o3 opencode "$t/brief.md" > "$t/o3.out"
 ok "opencode: dry-run prints the interactive plan" 'grep -q "^agent start o3 --kind opencode" "$t/o3.out"'
 rm -f "$HERDR_LOG.cli"; STUB_DROP=1 irun "$spawn" od1 opencode "$t/brief.md"; rc=$?
-ok "opencode: a done run does not delete the session" '[ $rc -eq 0 ] && ! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
+sid_d=$(tailargs | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
+ok "opencode: a done run deletes its own session exactly once" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/od1.status && echo "$sid_d" | grep -q "^ses_dk_" && [ "$(grep -c "^opencode session delete $sid_d$" "$HERDR_LOG.cli" 2>/dev/null)" -eq 1 ]'
+rm -f "$HERDR_LOG.cli"; STUB_STOP_RC=1 STUB_DROP=1 irun "$spawn" od2 opencode "$t/brief.md"; rc=$?
+ok "opencode: a failing stop on a done run changes nothing" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/od2.status && grep -q "^opencode session delete ses_" "$HERDR_LOG.cli"'
+rm -f "$HERDR_LOG.cli"; STUB_DROP=1 irun "$spawn" od3 claude "$t/brief.md"; rc=$?
+ok "claude: a done run never stops an opencode session" '[ $rc -eq 0 ] && ! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
+rm -f "$HERDR_LOG.cli"; STUB_DROP=1 irun "$spawn" od4 codex "$t/brief.md"; rc=$?
+ok "codex: a done run never stops an opencode session" '[ $rc -eq 0 ] && ! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" ot1 opencode "$t/brief.md" 2>/dev/null; rc=$?
 sid_t=$(grep "^agent start ot1 " "$HERDR_LOG" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
 ok "opencode: a timeout stops the session with 'opencode session delete <sid>'" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/ot1.status && echo "$sid_t" | grep -q "^ses_dk_" && grep -q "^opencode session delete $sid_t$" "$HERDR_LOG.cli"'

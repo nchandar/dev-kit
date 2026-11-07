@@ -39,12 +39,17 @@ gate() { # [--session S] [-t ID], any order; scope: session's workers, else -t I
       *) shift;;
     esac
   done
+  if [ -z "$want" ] && [ -z "$task" ]; then task=$("$here/ledger" current 2>/dev/null) || task=; fi
   if [ -n "$want" ]; then
     for d in "$TD"/*/; do d=${d%/}; [ -f "$d/ledger.tsv" ] || continue
       closed=""; [ "$(lastrow "$d" | cut -f2)" = done ] && closed=1 # closed task: gate_task reports running only
       o=$(gate_task "$d" "$want" "$closed"); [ -z "$o" ] || out+="$o"$'\n'; done
   else
-    [ -n "$task" ] || { echo "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" >&2; exit 2; }
+    if [ -z "$task" ]; then
+      m=$("$here/ledger" path 2>&1 >/dev/null)
+      case $m in *"is closed (or gone)"*) echo "reconcile --gate: ${m#ledger: }" >&2;; *) echo "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" >&2;; esac
+      exit 2
+    fi
     d=$TD/$task; [ -d "$d" ] || { echo "reconcile: unknown task '$task'" >&2; exit 2; }
     out=$(gate_task "$d" ""); [ -z "$out" ] || out+=$'\n'
   fi

@@ -36,15 +36,26 @@ doctor() { local bad=0 cli v h f need
   done; return $bad; }
 [ "${1:-}" = --doctor ] && { doctor; exit $?; }
 if [ "${1:-}" = --close-views ]; then # close herdr tabs kept open by DEVKIT_VIEW_KEEP=1
-  [ -n "${DEVKIT_TASK:-}" ] || { echo "spawn: no task. Set DEVKIT_TASK" >&2; exit 2; }
-  for f in "$("$here/ledger" -t "$DEVKIT_TASK" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
+  task=${DEVKIT_TASK:-}
+  [ -n "$task" ] || task=$("$here/ledger" current 2>/dev/null) || task=
+  if [ -z "$task" ]; then
+    m=$("$here/ledger" path 2>&1 >/dev/null)
+    case $m in *"is closed (or gone)"*) echo "spawn: ${m#ledger: }" >&2;; *) echo "spawn: no task. Set DEVKIT_TASK" >&2;; esac
+    exit 2
+  fi
+  for f in "$("$here/ledger" -t "$task" path)"/run/*.tab; do [ -f "$f" ] || continue; herdr tab close "$(cat "$f")" >/dev/null 2>&1; rm -f "$f"; done; exit 0
 fi
 if [ "${1:-}" = --prune ]; then # remove accepted workers' worktrees; dry run unless --yes, --discard waives only the merged check
-  shift; ptask=${DEVKIT_TASK:-}; prune_yes=0; prune_discard=0; pids=
+  shift; ptask=${DEVKIT_TASK:-}; ptask_set=0; prune_yes=0; prune_discard=0; pids=
   while [ $# -gt 0 ]; do case $1 in
-    -t) ptask=${2-}; shift 2;; --yes) prune_yes=1; shift;; --discard) prune_discard=1; shift;;
+    -t) ptask=${2-}; ptask_set=1; shift 2;; --yes) prune_yes=1; shift;; --discard) prune_discard=1; shift;;
     -*) echo "spawn: --prune: unknown option '$1'" >&2; exit 2;; *) case $1 in *[!A-Za-z0-9_-]*|"") echo "spawn: --prune: bad id '$1'" >&2; exit 2;; esac; pids="$pids $1"; shift;; esac; done
-  [ -n "$ptask" ] || { echo "spawn: no task. Pass --prune -t <id> or set DEVKIT_TASK" >&2; exit 2; }
+  if [ -z "$ptask" ] && [ "$ptask_set" = 0 ]; then ptask=$("$here/ledger" current 2>/dev/null) || ptask=; fi
+  if [ -z "$ptask" ]; then
+    m=$("$here/ledger" path 2>&1 >/dev/null)
+    case $m in *"is closed (or gone)"*) echo "spawn: ${m#ledger: }" >&2;; *) echo "spawn: no task. Pass --prune -t <id> or set DEVKIT_TASK" >&2;; esac
+    exit 2
+  fi
   PT=$("$here/ledger" -t "$ptask" path) || exit 2
   [ -n "$pids" ] || for d in "$PT"/wt/*; do [ -d "$d" ] && pids="$pids ${d##*/}"; done
   # (c) same rule as reconcile --gate: an accept row newer than the worker's last spawn row
@@ -111,7 +122,13 @@ case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a
 case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
 case $DEVKIT_POLL$DEVKIT_GRACE in *[!0-9]*) echo "spawn: DEVKIT_POLL and DEVKIT_GRACE must be whole numbers" >&2; exit 2;; esac
 case ${GIT_CONFIG_COUNT:-0} in ''|*[!0-9]*) echo "spawn: GIT_CONFIG_COUNT must be a whole number" >&2; exit 2;; esac
-task=${DEVKIT_TASK:-}; [ -n "$task" ] || { echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2; exit 2; }
+task=${DEVKIT_TASK:-}
+[ -n "$task" ] || task=$("$here/ledger" current 2>/dev/null) || task=
+if [ -z "$task" ]; then
+  m=$("$here/ledger" path 2>&1 >/dev/null)
+  case $m in *"is closed (or gone)"*) echo "spawn: ${m#ledger: }" >&2;; *) echo "spawn: no task. Run: ledger start <slug>; set DEVKIT_TASK" >&2;; esac
+  exit 2
+fi
 H=$("$here/ledger" base); mkdir -p "$H/run"; H=$(cd "$H" && pwd)
 T=$H/tasks/$task; [ -d "$T" ] || { echo "spawn: unknown task '$task'" >&2; exit 2; }
 hf=$T/handoffs/$id.md; log=$T/handoffs/$id.log; st=$T/run/$id.status
@@ -148,10 +165,12 @@ worker_route() { local rt line bad=0
     "$here/ledger" -t "$task" spawn "$id route-warning" "brief route line not usable; using $rt" "${brief:-$T/briefs/$id.md}" warning 2>/dev/null || true
   fi
   echo "$rt"; }
-make_prompt() { local spawnrule="Do not spawn agents"
+make_prompt() { local spawnrule="Do not spawn agents" wtrule=
   [ $((depth+1)) -ge "$MAXD" ] || spawnrule="You may spawn sub-workers with bin/spawn (you are at depth $((depth+1)) of $MAXD; they share the repo-wide worker cap and your DEVKIT_TASK), keeping fan-out small; if spawn exits 4 there is no free slot, so do that work yourself" # pitfall-ok: decimal-arith forced decimal on line 42
+  [ $wt = 0 ] || wtrule="
+Your working directory is $T/wt/$id. Edit and commit ONLY inside it, with relative paths; run pwd and git rev-parse --abbrev-ref HEAD first; the main checkout at $root is read-only for you."
   echo "FIRST ACTION, before any other tool call: read $(cd "$here/.." && pwd)/skills/$(worker_route "$1")/SKILL.md by path and open its Checklist verbatim in your host todo list (TaskCreate, TodoWrite, update_plan or todowrite, whichever you have; if the tool is deferred, load it with ToolSearch first) so it shows in your side panel. Mark the current step in_progress, tick each item as you finish it; a skipped item stays listed with a reason. Only then start the work below.
-You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only: never run 'bin/ledger done'; the parent closes the task. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
+You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only: never run 'bin/ledger done'; the parent closes the task. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf$wtrule
 
 Route: $(worker_route "$1") (the checklist above). The brief's scope and non-goals override the playbook where they conflict. End your handoff with a '## Checklist' section copying every item as [x] done, [-] skipped (reason) or [ ] open.
 
@@ -280,6 +299,7 @@ cleanup() { local rc=$?
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
     stop_session
   fi
+  iso_check # killed and interrupted runs are compared here too
   if [ "$view" = 1 ] && [ "$vdone" != 1 ] && [ -n "$vtab" ]; then # the tab is closed or recorded on every path
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else herdr tab close "$vtab" >/dev/null 2>&1; fi
   fi
@@ -308,6 +328,30 @@ rm -f "$T/run/$id.session"; [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] || echo "$CLAUD
 snap() { { git -C "$wd" rev-parse HEAD 2>/dev/null; git -C "$wd" diff HEAD -- . ':(exclude).devkit' 2>/dev/null
   git -C "$wd" -c core.quotepath=off ls-files -o --exclude-standard 2>/dev/null | grep -v '^\.devkit/' | while IFS= read -r f; do printf '%s ' "$f"; git hash-object -- "$wd/$f"; done; } | git hash-object --stdin; }
 before=$(snap)
+# isolation guard: a --worktree worker must never change the main checkout (branch, HEAD, dirty files; .devkit excluded)
+iso_on=0; iso_done=0; iso_br=; iso_head=; iso_st=; iso_ck=
+iso_sum() { git -C "$root" diff HEAD -- . ':(exclude).devkit' 2>/dev/null | cksum; } # catches a re-edit of a file already dirty, which leaves status identical
+iso_take() { iso_br=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')
+  iso_head=$(git -C "$root" rev-parse HEAD 2>/dev/null || echo none)
+  iso_st=$(git -C "$root" -c core.quotepath=off status --short -- . ':(exclude).devkit' 2>/dev/null || true)
+  iso_ck=$(iso_sum); }
+iso_check() { local nbr nhead nst nck newf hf_n n=0
+  [ "$iso_on" = 1 ] && [ "$iso_done" = 0 ] || return 0
+  iso_done=1
+  nbr=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')
+  nhead=$(git -C "$root" rev-parse HEAD 2>/dev/null || echo none)
+  nst=$(git -C "$root" -c core.quotepath=off status --short -- . ':(exclude).devkit' 2>/dev/null || true)
+  nck=$(iso_sum)
+  [ "$iso_br" = "$nbr" ] && [ "$iso_head" = "$nhead" ] && [ "$iso_st" = "$nst" ] && [ "$iso_ck" = "$nck" ] && return 0
+  newf=0; [ -z "$nst" ] || newf=$(printf '%s\n' "$nst" | while IFS= read -r l; do
+    [ -z "$l" ] || printf '%s\n' "$iso_st" | grep -qxF -- "$l" || echo x; done | wc -l | tr -d ' ')
+  hf_n=0; [ "$iso_head" = "$nhead" ] || [ "$iso_head" = none ] || [ "$nhead" = none ] || hf_n=$(git -C "$root" diff --name-only "$iso_head" "$nhead" 2>/dev/null | wc -l | tr -d ' ')
+  n=$((10#${newf:-0} + 10#${hf_n:-0})) # pitfall-ok: decimal-arith counters come from wc and are forced decimal
+  [ "$n" -gt 0 ] || n=1 # a re-edited dirty file shows in neither count
+  echo "spawn: WARN $id changed the main checkout ($n file(s), HEAD $iso_head..$nhead); its work is not on its worktree branch" >&2
+  "$here/ledger" -t "$task" spawn "$id isolation-violation" "main checkout changed during the run" "$hf" warning 2>/dev/null || true
+  [ ! -f "$hf" ] || printf '\nisolation: WARN the main checkout changed during this run (%s file(s), HEAD %s..%s); its work is not on its worktree branch\n' "$n" "$iso_head" "$nhead" >> "$hf"; }
+[ $wt = 0 ] || { iso_on=1; iso_take; }
 
 set_guard "$wd"
 if [ $imode = 1 ]; then build_ienv; build_icmd "$wd"; else build_cmd "$wd" "$(make_prompt "$(brieftext)")"; fi
@@ -411,6 +455,7 @@ if [ ! -s "$hf" ]; then
     tail -n 20 "$log"; } > "$hf"
 fi
 after=$(snap)
+iso_check
 if [ $shape = scout ] && [ "$before" != "$after" ] && [ $state = done ]; then
   # in a tab a human may type too, so interactive mode can only warn
   if [ $imode = 1 ]; then "$here/ledger" -t "$task" spawn "$id scout changed files" "interactive tab; a person may have typed" "$hf" warning 2>/dev/null || true
@@ -433,6 +478,7 @@ if [ $imode = 1 ]; then
   if [ $state = done ]; then
     [ "${DEVKIT_VIEW_NOTIFY:-}" != all ] || herdr notification show "$id done" --body "$cli $shape: $hf" --sound done >/dev/null 2>&1
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
+    stop_session # a done worker must not keep acting in its opencode session
   else # the stub already holds the pane read; notify, then close so no stale tab is left (KEEP records it for --close-views)
     herdr notification show "$id $state" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
     stop_session

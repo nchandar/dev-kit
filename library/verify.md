@@ -14,6 +14,7 @@ Record each check with bin/ledger (phase=verify, evidence=command + key output l
 7. Diff hygiene: see library/git-ship.
 8. When a check fails, suspect your observation method before the system, but never soften the result. A "pre-existing failure" claim is a hypothesis: reproduce it on the base first (two such claims were real bugs).
 9. Report unrun or inconclusive checks plainly as not-run.
+10. After launching any long background job (suite, worker, deploy), read its first output within a minute to confirm it actually started; do not wait for the exit notice. A missing task id or flag fails in seconds and is invisible until then.
 
 ## Red Flags
 - "Tests pass" or "it compiles" offered as proof; "should work".
@@ -21,6 +22,7 @@ Record each check with bin/ledger (phase=verify, evidence=command + key output l
 - A feature with side effects verified by unit or stub tests only, with no live end-to-end run.
 - A bug closed with one test for the exact repro and none for its neighbors.
 - Skipped checks not listed as skipped.
+- Waiting on a background job whose start was never confirmed.
 
 ## Verification
 - Each acceptance item has a ledger row with a command and real output; failures and skips are stated.
