@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Install dev-kit for every agent. Safe to rerun. Replaces only symlinks, never real files.
+# Prunes dangling dev-* links into this repo's skills/ (renamed or removed skills); nothing else is removed.
 #   ~/.agents/dev-kit  -> this dir (bin/, library/ live here)
 #   dev-* skills       -> ~/.claude/skills, ~/.codex/skills, ~/.agents/skills (read by OpenCode and others)
 set -eu
@@ -13,6 +14,13 @@ link() { # src dest
 link "$here" "$HOME/.agents/dev-kit"
 for d in "$here"/skills/dev-*; do
   for root in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.agents/skills"; do link "$d" "$root/$(basename "$d")"; done
+done
+# stale = symlink, dev-* name, target inside our skills/, target gone; anything else is not ours to delete
+for root in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.agents/skills"; do
+  for e in "$root"/dev-*; do
+    [ -L "$e" ] && [ ! -e "$e" ] || continue
+    case $(readlink "$e") in "$here"/skills/*) rm "$e"; echo "pruned stale: $e";; esac
+  done
 done
 
 # OpenCode shows a worker's checklist in its side panel only with experimental.todo. Additive: absent keys only, plain JSON only.

@@ -122,8 +122,9 @@ rm -f "$GD"/run/*
 
 # --- --wait: block until no worker in scope is running, then report what is unaccepted
 export DEVKIT_TASK=$G DEVKIT_GATE_POLL=1
+# SECONDS has 1 s granularity: a fast call straddling a boundary reads 1 under load; the hang case is the 100 s cap
 SECONDS=0; out=$("$rec" --wait); rc=$?
-ok "wait: returns at once when clear"                 '[ $rc -eq 0 ] && [ -z "$out" ] && [ $SECONDS -lt 1 ]'
+ok "wait: returns at once when clear"                 '[ $rc -eq 0 ] && [ -z "$out" ] && [ $SECONDS -lt 2 ]'
 "$ledger" -t "$G" spawn "w4 done" cli=fake "" done; "$ledger" -t "$G" accept "w4 accepted" ok "" pass
 echo "running $$ 100" > "$GD/run/w4.status"
 (sleep 2; echo "done 0 100" > "$GD/run/w4.status") & # sleep-ok: flips the status while --wait polls

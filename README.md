@@ -68,7 +68,7 @@ Workers skip permission prompts but can never push.
 | `DEVKIT_NUDGE_WAIT` | seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (20); 0 disables |
 | `DEVKIT_MODEL` | model name for workers (cheaper runs) |
 | `DEVKIT_SAFE=1` | restricted worker permissions |
-| `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT` | hung-worker timeout, live workers, nesting depth, nested slot wait; defaults are in the ARCHITECTURE.md env table |
+| `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT`, `DEVKIT_STOP_TIMEOUT` | hung-worker timeout, live workers, nesting depth, nested slot wait, cap on the opencode session delete; defaults are in the ARCHITECTURE.md env table |
 
 ## Under the hood
 ![Detailed architecture](docs/architecture.svg)

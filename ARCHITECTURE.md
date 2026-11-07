@@ -109,6 +109,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
 | `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
+| `DEVKIT_STOP_TIMEOUT` | 10 s | Cap on `opencode session delete` at worker exit (at least 1; TERM, then KILL) |
 | `DEVKIT_SAFE` | unset | Restricted permissions instead of skipping them |
 | `DEVKIT_DRYRUN` | unset | Print the CLI command and exit |
 | `DEVKIT_VIEW` | herdr | `off` disables the tab; `DEVKIT_VIEW_KEEP=1` keeps it; `DEVKIT_VIEW_NOTIFY=all` notifies on success |

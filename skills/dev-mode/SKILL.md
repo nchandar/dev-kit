@@ -4,7 +4,7 @@ description: Entry point for any request: triage type and size, announce the rou
 ---
 # dev-mode
 
-Hard rules (read first):
+Hard rules:
 1. Stay on the route until it closes. Answer mid-route questions inside the route. Leaving needs one stated reason: "leaving <skill> because ...".
 2. Only gates pause: an unclear requirement (library/grill), a push or PR, a destructive command, an unresolved doubt.
 3. Every reply during a route, even to an off-topic question, ends with this exact lowercase footer: `route: <skill>, step N/M, next: <step>`.
@@ -19,9 +19,9 @@ One ledger task per route (`bin/ledger start <slug>`). Playbooks own their steps
 - [ ] 1. Triage, size first: trivial (chat, a one-line edit, running a command; delegation is never trivial) means type none; else standard, or large (unknowns: dev-research first). Type: bug or failing test -> dev-debug; new behavior -> dev-feature; structure-only -> dev-refactor; question or spike -> dev-research; skill or prompt change -> dev-eval; review -> dev-review; delegate -> dev-spawn; queued learnings -> dev-learn. Status ask: ketchup, no route. Vague: library/grill first (sharpen).
 - [ ] 2. Announce `route: <skill>, <size>`, then `bin/ledger mode <skill> "<size>"`. Trivial or none: `route: none`, do it, no ledger.
 - [ ] 3. Mixed request: one task per route, order research, debug, feature; review last.
-- [ ] 4. Read ~/.agents/dev-kit/skills/dev-<route>/SKILL.md; pass it route, size, request. Do not copy its steps.
+- [ ] 4. Read ~/.agents/dev-kit/skills/dev-<route>/SKILL.md, then open the todo list (AGENTS.md; ToolSearch if deferred); pass route, size, request. Do not copy steps.
 - [ ] 5. Follow its Hand off to line.
-- [ ] 6. Close with its Reply line (library/deep/ketchup, library/deep/writing). Then `bin/ledger done "<summary>"` per task; follow library/state.
+- [ ] 6. Close with its Reply line (library/deep/ketchup, library/deep/writing). `bin/ledger done "<summary>"` per task; follow library/state.
 
 ## Rationalizations
 | Excuse | Rebuttal |

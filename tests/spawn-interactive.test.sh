@@ -47,7 +47,7 @@ for c in claude codex opencode; do
 #!/usr/bin/env bash
 echo "$(basename "$0") $*" >> "$HERDR_LOG.cli"
 case "$1 $2" in
-  "session delete") echo "session delete $3" >> "$HERDR_LOG"; exit "${STUB_STOP_RC:-0}";;
+  "session delete") echo "session delete $3" >> "$HERDR_LOG"; [ -z "${STUB_STOP_UNIQ:-}" ] || { trap "" TERM; exec sleep 997; }; [ -z "${STUB_STOP_IGNORE:-}" ] || { trap "" TERM; exec sleep 60; }; [ -z "${STUB_STOP_HANG:-}" ] || exec sleep 60; exit "${STUB_STOP_RC:-0}";; # sleep-ok: a hung delete the spawn must cut off
 esac
 hf=$(printf '%s\n' "$@" | sed -n 's/.*to this absolute path: \(.*\)$/\1/p' | head -1)
 [ -z "$hf" ] || printf 'headless handoff\n' > "$hf"
@@ -138,6 +138,33 @@ rm -f "$HERDR_LOG.cli"; STUB_GONE=1 irun "$spawn" og1 opencode "$t/brief.md" 2>/
 ok "opencode: a failed run also stops the session" '[ $rc -ne 0 ] && grep -q "^failed" $TD/run/og1.status && grep -q "^opencode session delete ses_" "$HERDR_LOG.cli"'
 rm -f "$HERDR_LOG.cli"; STUB_STOP_RC=1 DEVKIT_TIMEOUT=2 irun "$spawn" of1 opencode "$t/brief.md" 2>/dev/null; rc=$?
 ok "opencode: a failing stop command leaves the timeout outcome unchanged" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/of1.status && grep -q "^opencode session delete " "$HERDR_LOG.cli" && grep -q "tab close X:t9" "$HERDR_LOG"'
+rm -f "$HERDR_LOG.cli"; s0=$SECONDS; STUB_STOP_HANG=1 DEVKIT_STOP_TIMEOUT=2 DEVKIT_TIMEOUT=2 irun "$spawn" oh1 opencode "$t/brief.md" 2>/dev/null; rc=$?; el=$((SECONDS-s0))
+ok "opencode: a hung session delete is cut off, the timeout outcome and tab close still happen" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/oh1.status && grep -q "tab close X:t9" "$HERDR_LOG" && [ $el -lt 20 ]'
+rm -f "$HERDR_LOG.cli"; s0=$SECONDS; STUB_STOP_HANG=1 DEVKIT_STOP_TIMEOUT=2 STUB_DROP=1 irun "$spawn" oh2 opencode "$t/brief.md" 2>/dev/null; rc=$?; el=$((SECONDS-s0))
+ok "opencode: a hung session delete on a done run is cut off and the run stays done" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/oh2.status && [ $el -lt 20 ]'
+rm -f "$HERDR_LOG.cli"; s0=$SECONDS; STUB_STOP_IGNORE=1 DEVKIT_STOP_TIMEOUT=2 DEVKIT_TIMEOUT=2 irun "$spawn" oh3 opencode "$t/brief.md" 2>/dev/null; rc=$?; el=$((SECONDS-s0))
+ok "opencode: a session delete that ignores TERM is KILLed, not waited on forever" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/oh3.status && grep -q "tab close X:t9" "$HERDR_LOG" && [ $el -lt 20 ]'
+# a signal while stop_session waits must not leave the delete behind (the 997 s sleep is unique to these stubs)
+uniq_wait() { n=0; while [ $n -lt 15 ] && ! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null; do sleep 1; n=$((n+1)); done; } # sleep-ok: wait for the delete to start
+pkill -KILL -f "sleep 997" 2>/dev/null
+: > "$HERDR_LOG"; rm -f "$HERDR_LOG.cli"
+( export PATH="$hs:$PATH" STUB_DROP=1 STUB_STOP_UNIQ=1 DEVKIT_STOP_TIMEOUT=30; exec "$spawn" os1 opencode "$t/brief.md" ) 2>/dev/null &
+sp=$!; uniq_wait; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1 # sleep-ok: let the signal path finish
+ok "TERM during the done-run session delete: no delete process survives" '! pgrep -f "sleep 997" >/dev/null'
+pkill -KILL -f "sleep 997" 2>/dev/null
+: > "$HERDR_LOG"; rm -f "$HERDR_LOG.cli"
+( export PATH="$hs:$PATH" STUB_STOP_UNIQ=1 DEVKIT_STOP_TIMEOUT=30; exec "$spawn" os2 opencode "$t/brief.md" ) 2>/dev/null &
+sp=$!; sleep 3; kill -TERM $sp; uniq_wait; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1 # sleep-ok: first TERM starts cleanup, the second lands in its delete wait
+ok "second TERM during the cleanup session delete: no delete process survives" '! pgrep -f "sleep 997" >/dev/null'
+pkill -KILL -f "sleep 997" 2>/dev/null
+mkdir -p "$t/ms"; cat > "$t/ms/now" <<'S'
+#!/usr/bin/env bash
+perl -MTime::HiRes=time -e 'printf "%d\n", time*1000'
+S
+chmod +x "$t/ms/now"
+rm -f "$HERDR_LOG.cli"; s0=$("$t/ms/now"); STUB_DROP=1 irun "$spawn" os3 opencode "$t/brief.md" 2>/dev/null; rc=$?; s1=$("$t/ms/now")
+rm -f "$HERDR_LOG.cli"; s2=$("$t/ms/now"); STUB_DROP=1 STUB_STOP_RC=0 irun "$spawn" os5 claude "$t/brief.md" 2>/dev/null; s3=$("$t/ms/now")
+ok "an instant session delete adds under 1 s to a done run" '[ $rc -eq 0 ] && [ $(( (s1-s0) - (s3-s2) )) -lt 900 ]'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" ct1 claude "$t/brief.md" 2>/dev/null
 ok "claude: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" xt1 codex "$t/brief.md" 2>/dev/null
