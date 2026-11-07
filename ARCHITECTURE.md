@@ -163,6 +163,10 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Claude only; other CLIs rely on spawn's exit row and `bin/reconcile`. Workers are exempt (`DEVKIT_DEPTH` set).
 - Wiring: `install.sh` prints the hook snippet; the user merges it into `~/.claude/settings.json`.
 
+### 3.10 worktree prune (`bin/spawn --prune`)
+- Removes a task's finished worker worktrees and `devkit/<task>-*` branches: dry run by default (one `<id>  remove|keep  <reason>` line each), `--yes` removes. Removable only when the worker is not running, its worktree is clean, an `accept` ledger row is newer than its `spawn` row, and its branch has no commits ahead of HEAD (`--discard` waives only that last check, for squash or cherry-pick merges).
+- `bin/ledger done` warns once on stderr when such branches remain, naming this command; the done row and exit code stay unchanged. Silent when none remain, outside git, or in a worker.
+
 ## 4. Data model
 
 ```

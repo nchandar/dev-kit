@@ -173,4 +173,27 @@ out=$("$rec" --gate -t "$G"); rc=$?
 ok "gate: an empty (half-written) status file is skipped" '[ $rc -eq 0 ] && [ -z "$out" ]'
 rm -f "$GD"/run/*
 
+# --- regression: a prune row is post-close housekeeping, never task state
+P=$("$ledger" start prune-closed "p"); PD=$("$ledger" -t "$P" path); mkdir -p "$PD/run" "$PD/handoffs"
+"$ledger" -t "$P" plan "s1 done" why
+echo sess-P > "$PD/run/pw.session"
+echo "done 0 100" > "$PD/run/pw.status"; echo r > "$PD/handoffs/pw.md"
+"$ledger" -t "$P" spawn "pw done" cli=fake "" done
+"$ledger" -t "$P" done "shipped"
+"$ledger" -t "$P" prune "w1 pruned" "worktree and branch removed" "/tmp/w1" pruned
+out=$("$rec")
+ok "prune: a pruned closed task is not listed as open"  '! echo "$out" | grep -q "$P"'
+out=$("$rec" --all)
+ok "prune: --all still shows the closed task as done"   'echo "$out" | grep "$P" | grep -q " done "'
+out=$("$rec" --gate --session sess-P); rc=$?
+ok "prune: closed task, finished unaccepted stays clear" '[ $rc -eq 0 ] && [ -z "$out" ]'
+echo "running $$ 100" > "$PD/run/pw.status"
+out=$("$rec" --gate --session sess-P); rc=$?
+ok "prune: closed task, live running worker still gates" '[ $rc -eq 1 ] && echo "$out" | grep -q "pw running"'
+Q=$("$ledger" start prune-open "q")
+"$ledger" -t "$Q" plan "s1 open" why
+"$ledger" -t "$Q" prune "w2 pruned" "worktree removed" "/tmp/w2" pruned
+out=$("$rec")
+ok "prune: open task keeps its previous phase as the last one" 'echo "$out" | grep "$Q" | grep -q "plan: s1 open"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
