@@ -21,9 +21,11 @@ echo "$*" >> "$HERDR_LOG"
 [ ! -e "$HERDR_LOG.dead" ] || exit 1 # STUB_DIE: herdr is gone once the prompt was sent
 case "$1 $2" in
   "tab list") exit "${HERDR_DOWN:-0}";;
-  "tab create") [ -z "${STUB_TAB_FAIL:-}" ] || exit 0; [ -z "${STUB_NO_PANE:-}" ] || { echo '{"result":{"tab":{"tab_id":"X:t9"}}}'; exit 0; }; echo '{"result":{"root_pane":{"pane_id":"X:p9","tab_id":"X:t9"},"tab":{"tab_id":"X:t9"}}}';;
-  "agent start") exit "${STUB_START_RC:-0}";;
+  "tab create") [ -z "${STUB_TAB_OUT:-}" ] || echo "$STUB_TAB_OUT" >&2; [ -z "${STUB_TAB_FAIL:-}" ] || exit 0; [ -z "${STUB_NO_PANE:-}" ] || { echo '{"result":{"tab":{"tab_id":"X:t9"}}}'; exit 0; }; echo '{"result":{"root_pane":{"pane_id":"X:p9","tab_id":"X:t9"},"tab":{"tab_id":"X:t9"}}}';;
+  "agent start") [ -z "${STUB_START_OUT:-}" ] || echo "$STUB_START_OUT" >&2; exit "${STUB_START_RC:-0}";;
   "agent prompt")
+    [ -z "${STUB_PROMPT_OUT:-}" ] || echo "$STUB_PROMPT_OUT" >&2
+    [ -z "${STUB_PROMPT_RC:-}" ] || exit "$STUB_PROMPT_RC"
     [ -z "${STUB_DIE:-}" ] || touch "$HERDR_LOG.dead"
     pf=$(printf '%s' "$4" | sed -n 's/^Read \(.*\) and follow it.*/\1/p')
     [ -z "${STUB_EDIT:-}" ] || echo edited >> f.txt
@@ -43,6 +45,9 @@ for c in claude codex opencode; do
   cat > "$hs/$c" <<'S'
 #!/usr/bin/env bash
 echo "$(basename "$0") $*" >> "$HERDR_LOG.cli"
+case "$1 $2" in
+  "session delete") echo "session delete $3" >> "$HERDR_LOG"; exit "${STUB_STOP_RC:-0}";;
+esac
 hf=$(printf '%s\n' "$@" | sed -n 's/.*to this absolute path: \(.*\)$/\1/p' | head -1)
 [ -z "$hf" ] || printf 'headless handoff\n' > "$hf"
 S
@@ -115,6 +120,25 @@ STUB_DROP=1 irun "$spawn" --model prov/m1 o2 opencode "$t/brief.md"
 ok "opencode: the model travels as OPENCODE_CONFIG_CONTENT in the tab env" 'grep "^tab create" "$HERDR_LOG" | grep -q -F -- "--env OPENCODE_CONFIG_CONTENT={\"model\":\"prov/m1\"}" && ! tailargs | grep -q "prov/m1"'
 DEVKIT_MODE=interactive DEVKIT_DRYRUN=1 irun "$spawn" o3 opencode "$t/brief.md" > "$t/o3.out"
 ok "opencode: dry-run prints the interactive plan" 'grep -q "^agent start o3 --kind opencode" "$t/o3.out"'
+rm -f "$HERDR_LOG.cli"; STUB_DROP=1 irun "$spawn" od1 opencode "$t/brief.md"; rc=$?
+ok "opencode: a done run does not delete the session" '[ $rc -eq 0 ] && ! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
+rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" ot1 opencode "$t/brief.md" 2>/dev/null; rc=$?
+sid_t=$(grep "^agent start ot1 " "$HERDR_LOG" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
+ok "opencode: a timeout stops the session with 'opencode session delete <sid>'" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/ot1.status && echo "$sid_t" | grep -q "^ses_dk_" && grep -q "^opencode session delete $sid_t$" "$HERDR_LOG.cli"'
+ok "opencode: the timeout stop runs before the tab closes" '[ $(grep -n "^session delete $sid_t$" "$HERDR_LOG" | head -1 | cut -d: -f1) -lt $(grep -n "tab close X:t9" "$HERDR_LOG" | head -1 | cut -d: -f1) ]'
+rm -f "$HERDR_LOG.cli"; STUB_GONE=1 irun "$spawn" og1 opencode "$t/brief.md" 2>/dev/null; rc=$?
+ok "opencode: a failed run also stops the session" '[ $rc -ne 0 ] && grep -q "^failed" $TD/run/og1.status && grep -q "^opencode session delete ses_" "$HERDR_LOG.cli"'
+rm -f "$HERDR_LOG.cli"; STUB_STOP_RC=1 DEVKIT_TIMEOUT=2 irun "$spawn" of1 opencode "$t/brief.md" 2>/dev/null; rc=$?
+ok "opencode: a failing stop command leaves the timeout outcome unchanged" '[ $rc -ne 0 ] && grep -q "^timeout" $TD/run/of1.status && grep -q "^opencode session delete " "$HERDR_LOG.cli" && grep -q "tab close X:t9" "$HERDR_LOG"'
+rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" ct1 claude "$t/brief.md" 2>/dev/null
+ok "claude: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
+rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" xt1 codex "$t/brief.md" 2>/dev/null
+ok "codex: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
+: > "$HERDR_LOG"; rm -f "$HERDR_LOG.cli"
+( export PATH="$hs:$PATH"; exec "$spawn" oi1 opencode "$t/brief.md" ) 2>/dev/null &
+sp=$!; sleep 3; kill -TERM $sp; wait $sp 2>/dev/null; sleep 1 # sleep-ok: let the spawn open its tab and poll before TERM
+sid_i=$(grep "^agent start oi1 " "$HERDR_LOG" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
+ok "TERM: an interrupted opencode session is stopped before the tab closes" 'grep -q "^opencode session delete $sid_i$" "$HERDR_LOG.cli" && [ $(grep -n "^session delete $sid_i$" "$HERDR_LOG" | head -1 | cut -d: -f1) -lt $(grep -n "tab close X:t9" "$HERDR_LOG" | head -1 | cut -d: -f1) ]'
 
 # --- doctor: the opencode todo panel needs experimental.todo in the global config
 ds="$t/docstubs"; mkdir -p "$ds"
@@ -192,6 +216,22 @@ STUB_TAB_FAIL=1 irun "$spawn" n2 claude "$t/brief.md" 2>"$t/n2.err"
 ok "tab create failure says so on stderr" 'grep -q "not started" "$t/n2.err"'
 STUB_START_RC=1 irun "$spawn" s1 claude "$t/brief.md" 2>/dev/null; rc=$?
 ok "agent start failure (not ready) is failed fast, notified, tab closed, pane read in the stub" '[ $rc -ne 0 ] && grep -q "^failed" $TD/run/s1.status && grep "notification show" "$HERDR_LOG" | grep -q "s1 failed" && ! grep -q "^agent prompt" "$HERDR_LOG" && grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "last screen line" $TD/handoffs/s1.md'
+
+# --- D: a failing herdr call keeps its own error before the generic hint; a silent one keeps the old text
+STUB_START_RC=1 STUB_START_OUT='boom: x' irun "$spawn" se1 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "agent start failure keeps herdr's own error in the handoff before the hint" '[ $rc -ne 0 ] && grep -q "^failed" $TD/run/se1.status && grep -q "agent start failed: boom: x; claude not ready" $TD/handoffs/se1.md'
+STUB_PROMPT_RC=1 STUB_PROMPT_OUT='boom: p' irun "$spawn" pe1 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "agent prompt failure keeps herdr's own error in the handoff before the hint" '[ $rc -ne 0 ] && grep -q "^failed" $TD/run/pe1.status && grep -q "agent prompt rejected: boom: p; agent blocked or gone" $TD/handoffs/pe1.md'
+STUB_TAB_FAIL=1 STUB_TAB_OUT='boom: t' irun "$spawn" te1 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "tab create failure keeps herdr's own error in the handoff before the hint" '[ $rc -ne 0 ] && grep -q "tab create failed: boom: t; herdr answered but gave no pane" $TD/handoffs/te1.md'
+STUB_START_RC=1 irun "$spawn" se2 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "a silent agent start failure keeps today's message exactly" '[ $rc -ne 0 ] && grep -qxF "agent start failed: claude not ready (trust dialog, login or update prompt?)" $TD/handoffs/se2.md'
+STUB_PROMPT_RC=1 irun "$spawn" pe2 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "a silent agent prompt failure keeps today's message exactly" '[ $rc -ne 0 ] && grep -qxF "agent prompt rejected (agent blocked or gone)" $TD/handoffs/pe2.md'
+long=$(i=1; while [ $i -le 50 ]; do echo "line: $i boom"; i=$((i+1)); done)
+STUB_START_RC=1 STUB_START_OUT="$long" irun "$spawn" se3 claude "$t/brief.md" 2>/dev/null; rc=$?
+ok "a 50-line herdr error is trimmed to a few hundred chars" '[ $rc -ne 0 ] && grep -q "agent start failed: line: 1 boom" $TD/handoffs/se3.md && ! grep -q "line: 11 boom" $TD/handoffs/se3.md && [ $(grep "agent start failed: " $TD/handoffs/se3.md | wc -c) -lt 600 ]'
+
 STUB_DROP=1 DEVKIT_VIEW_KEEP=1 irun "$spawn" k1 claude "$t/brief.md"
 ok "DEVKIT_VIEW_KEEP=1 keeps the tab after success" '! grep -q "tab close" "$HERDR_LOG" && [ -s $TD/run/k1.tab ]'
 STUB_DROP=1 irun "$spawn" --shape scout sv claude "$t/brief.md" >/dev/null 2>&1; rc=$?

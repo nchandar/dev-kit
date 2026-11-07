@@ -2,7 +2,7 @@
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
 #   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id; refused inside a worker (exit 3)
 #   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phase names path, done, base, start are reserved)
-#   ledger [-t id] done [summary]                       mark the task finished
+#   ledger [-t id] done [summary]                       mark the task finished; refused inside a worker (exit 3)
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
 # Task: -t id, else $DEVKIT_TASK. No task is an error: there is no shared fallback ledger.
 # $DEVKIT_DIR overrides the .devkit location. $DEVKIT_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
@@ -55,7 +55,11 @@ case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;
-  done) append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done; exit 0;;
+  done)
+    depth=${DEVKIT_DEPTH:-0}
+    case $depth in ''|*[!0-9]*) echo "ledger: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not close the shared task; write its handoff instead" >&2; exit 3;; esac
+    [ "$((10#$depth))" -eq 0 ] || { echo "ledger: a worker (DEVKIT_DEPTH=$depth) must not close the shared task; write its handoff instead" >&2; exit 3; }
+    append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done; exit 0;;
 esac
 [ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start are reserved)"
 append "$D/ledger.tsv" "$@"

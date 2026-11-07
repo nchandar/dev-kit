@@ -86,20 +86,32 @@ build_cmd() { # $1=workdir $2=prompt
     fake)     cmd=("$DEVKIT_FAKE" "$2" "$hf");;
   esac; }
 # the worker follows a route's playbook by path and loads its checklist itself: the brief's `route: dev-x` line, else the shape's default (ship: dev-feature, scout: dev-research)
-worker_route() { local rt
-  rt=$(printf '%s\n' "$1" | sed -n 's/^route: \(dev-[a-z]*\)[[:space:]]*$/\1/p' | head -1)
-  [ "$rt" != dev-mode ] && [ -f "$here/../skills/$rt/SKILL.md" ] || { rt=dev-feature; [ $shape != scout ] || rt=dev-research; }
+# resolved once per spawn into rt_route: make_prompt asks twice, and an unusable line must warn and ledger once
+worker_route() { local rt line bad=0
+  [ -z "$rt_route" ] || { echo "$rt_route"; return; }
+  line=$(printf '%s\n' "$1" | grep -E '^[[:space:]]*route:' | head -1)
+  rt=$(printf '%s\n' "$line" | sed -n 's/^route: \(dev-[a-z]*\)[[:space:]]*$/\1/p')
+  if [ -n "$line" ]; then
+    [ -n "$rt" ] && [ "$rt" != dev-mode ] && [ -f "$here/../skills/$rt/SKILL.md" ] || bad=1
+  fi
+  [ -n "$rt" ] && [ "$bad" = 0 ] || { rt=dev-feature; [ $shape != scout ] || rt=dev-research; }
+  if [ "$bad" = 1 ] && [ -z "${DEVKIT_DRYRUN:-}" ]; then # dry-run leaves no ledger row, so it stays silent too
+    echo "spawn: WARN brief route line not usable ('$line'); using $rt" >&2
+    "$here/ledger" -t "$task" spawn "$id route-warning" "brief route line not usable; using $rt" "${brief:-$T/briefs/$id.md}" warning 2>/dev/null || true
+  fi
   echo "$rt"; }
 make_prompt() { local spawnrule="Do not spawn agents"
   [ $((depth+1)) -ge "$MAXD" ] || spawnrule="You may spawn sub-workers with bin/spawn (you are at depth $((depth+1)) of $MAXD; they share the repo-wide worker cap and your DEVKIT_TASK), keeping fan-out small; if spawn exits 4 there is no free slot, so do that work yourself" # pitfall-ok: decimal-arith forced decimal on line 42
   echo "FIRST ACTION, before any other tool call: read $(cd "$here/.." && pwd)/skills/$(worker_route "$1")/SKILL.md by path and open its Checklist verbatim in your host todo list (TaskCreate, TodoWrite, update_plan or todowrite, whichever you have; if the tool is deferred, load it with ToolSearch first) so it shows in your side panel. Mark the current step in_progress, tick each item as you finish it; a skipped item stays listed with a reason. Only then start the work below.
-You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
+You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only: never run 'bin/ledger done'; the parent closes the task. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
 
 Route: $(worker_route "$1") (the checklist above). The brief's scope and non-goals override the playbook where they conflict. End your handoff with a '## Checklist' section copying every item as [x] done, [-] skipped (reason) or [ ] open.
 
 --- BRIEF ---
 $1"; }
 brieftext() { if [ -n "$inline" ]; then printf '%s' "$inline"; else cat "$brief"; fi; }
+rt_route=
+rt_route=$(worker_route "$(brieftext)")
 
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote.
 # NOTE: only remote.<name>.pushurl is rewritten, so `git push <url>` with an explicit URL bypasses this; it is a guardrail, not a sandbox.
@@ -198,6 +210,10 @@ claim() { local n d p p2 lock m live s pp
     fi
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
+# best-effort: a timed-out or failed opencode TUI keeps its session alive after the tab closes, so end it first
+stop_session() { # only the opencode session this spawn created; never changes spawn's state or exit code
+  [ "$cli" = opencode ] && [ "$imode" = 1 ] && [ "$istarted" = 1 ] || return 0
+  opencode session delete "$sid" >/dev/null 2>&1 || true; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; vtab=""; vpane=""; vdone=0; idone=0; istarted=0
 cleanup() { local rc=$?
@@ -214,6 +230,7 @@ cleanup() { local rc=$?
     if [ -n "$vpane" ] && [ ! -s "$hf" ]; then { echo "# $id (auto-generated)"; echo "status: killed (exit $rc), no handoff written. Last output:"; herdr pane read --lines 20 "$vpane" 2>/dev/null; } > "$hf"; fi
     herdr notification show "$id killed" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+    stop_session
   fi
   if [ "$view" = 1 ] && [ "$vdone" != 1 ] && [ -n "$vtab" ]; then # the tab is closed or recorded on every path
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else herdr tab close "$vtab" >/dev/null 2>&1; fi
@@ -251,7 +268,7 @@ vtab=""; vpane=""
 vreport() { herdr pane report-agent --source dev-kit --agent "$cli" --state "$1" --message "$id: $2" "$vpane" >/dev/null 2>&1; }
 if [ $imode = 1 ]; then # the worker is the TUI in this tab; nothing tails a log
   : > "$log"; istarted=1
-  vj=$(herdr tab create --label "$id · $cli · $shape" --cwd "$wd" --no-focus "${ienv[@]}" 2>/dev/null)
+  vj=$(herdr tab create --label "$id · $cli · $shape" --cwd "$wd" --no-focus "${ienv[@]}" 2>&1)
   vtab=$(printf '%s' "$vj" | grep -o '"tab_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   vpane=$(printf '%s' "$vj" | grep -o '"pane_id":"[^"]*"' | head -1 | cut -d'"' -f4)
   if [ -z "$vpane" ]; then echo "spawn: interactive tab create failed; $id not started (no silent headless fallback; DEVKIT_MODE=headless forces it)" >&2; icreate=failed; fi
@@ -278,13 +295,26 @@ elif [ $view = 1 ]; then
     vreport working running
   else view=0; fi
 fi
+# herdr's own error text: first 10 lines, at most 400 chars, joined to one line; empty when it said nothing
+herror() { printf '%s' "$1" | head -n 10 | tr '\n' ' ' | cut -c1-400 | sed 's/[[:space:]]*$//'; }
 if [ $imode = 1 ]; then
   # start the TUI, hand it one line pointing at the full prompt file; the handoff file is the only DONE signal
   make_prompt "$(brieftext)" > "$T/briefs/$id.prompt"
   ipanes "$wd" "$vpane"; istate=; ireason=; rc=0
-  if [ "${icreate:-}" = failed ]; then istate=failed; ireason="tab create failed: herdr answered but gave no pane"
-  elif ! herdr "${startargs[@]}" >/dev/null 2>&1; then istate=failed; ireason="agent start failed: $cli not ready (trust dialog, login or update prompt?)"
-  elif ! herdr "${promptargs[@]}" >/dev/null 2>&1; then istate=failed; ireason="agent prompt rejected (agent blocked or gone)"; fi
+  # a failing call's own text goes in front of the generic hint, so the handoff says why; silence keeps the old message
+  if [ "${icreate:-}" = failed ]; then istate=failed
+    herr_out=$(herror "$vj")
+    ireason="tab create failed: herdr answered but gave no pane"
+    [ -z "$herr_out" ] || ireason="tab create failed: $herr_out; herdr answered but gave no pane"
+  elif ! hout=$(herdr "${startargs[@]}" 2>&1); then istate=failed
+    herr_out=$(herror "$hout")
+    ireason="agent start failed: $cli not ready (trust dialog, login or update prompt?)"
+    [ -z "$herr_out" ] || ireason="agent start failed: $herr_out; $cli not ready (trust dialog, login or update prompt?)"
+  elif ! hout=$(herdr "${promptargs[@]}" 2>&1); then istate=failed
+    herr_out=$(herror "$hout")
+    ireason="agent prompt rejected (agent blocked or gone)"
+    [ -z "$herr_out" ] || ireason="agent prompt rejected: $herr_out; agent blocked or gone"
+  fi
   # an errored agent get is "still working" unless the pane is gone: a flaky call must not end the run on a partial handoff
   idle_agent() { local o; if o=$(herdr agent get "$id" 2>/dev/null); then ! printf '%s' "$o" | grep -q '"agent_status": *"working"'; else ! herdr pane get "$vpane" >/dev/null 2>&1; fi; }
   t0=$(date +%s); gone=0; agone=0
@@ -357,6 +387,7 @@ if [ $imode = 1 ]; then
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
   else # the stub already holds the pane read; notify, then close so no stale tab is left (KEEP records it for --close-views)
     herdr notification show "$id $state" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
+    stop_session
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then [ -z "$vtab" ] || echo "$vtab" > "$T/run/$id.tab"; elif [ -n "$vtab" ]; then herdr tab close "$vtab" >/dev/null 2>&1; fi
   fi
   vdone=1

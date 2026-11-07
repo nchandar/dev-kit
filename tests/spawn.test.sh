@@ -146,6 +146,28 @@ DEVKIT_DRYRUN=1 "$spawn" c8 fake "$t/brief-bad.md" > "$t/c8.out"; DEVKIT_DRYRUN=
 ok "a route line that is prose or names no playbook falls back to the shape default"  '! grep -q "skills/dev-nope" "$t/c8.out" "$t/c9.out" && grep -q "skills/dev-feature" "$t/c8.out" "$t/c9.out"'
 DEVKIT_DRYRUN=1 "$spawn" --shape scout c10 fake "$t/brief.md" > "$t/c10.out"
 ok "default playbook: ship follows dev-feature, scout follows dev-research"  'grep -q "skills/dev-feature/SKILL.md" "$t/c1.out" && grep -q "skills/dev-research/SKILL.md" "$t/c10.out"'
+
+# a route line that cannot be used must be loud: one stderr warning and one ledger row per spawn, never on dry-run
+printf 'do it\nroute: dev-review (extra words)\n' > "$t/brief-rw1.md"
+FAKE_ID=rw1 "$spawn" rw1 fake "$t/brief-rw1.md" 2>"$t/rw1.err"
+ok "an unusable route line warns once and falls back" 'grep -q "spawn: WARN brief route line not usable (.route: dev-review (extra words).); using dev-feature" "$t/rw1.err" && [ "$(grep -c "route line not usable" "$t/rw1.err")" -eq 1 ]'
+ok "the route warning appends exactly one ledger row" '[ "$(grep -c "rw1 route-warning" $TD/ledger.tsv)" -eq 1 ]'
+DEVKIT_DRYRUN=1 "$spawn" rw1d fake "$t/brief-rw1.md" > "$t/rw1d.out" 2>"$t/rw1d.err"
+ok "an unusable route line falls back to the ship default" 'grep -q "skills/dev-feature/SKILL.md" "$t/rw1d.out" && ! grep -q "skills/dev-review" "$t/rw1d.out"'
+ok "dry-run skips the route warning and its ledger row" '! grep -q "route line not usable" "$t/rw1d.err" && [ "$(grep -c "rw1d route-warning" $TD/ledger.tsv)" -eq 0 ]'
+printf 'do it\nroute: dev-mode\n' > "$t/brief-rw2.md"
+FAKE_ID=rw2 "$spawn" rw2 fake "$t/brief-rw2.md" 2>"$t/rw2.err"
+ok "route: dev-mode is not a worker playbook, so it warns" 'grep -q "route line not usable (.route: dev-mode.)" "$t/rw2.err" && grep -q "using dev-feature" "$t/rw2.err"'
+printf 'do it\nroute: dev-nosuch\n' > "$t/brief-rw3.md"
+FAKE_ID=rw3 "$spawn" rw3 fake "$t/brief-rw3.md" 2>"$t/rw3.err"
+ok "route: naming a missing playbook warns" 'grep -q "route line not usable (.route: dev-nosuch.)" "$t/rw3.err" && grep -q "using dev-feature" "$t/rw3.err"'
+printf 'do it\nroute: dev-review\n' > "$t/brief-rw4.md"
+FAKE_ID=rw4 "$spawn" rw4 fake "$t/brief-rw4.md" 2>"$t/rw4.err"
+ok "a clean route line does not warn" '! grep -q "route line not usable" "$t/rw4.err"'
+FAKE_ID=rw5 "$spawn" rw5 fake "$t/brief.md" 2>"$t/rw5.err"
+ok "no route line does not warn" '! grep -q "route line not usable" "$t/rw5.err"'
+DEVKIT_DRYRUN=1 "$spawn" rw6 fake "$t/brief.md" > "$t/rw6.out"
+ok "worker prompt forbids ledger done: the parent closes the task" 'grep -q "never run .bin/ledger done" "$t/rw6.out" && grep -q "the parent closes the task" "$t/rw6.out"'
 FAKE_ID=c11 FAKE_NOHANDOFF=1 FAKE_SLEEP=0 "$spawn" c11 fake "$t/brief.md" > "$t/c11.out" 2>"$t/c11.err"
 ok "no checklist noise when the worker wrote no handoff"  '! grep -qi "checklist" "$t/c11.err"'
 
