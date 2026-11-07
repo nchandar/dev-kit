@@ -57,6 +57,18 @@ ok "8 parallel writers: 200 intact rows"    '[ "$(awk -F"\t" "\$2==\"work\"" .de
 "$ledger" -t "$C" done "all finished"
 ok "done writes phase=done"                 'tail -1 .devkit/tasks/$C/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
+# --- slice A: a worker must not close the shared task
+WD=$("$ledger" start worker-done "x")
+rows=$(wc -l < .devkit/tasks/$WD/ledger.tsv)
+DEVKIT_DEPTH=1 "$ledger" -t "$WD" done "nope" 2>"$t/done-worker.err"; rc=$?
+ok "a worker (depth 1) cannot close a task"  '[ $rc -eq 3 ] && grep -q "worker" "$t/done-worker.err" && grep -q "handoff" "$t/done-worker.err" && [ "$(wc -l < .devkit/tasks/$WD/ledger.tsv)" = "$rows" ]'
+DEVKIT_DEPTH=abc "$ledger" -t "$WD" done "nope" 2>"$t/done-junk.err"; rc=$?
+ok "junk DEVKIT_DEPTH (abc) cannot close a task" '[ $rc -eq 3 ] && grep -q "worker" "$t/done-junk.err" && [ "$(wc -l < .devkit/tasks/$WD/ledger.tsv)" = "$rows" ]'
+DEVKIT_DEPTH=08 "$ledger" -t "$WD" done "nope" 2>"$t/done-08.err"; rc=$?
+ok "depth 08 cannot close a task (no arithmetic error)" '[ $rc -eq 3 ] && grep -q "worker" "$t/done-08.err" && [ "$(wc -l < .devkit/tasks/$WD/ledger.tsv)" = "$rows" ]'
+DEVKIT_DEPTH=0 "$ledger" -t "$WD" done "main agent" 2>/dev/null; rc=$?
+ok "depth 0 can close a task"                '[ $rc -eq 0 ] && tail -1 .devkit/tasks/$WD/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
+
 M="$t/mirror.out"; DEVKIT_LEDGER_MIRROR="echo \"\$1\" >> $M" "$ledger" -t "$A" ph2 dec2 why2
 for i in $(seq 1 50); do grep -q ph2 "$M" 2>/dev/null && break; sleep 0.1; done # sleep-ok: bounded poll, mirror is detached
 ok "mirror runs with row text as \$1"       'grep -q "ph2" "$M"'
