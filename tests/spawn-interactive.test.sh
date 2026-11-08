@@ -47,7 +47,7 @@ for c in claude codex opencode; do
 #!/usr/bin/env bash
 echo "$(basename "$0") $*" >> "$HERDR_LOG.cli"
 case "$1 $2" in
-  "session delete") echo "session delete $3" >> "$HERDR_LOG"; [ -z "${STUB_STOP_UNIQ:-}" ] || { trap "" TERM; exec sleep 997; }; [ -z "${STUB_STOP_IGNORE:-}" ] || { trap "" TERM; exec sleep 60; }; [ -z "${STUB_STOP_HANG:-}" ] || exec sleep 60; exit "${STUB_STOP_RC:-0}";; # sleep-ok: a hung delete the spawn must cut off
+  "session delete") [ -z "${STUB_DEL_TS:-}" ] || perl -MTime::HiRes=time -e 'printf "%d\n", time*1000' >> "$STUB_DEL_TS"; echo "session delete $3" >> "$HERDR_LOG"; [ -z "${STUB_STOP_UNIQ:-}" ] || { trap "" TERM; exec sleep 997; }; [ -z "${STUB_STOP_IGNORE:-}" ] || { trap "" TERM; exec sleep 60; }; [ -z "${STUB_STOP_HANG:-}" ] || exec sleep 60; [ -z "${STUB_DEL_TS:-}" ] || perl -MTime::HiRes=time -e 'printf "%d\n", time*1000' >> "$STUB_DEL_TS"; exit "${STUB_STOP_RC:-0}";; # sleep-ok: a hung delete the spawn must cut off
 esac
 hf=$(printf '%s\n' "$@" | sed -n 's/.*to this absolute path: \(.*\)$/\1/p' | head -1)
 [ -z "$hf" ] || printf 'headless handoff\n' > "$hf"
@@ -162,9 +162,11 @@ mkdir -p "$t/ms"; cat > "$t/ms/now" <<'S'
 perl -MTime::HiRes=time -e 'printf "%d\n", time*1000'
 S
 chmod +x "$t/ms/now"
-rm -f "$HERDR_LOG.cli"; s0=$("$t/ms/now"); STUB_DROP=1 irun "$spawn" os3 opencode "$t/brief.md" 2>/dev/null; rc=$?; s1=$("$t/ms/now")
-rm -f "$HERDR_LOG.cli"; s2=$("$t/ms/now"); STUB_DROP=1 STUB_STOP_RC=0 irun "$spawn" os5 claude "$t/brief.md" 2>/dev/null; s3=$("$t/ms/now")
-ok "an instant session delete adds under 1 s to a done run" '[ $rc -eq 0 ] && [ $(( (s1-s0) - (s3-s2) )) -lt 900 ]'
+# time the delete directly: two whole runs are quantized by the 1 s poll loop, so their difference jumps by ~1 s
+rm -f "$HERDR_LOG.cli" "$t/del.ts"; STUB_DEL_TS="$t/del.ts" STUB_DROP=1 irun "$spawn" os3 opencode "$t/brief.md" 2>/dev/null; rc=$?; s1=$("$t/ms/now")
+d0=$(sed -n 1p "$t/del.ts" 2>/dev/null); d1=$(sed -n 2p "$t/del.ts" 2>/dev/null)
+ok "an instant session delete returns at once (under 600 ms)" '[ $rc -eq 0 ] && [ -n "$d0" ] && [ -n "$d1" ] && [ $((d1-d0)) -lt 600 ]'
+ok "a done run exits within 600 ms of its session delete ending (no poll after it)" '[ -n "$d1" ] && [ $((s1-d1)) -lt 600 ]'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" ct1 claude "$t/brief.md" 2>/dev/null
 ok "claude: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=2 irun "$spawn" xt1 codex "$t/brief.md" 2>/dev/null

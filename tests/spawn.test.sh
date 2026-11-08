@@ -565,4 +565,24 @@ ok "DEVKIT_STOP_TIMEOUT=0 is refused (0 would kill the delete at once)" '[ $rc -
 DEVKIT_STOP_TIMEOUT=x "$spawn" st1 fake "$t/brief.md" > "$t/st1.out" 2>&1; rc=$?
 ok "DEVKIT_STOP_TIMEOUT=x is refused as not a number" '[ $rc -eq 2 ] && grep -q "DEVKIT_STOP_TIMEOUT must be a whole number" "$t/st1.out"'
 
+# --- worker id rule: lowercase start, [a-z0-9_-], 1-32 chars; checked before any side effect
+idmsg() { printf "spawn: worker id '%s' must start with a lowercase letter and use only lowercase letters, digits, - or _ (1-32 characters)" "$1"; }
+snap() { { find "$DEVKIT_DIR" -path "$DEVKIT_DIR/tasks/*/wt" -prune -o -type f -print 2>/dev/null; wc -l < "$TD/ledger.tsv"; } | sort | md5sum 2>/dev/null || cksum; }
+long33=$(printf 'a%.0s' $(seq 33)); long32=$(printf 'a%.0s' $(seq 32))
+for bad in vlA 1ab -ab _ab "" "a b" a.b a/b "$long33"; do
+  before=$(snap); out=$("$spawn" "$bad" fake "$t/brief.md" 2>&1); rc=$?; after=$(snap)
+  ok "bad id '$bad' exits 2 with the rule and the id" '[ $rc -eq 2 ] && [ "$out" = "$(idmsg "$bad")" ]'
+  ok "bad id '$bad' leaves no ledger row, run file or brief" '[ "$before" = "$after" ]'
+done
+before=$(snap); out=$(DEVKIT_DRYRUN=1 "$spawn" vlA fake "$t/brief.md" 2>&1); rc=$?
+ok "dry run validates the id too" '[ $rc -eq 2 ] && [ "$out" = "$(idmsg vlA)" ] && [ "$before" = "$(snap)" ]'
+before=$(snap); out=$("$spawn" --prompt "hi" vlA fake 2>&1); rc=$?
+ok "a bad id with --prompt saves no brief" '[ $rc -eq 2 ] && [ "$before" = "$(snap)" ] && [ ! -e "$TD/briefs/vlA.md" ]'
+out=$(DEVKIT_MODE=interactive "$spawn" vlA claude "$t/brief.md" 2>&1); rc=$?
+ok "a bad id fails before any herdr call (no tab, no slot)" '[ $rc -eq 2 ] && [ ! -s "$HERDR_TRIPWIRE_LOG" ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
+for good in a a1 a-b a_b c6c ri1d "$long32"; do
+  out=$(DEVKIT_DRYRUN=1 "$spawn" "$good" fake "$t/brief.md" 2>&1); rc=$?
+  ok "valid id '$good' passes the id check" '[ $rc -eq 0 ]'
+done
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
