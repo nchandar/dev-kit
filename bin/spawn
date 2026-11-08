@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run one sub-agent to completion on any CLI. Brief in, handoff out. Blocks; caller may background with &.
 # Usage: bin/spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>
+#        <id>: lowercase letter first, then lowercase letters, digits, - or _; 1-32 chars (herdr agent-name rule)
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
 #        bin/spawn --prune [-t TASK] [--yes] [--discard] [ID ...]  remove accepted workers' worktrees (dry run unless --yes)
@@ -105,6 +106,12 @@ case $shape in ship|scout) ;; *) echo "spawn: --shape must be ship or scout" >&2
 want=3; [ -n "$inline" ] && want=2
 [ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
+# the id names the herdr agent, branch, run files and handoff; herdr rejects anything else only after launch
+# explicit letters: [a-z] ranges match uppercase in some locales
+lc=abcdefghijklmnopqrstuvwxyz
+case $id in [$lc]*) ;; *) id_bad=1;; esac
+case $id in *[!${lc}0123456789_-]*) id_bad=1;; esac
+if [ -n "${id_bad:-}" ] || [ ${#id} -gt 32 ]; then echo "spawn: worker id '$id' must start with a lowercase letter and use only lowercase letters, digits, - or _ (1-32 characters)" >&2; exit 2; fi
 depth=${DEVKIT_DEPTH:-0}; MAXD=$DEVKIT_MAX_DEPTH
 case $depth$MAXD in *[!0-9]*|"") echo "spawn: DEVKIT_DEPTH and DEVKIT_MAX_DEPTH must be numbers" >&2; exit 2;; esac
 depth=$((10#$depth)); MAXD=$((10#$MAXD)) # force decimal: 08/09 are not octal
@@ -113,7 +120,6 @@ case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" 
 case $DEVKIT_MODE in auto|interactive|headless) ;; *) echo "spawn: DEVKIT_MODE must be auto, interactive or headless" >&2; exit 2;; esac
 case $DEVKIT_NUDGE_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_NUDGE_WAIT must be a whole number of seconds" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
-case $id in *[!A-Za-z0-9_-]*|"") echo "spawn: bad id" >&2; exit 2;; esac
 
 root=$(pwd -P); CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
 case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number" >&2; exit 2;; esac

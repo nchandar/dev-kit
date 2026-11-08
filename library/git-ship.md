@@ -11,11 +11,13 @@ Record the commit hashes and the ship decision with bin/ledger (phase=ship).
 4. Pre-merge: tests, lint, typecheck, and the verify checks all green on the final diff.
 5. For risky changes: rollback plan in one line, and how you will know it broke (see library/observability).
 6. Ask the user before pushing, opening a PR, merging or tagging. Several commits: ask whether to squash into one first and recommend one. Never push to main; once a push is approved, open a PR with summary, risks and test plan. Never force-push shared branches.
+7. Never merge unless every CI check has passed: `gh pr checks <n>`; a failing or pending check, or no checks reported, means do not merge (a red main costs more than a wait). Fix, wait or ask, even when told "merge it" (report the check state). After any merge, read the CI run on main and report it.
 
 ## Red Flags
 - Huge mixed commits; "wip" history on a shared branch.
 - Skipping hooks (`--no-verify`) to get past a check.
 - Pushing without being asked.
+- Merging with a failing, pending or missing check.
 
 ## Verification
-- Clean `git status`; each commit builds and passes tests; the user approved any push.
+- Clean `git status`; each commit builds and passes tests; the user approved any push; `gh pr checks` shows every check passed before any merge.
