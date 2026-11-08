@@ -120,6 +120,9 @@ case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number
 [ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; }
 case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a whole number" >&2; exit 2;; esac
 case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
+STOPTMO=$DEVKIT_STOP_TIMEOUT
+case $STOPTMO in ''|*[!0-9]*) echo "spawn: DEVKIT_STOP_TIMEOUT must be a whole number" >&2; exit 2;; esac
+[ "$STOPTMO" -ge 1 ] || { echo "spawn: DEVKIT_STOP_TIMEOUT must be at least 1" >&2; exit 2; }
 case $DEVKIT_POLL$DEVKIT_GRACE in *[!0-9]*) echo "spawn: DEVKIT_POLL and DEVKIT_GRACE must be whole numbers" >&2; exit 2;; esac
 case ${GIT_CONFIG_COUNT:-0} in ''|*[!0-9]*) echo "spawn: GIT_CONFIG_COUNT must be a whole number" >&2; exit 2;; esac
 task=${DEVKIT_TASK:-}
@@ -152,13 +155,16 @@ build_cmd() { # $1=workdir $2=prompt
   esac; }
 # the worker follows a route's playbook by path and loads its checklist itself: the brief's `route: dev-x` line, else the shape's default (ship: dev-feature, scout: dev-research)
 # resolved once per spawn into rt_route: make_prompt asks twice, and an unusable line must warn and ledger once
-worker_route() { local rt line bad=0
+worker_route() { local rt line cand c r bad=0
   [ -z "$rt_route" ] || { echo "$rt_route"; return; }
-  line=$(printf '%s\n' "$1" | grep -E '^[[:space:]]*route:' | head -1)
-  rt=$(printf '%s\n' "$line" | sed -n 's/^route: \(dev-[a-z]*\)[[:space:]]*$/\1/p')
-  if [ -n "$line" ]; then
-    [ -n "$rt" ] && [ "$rt" != dev-mode ] && [ -f "$here/../skills/$rt/SKILL.md" ] || bad=1
-  fi
+  # examples in briefs must not hide the real route line
+  cand=$(printf '%s\n' "$1" | awk '/^[[:space:]]*```/{f=!f; next} !f && /^[[:space:]]*route:/{l=$0; sub(/^[[:space:]]+/,"",l); if (l==$0) a=a l "\n"; else b=b l "\n"} END{printf "%s%s", a, b}' | sed '/^$/d')
+  line=$(printf '%s\n' "$cand" | head -1); rt=
+  while IFS= read -r c; do
+    r=$(printf '%s\n' "$c" | sed -n 's/^route: \(dev-[a-z]*\)[[:space:]]*$/\1/p')
+    if [ -n "$r" ] && [ "$r" != dev-mode ] && [ -f "$here/../skills/$r/SKILL.md" ]; then rt=$r; break; fi
+  done <<< "$cand"
+  [ -z "$line" ] || [ -n "$rt" ] || bad=1
   [ -n "$rt" ] && [ "$bad" = 0 ] || { rt=dev-feature; [ $shape != scout ] || rt=dev-research; }
   if [ "$bad" = 1 ] && [ -z "${DEVKIT_DRYRUN:-}" ]; then # dry-run leaves no ledger row, so it stays silent too
     echo "spawn: WARN brief route line not usable ('$line'); using $rt" >&2
@@ -278,13 +284,24 @@ claim() { local n d p p2 lock m live s pp
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
 # best-effort: a timed-out or failed opencode TUI keeps its session alive after the tab closes, so end it first
+dpid=""; dwd=""
+# the delete is killed and reaped here too: a signal during its wait must not leave it running
+reap_delete() { [ -z "$dwd" ] || { pkill -P "$dwd" 2>/dev/null; kill "$dwd" 2>/dev/null; }
+  [ -z "$dpid" ] || { kill "$dpid" 2>/dev/null; sleep 1; kill -KILL "$dpid" 2>/dev/null; wait "$dpid" 2>/dev/null; }
+  dpid=""; dwd=""; }
 stop_session() { # only the opencode session this spawn created; never changes spawn's state or exit code
   [ "$cli" = opencode ] && [ "$imode" = 1 ] && [ "$istarted" = 1 ] || return 0
-  opencode session delete "$sid" >/dev/null 2>&1 || true; }
+  opencode session delete "$sid" >/dev/null 2>&1 & dpid=$!
+  # a hung delete must not stall the exit path; TERM can be ignored, so KILL follows
+  ( sleep "$STOPTMO"; kill "$dpid" 2>/dev/null; sleep 1; kill -KILL "$dpid" 2>/dev/null ) >/dev/null 2>&1 & dwd=$!
+  wait "$dpid" 2>/dev/null
+  pkill -P "$dwd" 2>/dev/null; kill "$dwd" 2>/dev/null; wait "$dwd" 2>/dev/null
+  dpid=""; dwd=""; return 0; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; vtab=""; vpane=""; vdone=0; idone=0; istarted=0
 cleanup() { local rc=$?
   trap - EXIT
+  reap_delete # a signal that landed in stop_session left its delete running
   if [ -n "$wpid" ] && kill -0 "$wpid" 2>/dev/null; then # interrupted while the worker ran
     [ -z "$guard" ] || { pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; }
     kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
@@ -305,7 +322,7 @@ cleanup() { local rc=$?
   fi
   [ -z "$slot" ] || rm -rf "$slot"
   exit $rc; }
-trap cleanup EXIT; trap 'exit 143' TERM; trap 'exit 130' INT; trap 'exit 129' HUP
+trap cleanup EXIT; trap 'reap_delete; exit 143' TERM; trap 'reap_delete; exit 130' INT; trap 'reap_delete; exit 129' HUP
 waited=0
 until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
   if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi

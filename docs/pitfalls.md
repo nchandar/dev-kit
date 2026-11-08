@@ -27,3 +27,9 @@ Read this file at recon (dev-debug step 1); check it with tests/pitfalls.test.sh
 | pg-19 | repo scan passed a dir to a per-file grep and flagged nothing | bounded-retry | 2026-11-02 |
 | pg-20 | stat fallback printed filesystem info on Linux when the lock vanished; set -u arithmetic killed the spawner | tests/spawn.test.sh | 2026-11-05 |
 | pg-21 | eval scored opencode stderr tool traces (repo files hold sample `route:` lines) instead of the model answer | tests/route-eval.test.sh | 2026-11-05 |
+| pg-22 | opencode session delete had no timeout; route lines: indent was rejected after grep matched it, and a fenced or unusable example hid the real line | tests/spawn.test.sh, tests/spawn-interactive.test.sh | 2026-11-07 |
+| pg-23 | `SECONDS -lt 1` timing check failed under load (1 s granularity); bound it below the real hang, not at one tick | tests/reconcile.test.sh | 2026-11-07 |
+| pg-24 | stop_session polled `kill -0` (true for an unwaited exited child, so every exit paid 1 s) and a signal during its wait lost the delete pid, leaving a TERM-ignoring delete running | tests/spawn-interactive.test.sh | 2026-11-07 |
+| pg-25 | main session never opened the playbook checklist: TaskCreate is deferred in Claude Code and only the worker prompt said to ToolSearch it | tests/todo-hint.test.sh | 2026-11-07 |
+| pg-26 | todo rule said "whichever exists" and named no Codex tool, so main sessions still skipped the list; now a first-action rule naming each CLI tool | tests/todo-hint.test.sh | 2026-11-07 |
+| pg-27 | a worker cut a test-asserted term ("sharpen") from the word-capped dev-mode skill to fit the cap and never ran the neighbor test; before cutting words from a capped, asserted file, run the full suite or grep every test that names it | tests/pstack-adoption.test.sh, tests/dev-mode.test.sh | 2026-11-07 |

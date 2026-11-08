@@ -1,6 +1,6 @@
 # dev-kit
 
-Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill, open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; else a checklist in `<task>/state.md`) with its checklist verbatim and tick items as steps finish (skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
+Lean, agent-agnostic. Installed at `~/.agents/dev-kit/`; the `bin/` tools and `library/` folder live there. Pick the route below, read ONLY that skill. First action of any route: read its playbook, then open the host todo list with its checklist verbatim. Claude Code: TaskCreate (deferred, load it with ToolSearch first) or TodoWrite. Codex: update_plan. OpenCode: todowrite. None available: `<task>/state.md`. Tick items as steps finish (skipped steps stay, with a reason). Skills name the `library/<x>.md` files to read at the step that needs them.
 
 ## Routes
 Route skills are explicit-only playbooks (You own, Reads, Checklist, Hand off to, Reply). dev-mode classifies and reads the playbook by path; a user may also type one directly.

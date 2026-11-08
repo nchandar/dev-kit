@@ -547,4 +547,22 @@ ok "close-views: only the pointer closes the pointed task's tab" '[ $rc -eq 0 ] 
 
 ok "no call escaped to the tripwire herdr (real herdr never reached)" '[ ! -s "$HERDR_TRIPWIRE_LOG" ]'
 
+# route line forms: indent is trimmed, a fenced or earlier unusable example never hides the real line
+printf 'do it\n  route: dev-debug\n' > "$t/brief-ri1.md"
+printf 'Example:\n  route: dev-nope\nwork\nroute: dev-debug\n' > "$t/brief-ri2.md"
+printf 'Write a line like:\n```\nroute: dev-review\n```\nwork\n' > "$t/brief-ri3.md"
+printf 'Write a line like:\n```\nroute: dev-review\n```\nroute: dev-debug\n' > "$t/brief-ri4.md"
+for n in 1 2 3 4; do FAKE_ID=ri$n "$spawn" ri$n fake "$t/brief-ri$n.md" 2>"$t/ri$n.err"; DEVKIT_DRYRUN=1 "$spawn" ri${n}d fake "$t/brief-ri$n.md" > "$t/ri$n.out" 2>/dev/null; done
+ok "an indented route line is used and does not warn" 'grep -q "skills/dev-debug/SKILL.md" "$t/ri1.out" && ! grep -q "route line not usable" "$t/ri1.err"'
+ok "an unusable example before the real route line is skipped silently" 'grep -q "skills/dev-debug/SKILL.md" "$t/ri2.out" && ! grep -q "route line not usable" "$t/ri2.err"'
+ok "a route line inside a code fence is ignored" 'grep -q "skills/dev-feature/SKILL.md" "$t/ri3.out" && ! grep -q "skills/dev-review" "$t/ri3.out" && ! grep -q "route line not usable" "$t/ri3.err"'
+ok "a fenced example does not hide the real route line after it" 'grep -q "skills/dev-debug/SKILL.md" "$t/ri4.out"'
+printf 'Brief says:\n  route: dev-review\nreal\nroute: dev-debug\n' > "$t/brief-ri5.md"
+DEVKIT_DRYRUN=1 "$spawn" ri5 fake "$t/brief-ri5.md" > "$t/ri5.out" 2>/dev/null
+ok "a column-0 route line beats an indented example before it" 'grep -q "skills/dev-debug/SKILL.md" "$t/ri5.out" && ! grep -q "skills/dev-review" "$t/ri5.out"'
+DEVKIT_STOP_TIMEOUT=0 "$spawn" st0 fake "$t/brief.md" > "$t/st0.out" 2>&1; rc=$?
+ok "DEVKIT_STOP_TIMEOUT=0 is refused (0 would kill the delete at once)" '[ $rc -eq 2 ] && grep -q "DEVKIT_STOP_TIMEOUT must be at least 1" "$t/st0.out"'
+DEVKIT_STOP_TIMEOUT=x "$spawn" st1 fake "$t/brief.md" > "$t/st1.out" 2>&1; rc=$?
+ok "DEVKIT_STOP_TIMEOUT=x is refused as not a number" '[ $rc -eq 2 ] && grep -q "DEVKIT_STOP_TIMEOUT must be a whole number" "$t/st1.out"'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
