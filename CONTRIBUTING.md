@@ -55,7 +55,7 @@ One home per rule. Point to it elsewhere, never copy.
 ## 5. Adding things
 | Add | How |
 |---|---|
-| Skill | Max 8 total (raised from 6 because the set keeps growing; the descriptions cap bounds what is always loaded). Folder `skills/dev-<name>/`, one-line description, required sections, `library/state` closeout; add a route to `AGENTS.md` and a README entry, unless it is an explicit-only support skill such as `dev-model-check` |
+| Skill | Max 8 total (raised from 6 because the set keeps growing; the descriptions cap bounds what is always loaded). Folder `skills/dev-<name>/`, one-line description, required sections, `library/state` closeout; add a route to `AGENTS.md` and a README entry, unless it is an explicit-only support skill such as `dev-create-formal-verification-skill` |
 | Library file | Prefer extending one. New file needs When to Use, Steps, Red Flags, Verification and a `bin/ledger` line |
 | Deep file | `library/deep/<name>.md` with When to Load and Red Flags; add a pointer in `principles.md` |
 | Recipe | `library/recipes/<name>.md` with When to Load, Steps, Gotchas, Verified; add `name: trigger` to `index.md` |

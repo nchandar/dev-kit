@@ -22,7 +22,7 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Layer | What lives there | Who reads it |
 |---|---|---|
 | Entry rules | `AGENTS.md` (routes and always-rules, max 6144 B), `CLAUDE.md` | Main agent, every session |
-| Skills | `skills/dev-*/SKILL.md`: ten skills: an entry point (dev-mode), eight routes, each a checklist, and dev-model-check (explicit-only, not a route) | Main agent, one per task |
+| Skills | `skills/dev-*/SKILL.md`: twelve skills: an entry point (dev-mode), eight routes, each a checklist, and three formal-verification support skills (dev-formal-verification-skill, dev-create-formal-verification-skill, dev-maintain-formal-verification-skill; explicit-only, not routes) | Main agent, one per task |
 | Library | `library/`: principles, core, deep, recipes | Main agent or workers, on demand |
 | Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, lint-budget | Agents run them; people can too |
 | Per-task files | `.devkit/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |

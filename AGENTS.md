@@ -13,7 +13,7 @@ Route skills are explicit-only playbooks (You own, Reads, Checklist, Hand off to
 - dev-spawn: delegate to sub-agents (parallel and nestable, within the limits in ARCHITECTURE.md).
 - dev-eval: test whether a skill or prompt change helps: blind candidates, blind judge, recommendation.
 - dev-learn: queued learnings into library edits, merged only with the user's approval.
-If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first. Explicit-only support skill, not a route: dev-model-check for ordering, concurrency or lease logic.
+If a route matches, you MUST use it; never implement directly. Unclear request: library/grill first. Explicit-only support skills, not routes: dev-formal-verification-skill triages ordering, concurrency or lease logic to dev-create-formal-verification-skill or dev-maintain-formal-verification-skill.
 
 ## Session start (every new terminal; workers skip it, DEVKIT_TASK is already set)
 1. `bin/reconcile` lists this repo's open tasks, one line each. Never share a task with another live session.

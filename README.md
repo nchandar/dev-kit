@@ -26,7 +26,9 @@ Ask in plain words and run `/dev-mode`, which picks the playbook. Name one to sk
 | `dev-spawn` | "open a codex instance and run X" | one worker per task (interactive herdr tab, headless fallback) on claude, codex or opencode | a short handoff with evidence |
 | `dev-eval` | "did that skill change help?" | blind candidate runs, a blind judge, a recommendation | a verdict: promote, drop or rerun |
 | `dev-learn` | "learn from this" | dedupes queued lessons, drafts a library change on a branch | a diff you approve |
-| `dev-model-check` (support skill, not a route) | "model-check this race" | pick one promise, model it in TLA+, check it with TLC, draw a chart, keep the coverage record and sync commit | a counterexample or a pass, a chart, a drift tripwire |
+| `dev-formal-verification-skill` (support skill, not a route) | "should I model this race?" | triage: no model builds one, a drifted model gets maintained, a chart-only request runs TLC and statechart | the right pass, with the promise and its exclusions |
+| `dev-create-formal-verification-skill` (support skill, not a route) | "build a model for this lease" | pick one promise, model it in TLA+, check it with TLC, prove each rule can fail, replay the trace | a counterexample or a pass, a chart, a coverage record and sync commit |
+| `dev-maintain-formal-verification-skill` (support skill, not a route) | "did this change stale the model?" | diff covered code from the sync commit, give each change an outcome, update from the code, rerun and break-test | in-sync, updated, bug or blocked, with a new sync commit |
 
 Route skills are playbooks with one shape: You own, Reads (the library files and when), a Checklist the agent opens as a visible todo list and ticks off (skipped steps stay, with a reason), Hand off to, and Reply. They are explicit-only: type `/dev-mode` and it picks one, or type `/dev-debug` and the like directly.
 
