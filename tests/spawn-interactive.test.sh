@@ -193,11 +193,14 @@ mkdir -p "$t/ms"; cat > "$t/ms/now" <<'S'
 perl -MTime::HiRes=time -e 'printf "%d\n", time*1000'
 S
 chmod +x "$t/ms/now"
-# time the delete directly: two whole runs are quantized by the 1 s poll loop, so their difference jumps by ~1 s
-rm -f "$HERDR_LOG.cli" "$t/del.ts"; STUB_DEL_TS="$t/del.ts" STUB_DROP=0 irun "$spawn" os3 opencode "$t/brief.md" 2>/dev/null; rc=$?; s1=$("$t/ms/now")
+# time the delete directly: two whole runs are quantized by the poll loop, so their difference jumps by a whole poll.
+# The poll is 8 s here so a poll after the delete costs 8 s while normal exit work is ~0.1 s: the 4 s bound
+# then sits far from both, and a slow or noisy runner cannot tip it
+rm -f "$HERDR_LOG.cli" "$t/del.ts"; STUB_DEL_TS="$t/del.ts" STUB_DROP=0 DEVKIT_POLL=8 irun "$spawn" os3 opencode "$t/brief.md" 2>/dev/null; rc=$?; s1=$("$t/ms/now")
 d0=$(sed -n 1p "$t/del.ts" 2>/dev/null); d1=$(sed -n 2p "$t/del.ts" 2>/dev/null)
+echo "     timing: delete took $((d1-d0)) ms, spawn exited $((s1-d1)) ms after the delete ended"
 ok "an instant session delete returns at once (under 600 ms)" '[ $rc -eq 0 ] && [ -n "$d0" ] && [ -n "$d1" ] && [ $((d1-d0)) -lt 600 ]'
-ok "a done run exits within 600 ms of its session delete ending (no poll after it)" '[ -n "$d1" ] && [ $((s1-d1)) -lt 600 ]'
+ok "a done run exits within 4 s of its session delete ending, with an 8 s poll (no poll after it)" '[ -n "$d1" ] && [ $((s1-d1)) -lt 4000 ]'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=1 irun "$spawn" ct1 claude "$t/brief.md" 2>/dev/null
 ok "claude: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
 rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=1 irun "$spawn" xt1 codex "$t/brief.md" 2>/dev/null
