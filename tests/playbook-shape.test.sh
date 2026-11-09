@@ -40,5 +40,14 @@ done
 # OpenCode hides flagged skills from its skill tool and loads dev-mode through that tool (opencode routing 15/31 when flagged)
 ok "dev-mode stays model-visible"               '! grep -q "^disable-model-invocation" skills/dev-mode/SKILL.md'
 ok "no playbook tells the model to run a skill by tool" '! grep -n -E "\brun dev-(research|review|spawn|feature|debug|eval|learn|refactor)\b" skills/dev-*/SKILL.md'
+# Closing a task runs the gate first: every line that names bin/ledger done must name bin/verify before it.
+for r in feature debug refactor; do
+  bad=$(grep -n 'bin/ledger done' "skills/dev-$r/SKILL.md" | while IFS=: read -r n rest; do
+    line=$(sed -n "${n}p" "skills/dev-$r/SKILL.md")
+    v=$(awk -v s="$line" 'BEGIN{print index(s,"bin/verify")}'); d=$(awk -v s="$line" 'BEGIN{print index(s,"bin/ledger done")}')
+    [ "$v" -gt 0 ] && [ "$v" -lt "$d" ] || echo "$n"
+  done)
+  ok "dev-$r runs bin/verify before bin/ledger done" '[ -z "$bad" ]'
+done
 ok "lint-budget passes"                         'bin/lint-budget >/dev/null 2>&1'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

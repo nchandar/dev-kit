@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+ok "delta holds" "true"
+ok "epsilon holds" "true"

@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")/.." && pwd); ledger="$here/bin/ledger"; state="$here/
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && unset DEVKIT_DIR DEVKIT_TASK
+cd "$t" && git init -q -b main && unset DEVKIT_DIR DEVKIT_TASK
 T=$("$ledger" start st "x"); D=".devkit/tasks/$T"; S="$D/state.md"
 chk() { "$state" check -t "$T" 2>&1; }
 reset() { printf '# state\ngoal: see spec.md\n\n## Findings\n\n## Decisions\n\n## Direction\n\n## Open questions\n\n## Learnings\n' > "$S"; }

@@ -17,7 +17,7 @@ S
 chmod +x "$tripdir/herdr"
 export PATH="$tripdir:$PATH"
 fail=0
-for t in tests/*.test.sh; do printf '%-26s ' "$(basename "$t")"; out=$("$t" 2>&1); summary=$(printf '%s\n' "$out" | tail -n 1); echo "$summary"; case $summary in *" 0 failed"*) ;; *) fail=1; printf '%s\n' "$out" | grep '^FAIL' | sed 's/^/    /' || true;; esac; done
+for t in tests/*.test.sh; do printf '%-26s ' "$(basename "$t")"; start=$SECONDS; out=$("$t" 2>&1); summary=$(printf '%s\n' "$out" | tail -n 1); echo "$summary   $((SECONDS-start))s"; case $summary in *" 0 failed"*) ;; *) fail=1; printf '%s\n' "$out" | grep '^FAIL' | sed 's/^/    /' || true;; esac; done
 printf '%-26s ' lint-budget; bin/lint-budget || fail=1
 if [ -s "$DEVKIT_TRIPWIRE_LOG" ]; then printf '%-26s FAIL herdr called:\n' tripwire; cat "$DEVKIT_TRIPWIRE_LOG"; fail=1; else printf '%-26s ok\n' tripwire; fi
 exit $fail

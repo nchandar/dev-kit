@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+ok "alpha holds" "true"
+ok "beta holds" "true"
+ok "gamma holds" "true"
+ok "zeta holds" "true"

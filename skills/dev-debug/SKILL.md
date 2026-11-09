@@ -29,7 +29,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason, then add neighbor tests (sibling cases of the same fault class, boundary values, what must not change): several tests per bug, not one. A bug is closed only with those regression tests plus a docs/pitfalls.md row (or a new pitfalls rule); read docs/pitfalls.md at recon.
 - [ ] 6. List 2-3 fix options with a recommendation and ask the user's pick; then the smallest fix, no drive-by edits. Test green, then the full suite.
 - [ ] 7. Verify: follow library/verify; the original repro passes, plus one adjacent case. Then follow skills/dev-review/SKILL.md on the diff and fix blockers.
-- [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 Stuck after 3 failed hypotheses: write the state as a ledger row (phase=next) and stop or escalate.
 
@@ -53,4 +53,4 @@ Stuck after 3 failed hypotheses: write the state as a ledger row (phase=next) an
 ## Verification
 - Ledger shows: repro fail, root cause line, doubt dispositions, test red then green, repro pass.
 - Full suite green; the diff contains only the fix and its test.
-- Close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- Run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.

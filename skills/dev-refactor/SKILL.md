@@ -32,7 +32,7 @@ Run `bin/ledger` after every step (phase=refactor).
 - [ ] 6. Spot-check every rename against the real files, including strings, docs and back-references.
 - [ ] 7. Prove it: output equals the baseline (diff old vs new, or an equivalence script for larger reshapes); follow library/verify.
 - [ ] 8. Keep only what lowers reader load (library/deep/reader-load); revert a change that does not.
-- [ ] 9. Review with dev-review; ship via library/git-ship with small ordered commits (subtraction, reshape, follow-on). Closeout: follow library/state. Then close the ledger: bin/ledger done "<summary>".
+- [ ] 9. Review with dev-review; ship via library/git-ship with small ordered commits (subtraction, reshape, follow-on). Closeout: follow library/state. Then run bin/verify, then close the ledger: bin/ledger done "<summary>".
 
 **Hand off to:** dev-review on the full diff. If the cleanup reveals a missing feature or a bug, split it out to dev-feature or dev-debug.
 
@@ -57,4 +57,4 @@ Run `bin/ledger` after every step (phase=refactor).
 - Ledger shows: baseline saved, each step green, equivalence proof, reverts.
 - Output equals the baseline: diff old vs new, or an equivalence script.
 - Full suite green; the diff holds only structure, no behavior change.
-- Close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- Run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.

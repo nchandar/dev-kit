@@ -7,9 +7,12 @@ unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak
 unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
 export DEVKIT_MODE=headless  # this suite pins the headless path; tests/spawn-interactive.test.sh covers the tab path
 for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
-here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"
+here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"; ledger="$here/bin/ledger"; verify="$here/bin/verify"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && echo base > f.txt && git add -A && git -c user.name=t -c user.email=t@t commit -qm init
 export DEVKIT_DIR="$t/.devkit"
@@ -27,7 +30,6 @@ exit 1
 S
 chmod +x "$tripwire/herdr"
 export PATH="$tripwire:$PATH"
-ledger="$here/bin/ledger"
 TA=$("$ledger" start task-a x); TB=$("$ledger" start task-b y)
 TD="$DEVKIT_DIR/tasks/$TA"; export DEVKIT_TASK=$TA
 
@@ -100,7 +102,7 @@ env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SP FAKE_ID=ps "$spawn" ps fake "$t/br
 ok "no DEVKIT_TASK: the pointer supplies the task" '[ $rc -eq 0 ] && [ -s "$PTD/handoffs/ps.md" ] && grep -q "ps done" "$PTD/ledger.tsv"'
 DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$SP FAKE_ID=ex "$spawn" ex fake "$t/brief.md"; rc=$?
 ok "DEVKIT_TASK wins over the pointer"             '[ $rc -eq 0 ] && [ -s "$DEVKIT_DIR/tasks/$TB/handoffs/ex.md" ] && [ ! -e "$PTD/handoffs/ex.md" ]'
-"$ledger" -t "$PT" done "closed" >/dev/null 2>&1
+gate_pass "$PT"; "$ledger" -t "$PT" done "closed" >/dev/null 2>&1
 env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SP "$spawn" q2 fake "$t/brief.md" >/dev/null 2>"$t/sp-closed.err"; rc=$?ok "closed pointer: the clear error names the task" '[ $rc -eq 2 ] && grep -q "last task $PT is closed (or gone)" "$t/sp-closed.err"'
 DEVKIT_TASK=$TB FAKE_ID=iso "$spawn" iso fake "$t/brief.md"
 ok "spawn logs only to its own task's ledger" 'grep -q "iso done" "$DEVKIT_DIR/tasks/$TB/ledger.tsv" && ! grep -q "iso" $TD/ledger.tsv'
@@ -315,7 +317,7 @@ echo X:t9 > "$CTD/run/cv.tab"
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH"; env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$CS "$spawn" --close-views ); rc=$?
 ok "--close-views: no DEVKIT_TASK, the pointer supplies the task" '[ $rc -eq 0 ] && [ ! -e "$CTD/run/cv.tab" ] && grep -q "tab close X:t9" "$HERDR_LOG"'
-"$ledger" -t "$CT" done "closed" >/dev/null 2>&1
+gate_pass "$CT"; "$ledger" -t "$CT" done "closed" >/dev/null 2>&1
 ( export PATH="$hs:$PATH"; env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$CS "$spawn" --close-views 2>"$t/cv-closed.err" ); rc=$?
 ok "--close-views: closed pointer errors clearly" '[ $rc -eq 2 ] && grep -q "last task $CT is closed (or gone)" "$t/cv-closed.err"'
 # an interrupted spawn must not leave its tab, an orphan worker, a held slot or a stale "running" status
@@ -529,7 +531,7 @@ ok "spawn: only the pointer: the worker runs in the pointed task" '[ $rc -eq 0 ]
 ok "spawn: the worker's own environment has DEVKIT_TASK set to the pointed task" '[ "$(cat "$DEVKIT_DIR/envtask.sq1")" = "task=$SP" ]'
 DEVKIT_TASK=$TB CLAUDE_CODE_SESSION_ID=$SPS FAKE_ID=pe DEVKIT_FAKE="$t/fake-env" "$spawn" pe fake "$t/brief.md"; rc=$?
 ok "spawn: DEVKIT_TASK wins over the pointer" '[ $rc -eq 0 ] && [ -s "$DEVKIT_DIR/tasks/$TB/handoffs/pe.md" ] && [ ! -e "$SPD/handoffs/pe.md" ] && [ "$(cat "$DEVKIT_DIR/envtask.pe")" = "task=$TB" ]'
-"$ledger" -t "$SP" done "closed" >/dev/null 2>&1
+gate_pass "$SP"; "$ledger" -t "$SP" done "closed" >/dev/null 2>&1
 env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$SPS "$spawn" pc fake "$t/brief.md" >/dev/null 2>"$t/pc.err"; rc=$?
 ok "spawn: a closed pointer errors clearly, naming the task, exit 2" '[ $rc -eq 2 ] && grep -q "last task $SP is closed (or gone)" "$t/pc.err" && [ ! -e "$SPD/handoffs/pc.md" ]'
 

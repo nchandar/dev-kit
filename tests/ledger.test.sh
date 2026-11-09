@@ -5,9 +5,14 @@ here=$(cd "$(dirname "$0")/.." && pwd); ledger="$here/bin/ledger"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && mkdir -p sub/deep
+EVID="$t/evidence.log"; : > "$EVID"
+cd "$t" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && mkdir -p sub/deep
 unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK DEVKIT_DEPTH
 unset CLAUDE_CODE_SESSION_ID
+verify="$here/bin/verify"
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 
 A=$(cd sub/deep && "$ledger" start fix-login "first look")
 ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".devkit/tasks/$A" ]'
@@ -55,6 +60,7 @@ C=$("$ledger" start parallel "x")
 for w in 1 2 3 4 5 6 7 8; do ( for i in $(seq 1 25); do "$ledger" -t "$C" work "w$w-$i" "concurrent"; done ) & done; wait
 ok "8 parallel writers: 200 intact rows"    '[ "$(awk -F"\t" "\$2==\"work\"" .devkit/tasks/$C/ledger.tsv | wc -l)" -eq 200 ] && [ "$(awk -F"\t" "NF!=6" .devkit/tasks/$C/ledger.tsv | wc -l)" -eq 0 ]'
 
+gate_pass "$C"
 "$ledger" -t "$C" done "all finished"
 ok "done writes phase=done"                 'tail -1 .devkit/tasks/$C/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
@@ -67,6 +73,7 @@ DEVKIT_DEPTH=abc "$ledger" -t "$WD" done "nope" 2>"$t/done-junk.err"; rc=$?
 ok "junk DEVKIT_DEPTH (abc) cannot close a task" '[ $rc -eq 3 ] && grep -q "worker" "$t/done-junk.err" && [ "$(wc -l < .devkit/tasks/$WD/ledger.tsv)" = "$rows" ]'
 DEVKIT_DEPTH=08 "$ledger" -t "$WD" done "nope" 2>"$t/done-08.err"; rc=$?
 ok "depth 08 cannot close a task (no arithmetic error)" '[ $rc -eq 3 ] && grep -q "worker" "$t/done-08.err" && [ "$(wc -l < .devkit/tasks/$WD/ledger.tsv)" = "$rows" ]'
+gate_pass "$WD"
 DEVKIT_DEPTH=0 "$ledger" -t "$WD" done "main agent" 2>/dev/null; rc=$?
 ok "depth 0 can close a task"                '[ $rc -eq 0 ] && tail -1 .devkit/tasks/$WD/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
@@ -78,7 +85,7 @@ ok "failing mirror does not fail ledger"    '[ $rc -eq 0 ] && awk -F"\t" "\$2==\
 "$ledger" -t "$A" onlytwo 2>/dev/null; rc=$?
 ok "too few args exits 2"                   '[ $rc -eq 2 ]'
 # --- local-only: .devkit never shows up in git status, and state.md starts from a template
-G=$(mktemp -d); ( cd "$G" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+G=$(mktemp -d); ( cd "$G" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
 LA=$(cd "$G" && "$ledger" start local-test "x")
 ok "start keeps .devkit out of git status"      '[ -z "$(git -C "$G" status --porcelain)" ]'
 ok "exclude holds .devkit/ exactly once"        '[ "$(grep -cxF ".devkit/" "$G/.git/info/exclude")" -eq 1 ]'
@@ -127,11 +134,12 @@ S=$(date +%s); DEVKIT_LEDGER_MIRROR='sleep 8' "$ledger" -t "$W" p mirror hang >/
 ok "a hung mirror does not hang the ledger call" '[ $((e-S)) -lt 5 ] && grep -q "mirror" ".devkit/tasks/$W/ledger.tsv"' # sleep-ok: simulates a hung mirror
 
 # --- done warns when this task's worker worktrees are left behind
-P=$(mktemp -d); ( cd "$P" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+P=$(mktemp -d); ( cd "$P" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
 PW=$(cd "$P" && "$ledger" start prune-warn "x")
 err=$( cd "$P" && "$ledger" -t "$PW" done "no worktrees" 2>&1 >/dev/null ); rc=$?
 ok "done with no worker worktrees is silent"        '[ $rc -eq 0 ] && [ -z "$err" ]'
 ( cd "$P" && git worktree add -q "$P/wt" -b "devkit/$PW-x" 2>/dev/null )
+( cd "$P" && gate_pass "$PW" >/dev/null 2>&1 ) # the leftover worktree is a gitlink in the tree: give the gate its row
 err=$( cd "$P" && "$ledger" -t "$PW" done "leftovers" 2>&1 >/dev/null ); rc=$?
 ok "done warns about 1 leftover worker worktree"    '[ $rc -eq 0 ] && echo "$err" | grep -q "1 worker worktree" && echo "$err" | grep -q "^ledger: .*run: /.*/spawn --prune -t $PW --yes" && sp=$(echo "$err" | sed -n "s/^.*run: //;s/ --prune.*//p") && [ -x "$sp" ]'
 ok "done row is still written when it warns"        'tail -1 "$P/.devkit/tasks/$PW/ledger.tsv" | awk -F"\t" "\$2==\"done\" && \$3==\"leftovers\"{f=1} END{exit !f}"'
@@ -177,6 +185,7 @@ out=$(CLAUDE_CODE_SESSION_ID=sess-badid2 "$ledger" current); rc=$?
 ok "current: pointer holding a slash id exits 1"              '[ $rc -eq 1 ] && [ -z "$out" ]'
 
 SC=sess-closed; TC=$(CLAUDE_CODE_SESSION_ID=$SC "$ledger" start ptr-closed)
+gate_pass "$TC"
 CLAUDE_CODE_SESSION_ID=$SC "$ledger" done "closed" >/dev/null 2>&1
 out=$(CLAUDE_CODE_SESSION_ID=$SC "$ledger" current); rc=$?
 ok "current: closed task exits 1 with empty stdout"           '[ $rc -eq 1 ] && [ -z "$out" ]'
@@ -208,6 +217,7 @@ out=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" path); rc=$?
 ok "path resolves from the pointer"                           '[ $rc -eq 0 ] && [ "$out" = "$t/.devkit/tasks/$TA2" ]'
 CLAUDE_CODE_SESSION_ID=$SA "$ledger" accept w1 "ok"
 ok "accept resolves from the pointer"                         'grep -q "accept" ".devkit/tasks/$TA2/ledger.tsv"'
+gate_pass "$TA2"
 CLAUDE_CODE_SESSION_ID=$SA "$ledger" done "via pointer"; rc=$?
 ok "done resolves from the pointer"                           '[ $rc -eq 0 ] && tail -1 ".devkit/tasks/$TA2/ledger.tsv" | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 out=$(CLAUDE_CODE_SESSION_ID=$SA "$ledger" current); rc=$?
@@ -224,6 +234,7 @@ err=$(CLAUDE_CODE_SESSION_ID=sess-noptr "$ledger" probe-z y z 2>&1 >/dev/null); 
 ok "no pointer keeps the no-task error and mentions start"    '[ $rc -eq 2 ] && printf "%s" "$err" | grep -q "no task. Run: ledger start <slug>" && printf "%s" "$err" | grep -q "or just run ledger start"'
 
 SP=sess-prune; TP=$(CLAUDE_CODE_SESSION_ID=$SP "$ledger" start ptr-prune)
+gate_pass "$TP"
 CLAUDE_CODE_SESSION_ID=$SP "$ledger" -t "$TP" done "x" >/dev/null 2>&1
 CLAUDE_CODE_SESSION_ID=$SP "$ledger" -t "$TP" prune "post-close" "x" >/dev/null 2>&1
 out=$(CLAUDE_CODE_SESSION_ID=$SP "$ledger" current); rc=$?
@@ -251,10 +262,115 @@ ok "current respects DEVKIT_DIR"                              '[ $rc -eq 0 ] && 
 (cd "$t" && CLAUDE_CODE_SESSION_ID=sess-dd DEVKIT_DIR="$DD/.devkit" "$ledger" probe-dd y z)
 ok "rows resolve under DEVKIT_DIR from the pointer"           'grep -q "probe-dd" "$DD/.devkit/tasks/$AD/ledger.tsv"'
 
-PF=$(mktemp -d); ( cd "$PF" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+PF=$(mktemp -d); ( cd "$PF" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
 mkdir -p "$PF/.devkit" && : > "$PF/.devkit/run"
 out=$(cd "$PF" && CLAUDE_CODE_SESSION_ID=sess-fail "$ledger" start ptr-fail 2>"$t/ptr-fail.err"); rc=$?
 ok "a failing pointer write does not fail start"              '[ $rc -eq 0 ] && [[ $out == ptr-fail-* ]] && [ -f "$PF/.devkit/run" ] && [ ! -s "$PF/.devkit/run" ]'
 ok "a failing pointer write stays silent"                     '[ ! -s "$t/ptr-fail.err" ]'
+
+# --- s3: done needs a passing verify-gate row for the current tree (or a waive)
+# scratch repo with a fake suite left uncommitted, so the working tree differs from the base
+mkgate() { local d; d=$(mktemp -d "$t/g.XXXXXX"); cd "$d" || exit 2
+  git init -q -b main . && git config user.email t@t && git config user.name t
+  mkdir -p tests; echo x > README.md; git add -A; git commit -qm base
+  printf '#!/usr/bin/env bash\necho "g.test.sh   1 passed, 0 failed   1s"\n' > tests/run-all.sh; chmod +x tests/run-all.sh
+  export VERIFY_BUDGET="$t/gbudget"; printf 'suite_file_s=100\nsuite_total_s=200\n' > "$VERIFY_BUDGET"
+  GT=$("$ledger" start gtest x 2>/dev/null); }
+grows() { awk -F'\t' '$2=="verify-gate"' ".devkit/tasks/$GT/ledger.tsv" | wc -l | tr -d ' '; }
+
+mkgate; "$ledger" -t "$GT" plan p d >/dev/null; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+"$ledger" -t "$GT" done "no gate" 2>"$t/gate-a2.err"; rc=$?
+ok "A2: no verify-gate row exits 4"            '[ $rc -eq 4 ] && grep -q "no verify-gate" "$t/gate-a2.err"'
+ok "A2: the refusal writes nothing"            '[ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ]'
+ok "A2: the message points at verify and waive" 'grep -q "bin/verify" "$t/gate-a2.err" && grep -q -- "--waive" "$t/gate-a2.err"'
+
+mkgate; DEVKIT_TASK=$GT "$verify" >/dev/null 2>&1
+out=$("$ledger" -t "$GT" done "after a pass" 2>/dev/null); rc=$?
+ok "a pass for the current tree closes"        '[ $rc -eq 0 ]'
+ok "a gated close prints one verified line"    '[ "$(printf "%s\n" "$out" | grep -c "^verified: ")" -eq 1 ] && printf "%s\n" "$out" | grep -qE "^verified: full tree [0-9a-f]{40} [0-9]+s; base start log /"'
+mkgate; DEVKIT_TASK=$GT "$verify" >/dev/null 2>&1; echo more >> README.md
+"$ledger" -t "$GT" done "edited" 2>"$t/gate-a3.err"; rc=$?
+ok "A3: an edit after the pass exits 4"        '[ $rc -eq 4 ] && grep -q "another tree" "$t/gate-a3.err"'
+
+# s5a: the gate row cannot be written by hand, and it needs its log file
+mkgate; echo more >> README.md; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+"$ledger" -t "$GT" verify-gate full "tree $("$verify" tree) 1s" "$EVID" pass 2>"$t/gate-forge.err"; rc=$?
+ok "a hand-written verify-gate phase is refused" '[ $rc -eq 2 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && grep -q "reserved" "$t/gate-forge.err"'
+mkgate; echo more >> README.md
+"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/no-such.log" pass
+"$ledger" -t "$GT" done "no log" 2>"$t/gate-nolog.err"; rc=$?
+ok "a gate row without its log file does not satisfy" '[ $rc -eq 4 ] && grep -q "no log file" "$t/gate-nolog.err"'
+
+mkgate; echo more >> README.md; printf 'log\n' > "$t/elsewhere.log"
+"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/elsewhere.log" pass
+"$ledger" -t "$GT" done "outside runs" 2>"$t/gate-outside.err"; rc=$?
+ok "m1: a log outside the task's runs does not satisfy" '[ $rc -eq 4 ] && grep -q "runs" "$t/gate-outside.err" && [ ! "$(tail -1 ".devkit/tasks/$GT/ledger.tsv" | cut -f2)" = done ]'
+mkgate; echo more >> README.md; ER=$("$ledger" -t "$GT" path)/runs/empty.log; mkdir -p "$(dirname "$ER")"; : > "$ER"
+"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$ER" pass
+"$ledger" -t "$GT" done "empty log" 2>"$t/gate-empty.err"; rc=$?
+ok "m1: an empty log under runs does not satisfy" '[ $rc -eq 4 ] && grep -q "runs" "$t/gate-empty.err" && [ ! "$(tail -1 ".devkit/tasks/$GT/ledger.tsv" | cut -f2)" = done ]'
+
+mkgate; printf '#!/usr/bin/env bash\necho garbage\n' > tests/run-all.sh
+DEVKIT_TASK=$GT "$verify" >/dev/null 2>&1
+"$ledger" -t "$GT" done "not-run row" 2>"$t/gate-a4.err"; rc=$?
+ok "A4: a not-run result never closes"         '[ $rc -eq 4 ] && grep -q "not-run" "$t/gate-a4.err"'
+
+mkgate; printf '#!/usr/bin/env bash\necho "g.test.sh   0 passed, 1 failed   1s"; exit 1\n' > tests/run-all.sh
+DEVKIT_TASK=$GT "$verify" >/dev/null 2>&1
+"$ledger" -t "$GT" done "fail row" 2>"$t/gate-fail.err"; rc=$?
+ok "a fail row never closes"                   '[ $rc -eq 4 ] && grep -q "fail" "$t/gate-fail.err"'
+
+mkgate; "$ledger" -t "$GT" waive "an earlier reason that is long enough" waived >/dev/null
+out=$("$ledger" -t "$GT" done --waive "verified by hand, suite cannot run here" "w" 2>/dev/null); rc=$?
+ok "A8: --waive closes"                        '[ $rc -eq 0 ]'
+ok "A8: the waive row is written"              '[ "$(awk -F"\t" "\$2==\"waive\"" ".devkit/tasks/$GT/ledger.tsv" | wc -l | tr -d " ")" -eq 2 ]'
+ok "A8: every waive prints, one per line"      '[ "$(printf "%s\n" "$out" | grep -c "^waived: ")" -eq 2 ] && printf "%s\n" "$out" | grep -qF "waived: verified by hand, suite cannot run here"'
+ok "A8: the task is closed"                    '[ "$(tail -1 ".devkit/tasks/$GT/ledger.tsv" | cut -f2)" = done ]'
+
+mkgate; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+"$ledger" -t "$GT" done --waive "too short" 2>"$t/gate-short.err"; rc=$?
+ok "a short waive reason exits 2, nothing written" '[ $rc -eq 2 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && grep -q "20" "$t/gate-short.err"'
+
+mkgate; git add -A; git commit -qm tools
+NT=$("$ledger" start clean-tree x 2>/dev/null)
+"$ledger" -t "$NT" done "clean tree" 2>"$t/gate-nodiff.err"; rc=$?
+ok "no diff closes without any row"            '[ $rc -eq 0 ] && [ "$(awk -F"\t" "\$2==\"verify-gate\"" ".devkit/tasks/$NT/ledger.tsv" | wc -l | tr -d " ")" -eq 0 ] && [ ! -s "$t/gate-nodiff.err" ]'
+
+mkgate; git checkout -q -b nobase
+awk -F'\t' -v OFS='\t' '$2=="start"{$5=""} {print}' ".devkit/tasks/$GT/ledger.tsv" > "$t/legacy.tsv" && mv "$t/legacy.tsv" ".devkit/tasks/$GT/ledger.tsv"
+git branch -D main -q; git update-ref -d refs/remotes/origin/main 2>/dev/null
+err=$("$ledger" -t "$GT" done "no base" 2>&1 >/dev/null); rc=$?
+ok "no base ref closes with a one-line note"   '[ $rc -eq 0 ] && [ "$(printf "%s\n" "$err" | grep -c .)" -eq 1 ] && printf "%s\n" "$err" | grep -qi "base"'
+
+# s5a: the base is the task's start commit, so work committed on main after the start is not nodiff
+mkgate; git add -A; git commit -qm work-after-start
+G0=$(awk -F'\t' '$2=="start"{print $5}' ".devkit/tasks/$GT/ledger.tsv")
+ok "start records head <sha> in its evidence cell" 'echo "$G0" | grep -qE "^head [0-9a-f]{40}$"'
+"$ledger" -t "$GT" done "committed after start" 2>"$t/gate-startbase.err"; rc=$?
+ok "committed after start is not nodiff: exit 4" '[ $rc -eq 4 ] && grep -q "no verify-gate" "$t/gate-startbase.err"'
+
+mkgate; DEVKIT_DEPTH=1 "$ledger" -t "$GT" done "worker" 2>"$t/gate-worker.err"; rc=$?
+ok "a worker still exits 3 before the gate"    '[ $rc -eq 3 ] && grep -q worker "$t/gate-worker.err" && [ "$(grows)" -eq 0 ]'
+DEVKIT_DEPTH=1 "$ledger" -t "$GT" done --waive "a reason long enough for the check" 2>/dev/null; rc=$?
+ok "a worker cannot waive either"              '[ $rc -eq 3 ]'
+
+mkgate; "$ledger" -t "$GT" verify pass "hand written" >/dev/null
+"$ledger" -t "$GT" done "hand row" 2>"$t/gate-hw.err"; rc=$?
+ok "a hand-written verify row does not satisfy the gate" '[ $rc -eq 4 ] && grep -q "no verify-gate" "$t/gate-hw.err"'
+
+# --- s5a: inside a git repo a missing or broken bin/verify fails closed (exit 4, no done row)
+mkgate; echo more >> README.md; TDIR=$(mktemp -d "$t/tool.XXXXXX"); mkdir -p "$TDIR/bin"
+cp "$here/bin/ledger" "$TDIR/bin/ledger"; chmod +x "$TDIR/bin/ledger"
+n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+err=$(DEVKIT_DEPTH=0 "$TDIR/bin/ledger" -t "$GT" done "no verify tool" 2>&1 >/dev/null); rc=$?
+ok "missing bin/verify: exit 4, no done row" '[ $rc -eq 4 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && printf "%s\n" "$err" | grep -q "bin/verify"'
+mkgate; echo more >> README.md; cp "$here/bin/verify" "$TDIR/bin/verify"; chmod -x "$TDIR/bin/verify"
+n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+err=$(DEVKIT_DEPTH=0 "$TDIR/bin/ledger" -t "$GT" done "no exec" 2>&1 >/dev/null); rc=$?
+ok "non-executable bin/verify: exit 4, no done row" '[ $rc -eq 4 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && printf "%s\n" "$err" | grep -q "bin/verify"'
+mkgate; echo more >> README.md; printf '#!/usr/bin/env bash\nexit 0\n' > "$TDIR/bin/verify"; chmod +x "$TDIR/bin/verify"
+n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+err=$(DEVKIT_DEPTH=0 "$TDIR/bin/ledger" -t "$GT" done "empty tree" 2>&1 >/dev/null); rc=$?
+ok "verify tree prints nothing: exit 4, no done row" '[ $rc -eq 4 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && printf "%s\n" "$err" | grep -q "tree"'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

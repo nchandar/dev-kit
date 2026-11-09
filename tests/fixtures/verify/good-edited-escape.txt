@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+ok "alpha holds" "true"
+false || true # timed
+ok "beta holds" "true"

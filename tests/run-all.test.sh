@@ -48,6 +48,15 @@ out2=$("$t/clean/tests/run-all.sh" 2>&1); rc2=$?
 ok "all passing: exit 0" '[ $rc2 -eq 0 ]'
 ok "all passing: no extra indented lines" '! echo "$out2" | grep -q "^    "'
 
+# per-suite seconds: integer at the end of every suite line, on pass and fail
+ok "seconds printed on a passing suite line" 'echo "$out2" | grep -q "^fake-pass.test.sh .*2 passed, 0 failed   [0-9][0-9]*s$"'
+ok "seconds printed on a failing suite line" 'echo "$out" | grep -q "^fake-fail.test.sh .*1 passed, 1 failed   [0-9][0-9]*s$"'
+ok "seconds printed on every suite line" '[ "$(echo "$out" | grep -c "test.sh .*[0-9]s$")" -eq 2 ]'
+
+# the budget file is sourceable and holds positive integers
+ok "bin/verify.budget sets suite_file_s and suite_total_s to positive integers" \
+  '(suite_file_s=; suite_total_s=; . "$here/bin/verify.budget"; case $suite_file_s$suite_total_s in *[!0-9]*|"") exit 1;; esac; [ "$suite_file_s" -gt 0 ] && [ "$suite_total_s" -gt 0 ])'
+
 # every real suite must be runnable the way run-all runs it (directly), with a shebang
 nx=$(for f in "$here"/tests/*.test.sh; do [ -x "$f" ] || echo "${f##*/}"; done)
 ok "every tests/*.test.sh is executable (run-all runs them directly)" '[ -z "$nx" ]'

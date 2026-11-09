@@ -11,8 +11,12 @@ run="$here/bin/run"; state="$here/bin/state"; learn="$here/bin/learn"; ledger="$
 rec="$here/bin/reconcile"; spawn="$here/bin/spawn"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
+verify="$here/bin/verify"
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+cd "$t" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 export DEVKIT_DIR="$t/.devkit" DEVKIT_LEARN_DIR="$t/learn"
 # --close-views calls herdr tab close: a stub first on PATH keeps the real herdr (and run-all's tripwire) out of it
 hs="$t/hstub"; mkdir -p "$hs"; printf '#!/bin/sh\necho "$*" >> "%s/herdr.log"\nexit 0\n' "$t" > "$hs/herdr"; chmod +x "$hs/herdr"; export PATH="$hs:$PATH"
@@ -69,6 +73,7 @@ for tool in run state learn ledger reconcile spawn; do
   ok "second session: $tool has no task (exit 2)"         '[ $rc -eq 2 ]'
 done
 
+gate_pass "$T"
 CLAUDE_CODE_SESSION_ID=$S1 "$ledger" done "closed" >/dev/null 2>&1
 out=$(CLAUDE_CODE_SESSION_ID=$S1 "$ledger" current 2>/dev/null); rc=$?
 ok "after done the pointer stops resolving"              '[ $rc -eq 1 ] && [ -z "$out" ]'
@@ -175,6 +180,7 @@ TW=$(CLAUDE_CODE_SESSION_ID=$SW "$ledger" start warnleft x); DW="$DEVKIT_DIR/tas
 mkdir -p "$DW/wt"
 git worktree add -q "$DW/wt/left" -b "devkit/$TW-left"
 "$ledger" -t "$TW" accept "left accepted" "checked" "" pass >/dev/null 2>&1
+gate_pass "$TW"
 werr=$(CLAUDE_CODE_SESSION_ID=$SW "$ledger" done "leftover" 2>&1 >/dev/null); rc=$?
 ok "done warns the count and names the task"      '[ $rc -eq 0 ] && printf "%s\n" "$werr" | grep -q "1 worker worktree" && printf "%s\n" "$werr" | grep -q "/spawn --prune -t $TW --yes"' # pitfall-ok: src-grep greps the tool's stdout, not bin sources
 wcmd=$(printf '%s\n' "$werr" | sed -n 's/^.*run: //;s/ (add --discard.*//p')
@@ -184,7 +190,7 @@ out=$(bash -c "$wcmd" 2>&1); rc=$?
 ok "the printed command tears down the worktree"  '[ $rc -eq 0 ] && [ ! -d "$DW/wt/left" ]'
 ok "the printed command deletes the branch"       '[ -z "$(git branch --list "devkit/$TW-left")" ]'
 # --- regression: the printed command is absolute, so it works verbatim from a subdirectory or a symlinked path of the owning repo
-R=$(mktemp -d); ( cd "$R" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+R=$(mktemp -d); ( cd "$R" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
 RL="$R-link"; ln -s "$R" "$RL"
 for where in sub link; do
   SX=sess-abs-$where; TX=$(cd "$R" && env -u DEVKIT_DIR CLAUDE_CODE_SESSION_ID=$SX "$ledger" start abs-$where x); DX="$R/.devkit/tasks/$TX"
@@ -203,7 +209,7 @@ for where in sub link; do
 done
 rm -rf "$RL" "$R"
 # --- regression: the printed command survives a bin path with a space, so it must be shell-quoted
-RX=$(mktemp -d); ( cd "$RX" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
+RX=$(mktemp -d); ( cd "$RX" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i )
 LB="$t/my bin"; ln -s "$here/bin" "$LB" # pitfall-ok: whole tools dir shared, only ledger/spawn involved here
 TXS=$(cd "$RX" && env -u DEVKIT_DIR "$LB/ledger" start spacewarn x); DXS="$RX/.devkit/tasks/$TXS"
 mkdir -p "$DXS/wt"; ( cd "$RX" && env -u DEVKIT_DIR git worktree add -q "$DXS/wt/w1" -b "devkit/$TXS-w1" )
@@ -217,6 +223,7 @@ ok "space path: the worktree is gone" '[ ! -d "$DXS/wt/w1" ]'
 ok "space path: the branch is gone" '[ -z "$(cd "$RX" && git branch --list "devkit/$TXS-w1")" ]'
 rm -rf "$RX"
 TV=$(CLAUDE_CODE_SESSION_ID=sess-warn-clean "$ledger" start warnclean x)
+gate_pass "$TV"
 out=$(CLAUDE_CODE_SESSION_ID=sess-warn-clean "$ledger" done "clean" 2>&1 >/dev/null); rc=$?
 ok "done with no leftovers is still silent"       '[ $rc -eq 0 ] && [ -z "$out" ]'
 NG2=$(mktemp -d)

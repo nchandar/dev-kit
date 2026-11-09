@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+ok "alpha holds" "true"
+ok "beta holds" "true"
+ok "gamma holds" "true"
+# never end a suite with exit 0 or || true here
