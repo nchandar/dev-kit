@@ -9,7 +9,8 @@
 3. List what else the number could measure: errors, cached or skipped work, code that never ran, an untuned side, noise, a piece too small to matter end to end.
 4. Rule out each with evidence.
 5. Keep run count, spread and limiter next to the number.
-6. For evals: did every trial do the task, and does the gap hold across trials and models?
+6. Benchmarks: did the work happen (output checked, not skipped or cached)? Is it repeatable across runs? Get a ballpark estimate first; a result far from it is a bug until shown otherwise.
+7. For evals: did every trial do the task, and does the gap hold across trials and models?
 
 ## Red Flags
 - A run started with no decision attached.

@@ -7,10 +7,10 @@ Record repro, root cause and guard with bin/ledger (phase=debug).
 ## Steps
 1. STOP adding features. Preserve evidence: error text, logs, repro command. Do not push past a red build.
 2. Reproduce reliably with a command and ledger the repro. No repro: gather logs and environment, bisect (`git bisect`) when it worked before; do not guess a fix.
-3. Localize: narrow by layer (input, logic, data, environment), then to file:line. Read the actual error and the actual state; when stuck, instrument.
+3. Localize: narrow by layer (input, logic, data, environment), then to file:line. Read the actual error and the actual state; read existing signals (logs, metrics, traces) first; when stuck, add instrumentation only for the missing fact.
 4. Ask "why" until the answer is a wrong decision in the code, not a consequence of an earlier one. Is the state that triggered the symptom legitimate? If the system may be in that state, handling it is the fix.
 5. Restart-only failures: suspect persisted state first (config, caches, locks).
-6. Write the root cause as one sentence with file:line in the ledger. Check for the same fault elsewhere and fix all instances.
+6. Write the root cause as one sentence with file:line in the ledger. Check for the same fault elsewhere (grep the pattern) and fix all instances. A guard that would hide the bug is not the fix: write the test that exposes it, then fix the cause.
 7. Two fixes failed the same check? Write the premise both assume and test it directly (library/deep/attack-the-premise).
 8. Guard: a regression test (see library/tdd), then the fix, then resume.
 

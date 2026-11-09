@@ -20,7 +20,7 @@ Architecture defaults
 10. Record the decision that is hard to reverse: what, why, and what you rejected (library/deep/decision-records).
 
 Test and prove
-11. Red first, for the right reason. Test behavior at the public seam, then break the behavior on purpose and watch the test fail (library/tdd, library/deep/test-strategy).
+11. Red first, for the right reason. Test behavior at the public seam, then break the behavior on purpose and watch the test fail (library/tdd, library/deep/test-strategy). A signal you add gets a test too (library/deep/observe-and-test).
 12. Verify the real artifact, never a proxy. A script you cite is a file in the diff (library/verify, library/deep/build-the-lever).
 13. Before trusting a number, name its limiter and its noise floor (library/deep/explain-the-number).
 14. Done is the task's acceptance criteria plus the standing bar (library/deep/definition-of-done).
@@ -39,6 +39,11 @@ Apps, writing, long runs
 23. In TypeScript parse at the edge, ban casts, end switches with never (library/deep/typescript).
 24. Write for the reader: one idea per sentence, no filler (library/deep/writing).
 25. Run unattended work on a checkable predicate, an iteration cap and a ledger (library/deep/overnight).
+
+Roots, signals, retirement
+26. Fix root causes: if a guard would hide a bug, write the test that exposes it and grep for the same pattern elsewhere (library/debug-method).
+27. Observe first, then assert the signal: read existing signals before adding one, and test the one you add (library/deep/observe-and-test).
+28. Deprecate and delete what no longer earns its upkeep, with a replacement and an owner (library/deep/deprecation-and-migration).
 
 ## Red Flags
 - Loading every deep file up front instead of on a matching trigger.

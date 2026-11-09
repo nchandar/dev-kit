@@ -20,7 +20,7 @@ Run `bin/ledger` after every step (phase=refactor).
 
 **You own:** a behavior-preserving restructure, with proof the output is unchanged.
 
-**Reads:** always library/principles (step 0), library/simplify, library/verify, library/git-ship, library/state. If the target shape crosses a function boundary: library/deep/sketch and library/explain-html. If an internal API is replaced: library/deep/decision-records. To judge the result: library/deep/reader-load.
+**Reads:** always library/principles (step 0), library/simplify, library/verify, library/git-ship, library/state. If the target shape crosses a function boundary: library/deep/sketch and library/explain-html. If an internal API is replaced: library/deep/decision-records. To judge the result: library/deep/reader-load. If a runtime path is touched: library/observability and library/deep/observe-and-test.
 
 ## Checklist
 - [ ] 0. Skim library/principles; open a deep file only when its trigger matches.
@@ -31,6 +31,7 @@ Run `bin/ledger` after every step (phase=refactor).
 - [ ] 5. Move in small behavior-preserving steps, pin green after each, one commit per step. Internal-only API: migrate every caller and delete the old path in one wave, no shims (library/deep/decision-records).
 - [ ] 6. Spot-check every rename against the real files, including strings, docs and back-references.
 - [ ] 7. Prove it: output equals the baseline (diff old vs new, or an equivalence script for larger reshapes); follow library/verify.
+- [ ] 7a. Runtime path touched? the signals must be identical before and after (library/observability, library/deep/observe-and-test).
 - [ ] 8. Keep only what lowers reader load (library/deep/reader-load); revert a change that does not.
 - [ ] 9. Review with dev-review; ship via library/git-ship with small ordered commits (subtraction, reshape, follow-on). Closeout: follow library/state. Then run bin/verify, then close the ledger: bin/ledger done "<summary>".
 

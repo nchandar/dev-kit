@@ -9,7 +9,8 @@ Record the bar and any change to it with bin/ledger (phase=quality-bar).
 2. Write `CONSTRAINTS.md` (max 30 lines) with the agreed thresholds and the command that checks each.
 3. Run the commands as the baseline and ledger the numbers.
 4. Any diff that touches thresholds, skips, ignores, `--no-verify`, `@ts-ignore`, disabled lint rules, loosened assertions or deleted tests is flagged and needs the user's approval.
-5. Re-run the baseline after each slice; the bar may only move up.
+5. Re-run the baseline after each slice; the bar may only move up. No number yet: ratchet from the baseline (never worse than today).
+   Exceptions to the bar need the user's ok plus an expiry, and are listed in CONSTRAINTS.md.
 6. An instruction you keep repeating becomes a check, lint rule or script, not more prose.
 
 ## Red Flags

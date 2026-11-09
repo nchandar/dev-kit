@@ -17,7 +17,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 **You own:** a new or changed behavior, from an approved spec to verified, reviewed commits.
 
-**Reads:** always library/principles (step 0), library/spec, library/plan, library/tdd, library/verify, library/git-ship, library/state. If no CONSTRAINTS.md: library/quality-bar. If the spec needs a flow shown: library/explain-html. If an interface or data shape is involved: library/architecture. If code crosses a function boundary: library/deep/sketch. If a runtime path is touched: library/observability. If user-visible: library/ui-browser. If building an app: library/deep/app-verification-recipe, library/deep/typescript for TypeScript, library/deep/experience-first for UI feel. If an external library: library/docs-grounding. If building, deploying or setting up tooling: library/recipes/index.
+**Reads:** always library/principles (step 0), library/spec, library/plan, library/tdd, library/verify, library/git-ship, library/state. If no CONSTRAINTS.md: library/quality-bar. If the spec needs a flow shown: library/explain-html. If an interface or data shape is involved: library/architecture. If code crosses a function boundary: library/deep/sketch. If a runtime path is touched: library/observability and library/deep/observe-and-test. If user-visible: library/ui-browser. If building an app: library/deep/app-verification-recipe, library/deep/typescript for TypeScript, library/deep/experience-first for UI feel. If an external library: library/docs-grounding. If building, deploying or setting up tooling: library/recipes/index.
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
@@ -29,7 +29,8 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 4. Plan: follow library/plan; write slices to `<task>/plan.json`.
 - [ ] 5. Per slice, in order: follow library/tdd (red, green), then run the slice check. Ledger red and green. Refresh state.md at each plan checkpoint.
 - [ ] 6. Independent slices: run in parallel worktrees via dev-spawn (ship shape); you merge, workers never do.
-- [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding. Building an app? also library/deep/app-verification-recipe; TypeScript: library/deep/typescript; UI: library/deep/experience-first.
+- [ ] 7. Runtime path touched? follow library/observability: a signal added is asserted in a test (library/deep/observe-and-test).
+- [ ] 7a. User-visible? follow library/ui-browser. External library? follow library/docs-grounding. Building an app? also library/deep/app-verification-recipe; TypeScript: library/deep/typescript; UI: library/deep/experience-first.
 - [ ] 8. Review: follow skills/dev-review/SKILL.md on the full diff; fix blockers.
 - [ ] 9. Verify: follow library/verify against the spec's acceptance criteria; run the real tool live in an isolated scratch copy and ledger it (`bin/ledger live "<tool and scenarios>" "<what you saw>" "<evidence path>" pass` or fail).
 - [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
