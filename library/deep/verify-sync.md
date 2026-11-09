@@ -4,6 +4,7 @@
 - A check, model, harness or project-local verify skill guards named code, and that code changed since the claim was last confirmed.
 - You are writing a verify skill and need the coverage record it must carry.
 - A check passes and you are unsure it still describes the code.
+- Covered code changed since the sync commit: run the drift pass in dev-maintain-formal-verification-skill against this file.
 
 ## Steps
 1. Keep a coverage record next to the check: the files and functions it covers, the property it guards, its bounds and assumptions, the command that runs it, the repo that holds the covered code, and the sync commit. Point to it from `<task>/state.md`. A check without a record is a draft.
