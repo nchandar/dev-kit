@@ -4,6 +4,7 @@
 - A change touches ordering, concurrency, lease, slot, retry, idempotent rerun or small state, and a test would only cover the cases someone wrote.
 - You need a chart of a flow a reader can argue with, backed by every interleaving within a bound.
 - Not for a single actor, a UI flow you can click through, or plain logic: a test is cheaper and closer to the code.
+- The build and drift passes live in dev-create-formal-verification-skill and dev-maintain-formal-verification-skill; this file holds the tool choice and commands.
 
 ## Steps
 1. Pick the promise, not the easiest area: a rule whose break harms users and that tests rarely reach. Write it as one sentence, then as a TLA+ INVARIANT. If the model has no variable for it, add the variable.
