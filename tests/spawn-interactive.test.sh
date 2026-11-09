@@ -105,16 +105,20 @@ STUB_DROP=0 STUB_LATE=3 STUB_AGENT_STATUS=working irun "$spawn" e1 claude "$t/br
 ok "an early handoff while the agent is still working does not finish the run" '[ $rc -eq 0 ] && grep -q "^## Checklist" $TD/handoffs/e1.md'
 ok "the tab stays open until the checklist lands, then closes" 'grep -q "tab close X:t9" "$HERDR_LOG"'
 # an idle agent with a draft or no handoff gets one nudge, then fails (DEVKIT_IDLE_WAIT)
-# the cases start here, each with its own herdr log, and run beside the later sections; their checks are at the end of the file
-DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/e2.log" DEVKIT_TIMEOUT=20 STUB_DROP=0 STUB_DRAFT=1 STUB_AGENT_STATUS=idle irun2 "$spawn" e2 claude "$t/brief.md" 2>"$t/e2.err" & p1=$!
-DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig1.log" DEVKIT_TIMEOUT=20 STUB_AGENT_STATUS=idle STUB_PANE="$(seq 1 25)" irun2 "$spawn" ig1 claude "$t/brief.md" 2>"$t/ig1.err" & p2=$!
-DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig3.log" DEVKIT_TIMEOUT=20 STUB_FIX=1 STUB_AGENT_STATUS=idle irun2 "$spawn" ig3 claude "$t/brief.md" 2>"$t/ig3.err" & p3=$!
-DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig4.log" STUB_AGENT_STATUS=working DEVKIT_TIMEOUT=4 irun2 "$spawn" ig4 claude "$t/brief.md" 2>"$t/ig4.err" & p4=$!
+# the cases start here, each with its own herdr log, DEVKIT_DIR and task (slots and ledger are shared state), and run beside the later sections
+# their checks are at the end of the file
+TI=$(DEVKIT_DIR="$t/igd" "$here/bin/ledger" start ig x); TDI="$t/igd/tasks/$TI"
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/e2.log" DEVKIT_TIMEOUT=20 STUB_DROP=0 STUB_DRAFT=1 STUB_AGENT_STATUS=idle irun2 "$spawn" e2 claude "$t/brief.md" 2>"$t/e2.err" & p1=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig1.log" DEVKIT_TIMEOUT=20 STUB_AGENT_STATUS=idle STUB_PANE="$(seq 1 25)" irun2 "$spawn" ig1 claude "$t/brief.md" 2>"$t/ig1.err" & p2=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig3.log" DEVKIT_TIMEOUT=20 STUB_FIX=1 STUB_AGENT_STATUS=idle irun2 "$spawn" ig3 claude "$t/brief.md" 2>"$t/ig3.err" & p3=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig4.log" STUB_AGENT_STATUS=working DEVKIT_TIMEOUT=4 irun2 "$spawn" ig4 claude "$t/brief.md" 2>"$t/ig4.err" & p4=$!
 # ig5: idle 1.2 s, working 3.2 s, idle again; a clock that never reset would nudge at 5 s, a reset one not before 9 s (timeout 8)
 echo idle > "$t/ig5.status"; ( waitlog "^agent prompt ig5 " "$t/ig5.log"; sleep 1.2; echo working > "$t/ig5.status"; sleep 3.2; echo idle > "$t/ig5.status" ) >/dev/null 2>&1 & p6=$! # sleep-ok: scripted status flips on a fixed timeline
-DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig5.log" STUB_STATUS_FILE="$t/ig5.status" DEVKIT_IDLE_WAIT=4 DEVKIT_TIMEOUT=8 irun2 "$spawn" ig5 claude "$t/brief.md" 2>"$t/ig5.err" & p5=$!
-DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig6.log" DEVKIT_TIMEOUT=20 STUB_DROP=0 STUB_DRAFT=1 STUB_AGENT_STATUS=idle DEVKIT_IDLE_WAIT=0 irun2 "$spawn" ig6 claude "$t/brief.md" 2>"$t/ig6.err" & p7=$!
-DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig7.log" DEVKIT_TIMEOUT=4 STUB_AGENT_STATUS=blocked irun2 "$spawn" ig7 claude "$t/brief.md" 2>"$t/ig7.err" & p8=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig5.log" STUB_STATUS_FILE="$t/ig5.status" DEVKIT_IDLE_WAIT=4 DEVKIT_TIMEOUT=8 irun2 "$spawn" ig5 claude "$t/brief.md" 2>"$t/ig5.err" & p5=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig6.log" DEVKIT_TIMEOUT=20 STUB_DROP=0 STUB_DRAFT=1 STUB_AGENT_STATUS=idle DEVKIT_IDLE_WAIT=0 irun2 "$spawn" ig6 claude "$t/brief.md" 2>"$t/ig6.err" & p7=$!
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig7.log" DEVKIT_TIMEOUT=4 STUB_AGENT_STATUS=blocked irun2 "$spawn" ig7 claude "$t/brief.md" 2>"$t/ig7.err" & p8=$!
+waitlog "^agent prompt ig7 " "$t/ig7.log" # ig7 runs 4 s: a live spawn holds its worker slot here
+ok "idle-guard cases keep their worker slots out of the shared run dir (the INT test counts slot dirs)" '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 
 
 # --- codex
@@ -404,14 +408,14 @@ ok "dry-run prints the interactive plan" 'grep -q "^tab create" "$t/d1.out" && g
 ok "dry-run makes no herdr calls" '[ ! -s "$HERDR_LOG" ]'
 
 # --- idle guard results (the cases started after the done-signal section)
-nudges() { grep -c "[[:space:]]$1 nudge" "$TD/ledger.tsv"; }
-ok "idle + draft handoff: nudged once, then failed, the draft kept" '[ $r_e2 -ne 0 ] && grep -q "^failed" $TD/run/e2.status && [ $(nudges e2) -eq 1 ] && [ $(grep -c "^agent prompt e2 " "$t/e2.log") -eq 2 ] && grep -q "^stub handoff$" $TD/handoffs/e2.md && ! grep -q "^## Checklist" $TD/handoffs/e2.md'
-ok "idle + no handoff: nudged once, then failed with the reason, no timeout wait" '[ $r_ig1 -ne 0 ] && grep -q "^failed" $TD/run/ig1.status && [ $(nudges ig1) -eq 1 ] && grep -q "idle without final handoff" $TD/handoffs/ig1.md'
-ok "the idle nudge names the handoff path and the checklist" 'grep "^agent prompt ig1 " "$t/ig1.log" | tail -1 | grep -q "without a final handoff.*$TD/handoffs/ig1.md"'
-ok "a final handoff after the nudge ends done, nudged once" '[ $r_ig3 -eq 0 ] && grep -q "^done" $TD/run/ig3.status && [ $(nudges ig3) -eq 1 ]'
-ok "an agent that keeps working is never nudged (the timeout still applies)" 'grep -q "^timeout" $TD/run/ig4.status && [ $(nudges ig4) -eq 0 ]'
-ok "idle that flips back to working resets the clock: no nudge, the timeout ends it" 'grep -q "^timeout" $TD/run/ig5.status && [ $(nudges ig5) -eq 0 ]'
-ok "a blocked agent is never nudged (no keystroke into a dialog); the timeout ends it" 'grep -q "^timeout" $TD/run/ig7.status && [ $(nudges ig7) -eq 0 ] && [ $(grep -c "^agent prompt ig7 " "$t/ig7.log") -eq 1 ]'
-ok "DEVKIT_IDLE_WAIT=0 keeps the old rule: draft + idle finishes, checklist flagged missing" '[ $r_ig6 -eq 0 ] && grep -q "^missing" $TD/run/ig6.checklist && [ $(nudges ig6) -eq 0 ]'
+nudges() { grep -c "[[:space:]]$1 nudge" "$TDI/ledger.tsv"; }
+ok "idle + draft handoff: nudged once, then failed, the draft kept" '[ $r_e2 -ne 0 ] && grep -q "^failed" $TDI/run/e2.status && [ $(nudges e2) -eq 1 ] && [ $(grep -c "^agent prompt e2 " "$t/e2.log") -eq 2 ] && grep -q "^stub handoff$" $TDI/handoffs/e2.md && ! grep -q "^## Checklist" $TDI/handoffs/e2.md'
+ok "idle + no handoff: nudged once, then failed with the reason, no timeout wait" '[ $r_ig1 -ne 0 ] && grep -q "^failed" $TDI/run/ig1.status && [ $(nudges ig1) -eq 1 ] && grep -q "idle without final handoff" $TDI/handoffs/ig1.md'
+ok "the idle nudge names the handoff path and the checklist" 'grep "^agent prompt ig1 " "$t/ig1.log" | tail -1 | grep -q "without a final handoff.*$TDI/handoffs/ig1.md"'
+ok "a final handoff after the nudge ends done, nudged once" '[ $r_ig3 -eq 0 ] && grep -q "^done" $TDI/run/ig3.status && [ $(nudges ig3) -eq 1 ]'
+ok "an agent that keeps working is never nudged (the timeout still applies)" 'grep -q "^timeout" $TDI/run/ig4.status && [ $(nudges ig4) -eq 0 ]'
+ok "idle that flips back to working resets the clock: no nudge, the timeout ends it" 'grep -q "^timeout" $TDI/run/ig5.status && [ $(nudges ig5) -eq 0 ]'
+ok "a blocked agent is never nudged (no keystroke into a dialog); the timeout ends it" 'grep -q "^timeout" $TDI/run/ig7.status && [ $(nudges ig7) -eq 0 ] && [ $(grep -c "^agent prompt ig7 " "$t/ig7.log") -eq 1 ]'
+ok "DEVKIT_IDLE_WAIT=0 keeps the old rule: draft + idle finishes, checklist flagged missing" '[ $r_ig6 -eq 0 ] && grep -q "^missing" $TDI/run/ig6.checklist && [ $(nudges ig6) -eq 0 ]'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
