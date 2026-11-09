@@ -123,6 +123,21 @@ out=$("$rec" --gate --session sess-A); rc=$?
 ok "gate: closed task, dead pid reads killed, not gated" '[ $rc -eq 0 ] && [ -z "$out" ]'
 rm -f "$GD"/run/*
 
+# --- detached lead workers: a live one is not gated; once it exits it needs an accept like any worker
+echo "running $$ 100" > "$GD/run/wd.status"; : > "$GD/run/wd.detached"
+out=$("$rec" --gate -t "$G"); rc=$?
+ok "gate: a live detached worker does not block"       '[ $rc -eq 0 ] && [ -z "$out" ]'
+ok "gate: a detached live worker is still listed in the task detail" '"$rec" "$G" | grep -q "wd .*running"'
+echo "running 999999 100" > "$GD/run/wd.status"
+ok "gate: a detached worker that died blocks until decided" '"$rec" --gate -t "$G" | grep -q "wd killed, unaccepted"'
+echo "done 0 100" > "$GD/run/wd.status"; echo r > "$GD/handoffs/wd.md"; "$ledger" -t "$G" spawn "wd done" cli=fake "" done
+ok "gate: a finished detached worker blocks until accepted" '"$rec" --gate -t "$G" | grep -q "wd done, unaccepted"'
+"$ledger" -t "$G" accept "wd accepted" "evidence checked" "" pass
+ok "gate: accept clears a detached worker"             '"$rec" --gate -t "$G" >/dev/null'
+echo "running $$ 100" > "$GD/run/wn.status"
+ok "gate: a live worker without the marker still blocks" '"$rec" --gate -t "$G" | grep -q "wn running"'
+rm -f "$GD"/run/* "$GD"/handoffs/*
+
 # --- --wait: block until no worker in scope is running, then report what is unaccepted
 export DEVKIT_TASK=$G DEVKIT_GATE_POLL=1
 # SECONDS has 1 s granularity: a fast call straddling a boundary reads 1 under load; the hang case is the 100 s cap

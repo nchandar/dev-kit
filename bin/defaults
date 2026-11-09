@@ -1,7 +1,23 @@
 # Tunable defaults, one home. Sourced by the bin tools; an env var of the same name wins
 # (an empty one counts as unset). Documented in the ARCHITECTURE.md env table;
 # tests/defaults.test.sh keeps the two equal. Rule limits (lint-budget, state, ledger) stay in their tools.
-: "${DEVKIT_MAX_WORKERS:=10}"
+# the pool follows the machine: min(3 x cores, RAM in GB) within 4..64, 10 when either cannot be read.
+# DEVKIT_CORES and DEVKIT_RAM_GB override detection (a container with a RAM limit, or a test).
+devkit_auto_workers() { local c m w
+  c=${DEVKIT_CORES:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || /usr/sbin/sysctl -n hw.ncpu 2>/dev/null)}
+  m=${DEVKIT_RAM_GB:-}
+  if [ -z "$m" ]; then
+    if [ -r /proc/meminfo ]; then m=$(awk '/^MemTotal:/{printf "%d",$2/1048576}' /proc/meminfo)
+    else m=$( (sysctl -n hw.memsize 2>/dev/null || /usr/sbin/sysctl -n hw.memsize 2>/dev/null) | awk '{printf "%d",$1/1073741824}'); fi
+  fi
+  case $c in ''|*[!0-9]*) echo 10; return;; esac
+  case $m in ''|*[!0-9]*) echo 10; return;; esac
+  w=$((c*3)); [ "$w" -le "$m" ] || w=$m # pitfall-ok: decimal-arith digits-only checked above
+  [ "$w" -ge 4 ] || w=4; [ "$w" -le 64 ] || w=64
+  echo "$w"; }
+: "${DEVKIT_MAX_WORKERS:=$(devkit_auto_workers)}"
+# leads leave room for their helpers: at most half the pool
+: "${DEVKIT_MAX_LEADS:=$(l=$((DEVKIT_MAX_WORKERS/2)); [ "$l" -ge 1 ] || l=1; [ "$l" -le 10 ] || l=10; echo "$l")}" # pitfall-ok: decimal-arith pool is a number
 : "${DEVKIT_MAX_DEPTH:=3}"
 : "${DEVKIT_CHILD_WAIT:=60}"
 : "${DEVKIT_TIMEOUT:=900}"

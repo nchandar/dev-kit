@@ -136,13 +136,13 @@ ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
 : > $DEVKIT_DIR/events
 hold="$t/m.hold"; : > "$hold"
-for i in $(seq 1 10); do FAKE_HOLD=$hold FAKE_ID=m$i FAKE_SLEEP=1 "$spawn" m$i fake "$t/brief.md" & done
+for i in $(seq 1 10); do FAKE_HOLD=$hold FAKE_ID=m$i FAKE_SLEEP=1 DEVKIT_MAX_WORKERS=10 "$spawn" m$i fake "$t/brief.md" & done
 n=0; while [ $n -lt 150 ]; do [ "$(grep -c " start" $DEVKIT_DIR/events)" -ge 10 ] && break; sleep 0.2; n=$((n+1)); done # sleep-ok: bounded poll (150 tries) for ten start events
-FAKE_ID=m11 FAKE_SLEEP=1 "$spawn" m11 fake "$t/brief.md" & sleep 1 # sleep-ok: give a wrongly uncapped eleventh time to start while the ten are held
+FAKE_ID=m11 FAKE_SLEEP=1 DEVKIT_MAX_WORKERS=10 "$spawn" m11 fake "$t/brief.md" & sleep 1 # sleep-ok: give a wrongly uncapped eleventh time to start while the ten are held
 rm -f "$hold"; wait
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 before=$(awk -v f="$firstend" '$2=="start" && $1<f' $DEVKIT_DIR/events | wc -l | tr -d ' ')
-ok "default cap is 10: ten start together, the eleventh waits" '[ "$n" -lt 40 ] && [ "$before" -eq 10 ]'
+ok "DEVKIT_MAX_WORKERS=10 caps: ten start together, the eleventh waits" '[ "$n" -lt 40 ] && [ "$before" -eq 10 ]'
 
 FAKE_ID=hold FAKE_SLEEP=2 DEVKIT_MAX_WORKERS=1 "$spawn" hold fake "$t/brief.md" & n=0; while [ ! -s "$DEVKIT_DIR/fakepid.hold" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n+1)); done # sleep-ok: bounded poll until the holder claimed its slot
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" nest fake "$t/brief.md" 2>"$t/nest.err"; rc=$?
@@ -538,6 +538,16 @@ env -u CLAUDE_CODE_SESSION_ID FAKE_ID=se1 "$spawn" se1 fake "$t/brief.md"
 ok "respawn without an id removes a stale session file" '[ ! -e $TD/run/se1.session ]'
 CLAUDE_CODE_SESSION_ID=sess-dry DEVKIT_DRYRUN=1 "$spawn" se3 fake "$t/brief.md" >/dev/null
 ok "dry-run leaves no session file" '[ ! -e $TD/run/se3.session ]'
+
+# --- --lead marks a long-lived lead worker so the parent Stop hook does not hold on it while it runs
+FAKE_ID=ow1 "$spawn" --lead ow1 fake "$t/brief.md"; rc=$?
+ok "--lead writes run/<id>.detached and the worker still finishes" '[ $rc -eq 0 ] && [ -e $TD/run/ow1.detached ] && grep -q "^done" $TD/run/ow1.status'
+FAKE_ID=ow2 "$spawn" ow2 fake "$t/brief.md"
+ok "no marker without --lead"                          '[ ! -e $TD/run/ow2.detached ]'
+FAKE_ID=ow1 "$spawn" ow1 fake "$t/brief.md"
+ok "a respawn without --lead removes a stale marker"   '[ ! -e $TD/run/ow1.detached ]'
+DEVKIT_DRYRUN=1 "$spawn" --lead ow3 fake "$t/brief.md" >/dev/null
+ok "dry-run leaves no marker"                           '[ ! -e $TD/run/ow3.detached ]'
 
 # --- session pointer fallback: -t/DEVKIT_TASK, then `ledger current` (main path and --close-views)
 SPS=sess-spawn; SP=$(CLAUDE_CODE_SESSION_ID=$SPS "$ledger" start ptr-spawn x); SPD="$DEVKIT_DIR/tasks/$SP"

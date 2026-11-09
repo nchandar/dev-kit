@@ -39,12 +39,16 @@ Any CLI can be the main agent and any CLI the worker; it is always the same bash
 | "have opencode review this diff" | scout brief naming the diff command, then `bin/spawn --shape scout <id> opencode <brief>` |
 | "run these two in parallel on claude and codex" | two spawns, each as its own background command (within the worker cap) |
 | "use a cheap model for this" | add `--model <name>` (name as that CLI expects it) |
+| "give it a lead" (one worker runs a whole build, spawns its own helpers, returns branches and PR drafts) | `bin/spawn --lead --shape ship <id> claude <brief>` (`--lead` implies its own worktree and branch; live leads are capped, see the ARCHITECTURE.md env table) with `DEVKIT_TIMEOUT` raised for the run; brief has a `route: dev-feature` line, the spec path, an optional column-0 `owns: path path` line (spawn warns when it overlaps a live lead's), no push and no PR (the parent asks the user), and a handoff with commits and PR drafts. Lead rule, put in its brief: before the handoff, fetch if a remote exists, rebase onto the latest default branch, resolve conflicts, rerun the full suite, lint and bin/verify, and write `base: <sha>` and `behind: 0` in the handoff; `bin/ledger accept ... accepted` refuses a lead whose branch is not built on the default branch tip. Helpers share the one worker pool with every lead, first come first served; a nested spawn past the pool waits `DEVKIT_CHILD_WAIT`, then exits (do that work yourself). Edit no dev-kit tool in the main checkout while it runs. |
 | "run the tests" | `bin/run <cmd>`: no agent; full output to a log, you read the summary |
 | a CLI misbehaves or is new | `bin/spawn --doctor` (installed, flags still valid; OpenCode v2 needs `opencode service start` once) |
 Workers run interactive in a herdr tab (`DEVKIT_MODE=auto`); headless is only the fallback when herdr is down. Never pick -p/exec/run by hand. Edits stay inside the worktree; wider access is the user's call.
 
 ## Worker rules (put in every brief)
-Do not spawn agents. Do not contact other workers. Write your report to the handoff path with: result (PASS|ISSUES|BLOCKED), evidence, files changed, open questions, next step, learnings (reusable lessons, each with a pointer), then a `## Checklist` section with every item ticked. Run `bin/ledger` for your own decisions.
+Do not spawn agents. Do not contact other workers. Write your report to the handoff path with: result (PASS|ISSUES|BLOCKED), evidence, files changed, open questions, next step, learnings (reusable lessons, each with a pointer), then a `## Checklist` section with every item ticked. Run `bin/ledger` for your own decisions. A lead also: fetch if a remote exists, rebase onto the latest default branch, rerun the full suite, lint and bin/verify, and write `base: <sha>` and `behind: 0` in the handoff.
+
+## Changing a running worker
+Append the correction to `<task>/updates/<id>.md` (create the folder if needed); every worker reads it before each slice and before its handoff, so nothing interrupts it and nobody approves a prompt. Use a cross-session message only to interrupt (stop, wrong direction, urgent): a worker in another permission mode holds it until the user approves it in that tab, so tell the user a prompt is coming and never route around a held message.
 
 **Hand off to:** the calling route with the accepted handoffs.
 
