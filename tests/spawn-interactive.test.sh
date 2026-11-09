@@ -417,6 +417,7 @@ ok "idle + no handoff: nudged once, then failed with the reason, no timeout wait
 ok "the idle nudge names the handoff path and the checklist" 'grep "^agent prompt ig1 " "$t/ig1.log" | tail -1 | grep -q "without a final handoff.*$TDI/handoffs/ig1.md"'
 ok "a final handoff after the nudge ends done, nudged once" '[ $r_ig3 -eq 0 ] && grep -q "^done" $TDI/run/ig3.status && [ $(nudges ig3) -eq 1 ]'
 ok "an agent that keeps working is never nudged (the timeout still applies)" 'grep -q "^timeout" $TDI/run/ig4.status && [ $(nudges ig4) -eq 0 ]'
+echo "     idle-flip: status=$(cut -d' ' -f1 "$TDI/run/ig5.status" 2>/dev/null) nudges=$(nudges ig5)"
 ok "idle that flips back to working resets the clock: no nudge, the timeout ends it" 'grep -q "^timeout" $TDI/run/ig5.status && [ $(nudges ig5) -eq 0 ]'
 ok "a blocked agent is never nudged (no keystroke into a dialog); the timeout ends it" 'grep -q "^timeout" $TDI/run/ig7.status && [ $(nudges ig7) -eq 0 ] && [ $(grep -c "^agent prompt ig7 " "$t/ig7.log") -eq 1 ]'
 ok "DEVKIT_IDLE_WAIT=0 keeps the old rule: draft + idle finishes, checklist flagged missing" '[ $r_ig6 -eq 0 ] && grep -q "^missing" $TDI/run/ig6.checklist && [ $(nudges ig6) -eq 0 ]'

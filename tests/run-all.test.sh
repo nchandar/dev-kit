@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for tests/run-all.sh FAIL-line reporting. Usage: tests/run-all.test.sh
 set -u
-unset DEVKIT_DEPTH DEVKIT_TEST_JOBS DEVKIT_TEST_CORES  # fixtures must pass from inside a worker and under DEVKIT_TEST_JOBS=1
+unset DEVKIT_DEPTH DEVKIT_TEST_JOBS DEVKIT_TEST_CORES CI DEVKIT_RUNALL_DIAG  # CI and the diag switch are off here: the pins below hold the base format  # fixtures must pass from inside a worker and under DEVKIT_TEST_JOBS=1
 here=$(cd "$(dirname "$0")/.." && pwd)
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
@@ -229,4 +229,26 @@ ok "every tests/*.test.sh is executable (run-all runs them directly)" '[ -z "$nx
 nb=$(for f in "$here"/tests/*.test.sh; do head -1 "$f" | grep -q "^#!" || echo "${f##*/}"; done)
 ok "every tests/*.test.sh starts with a shebang" '[ -z "$nb" ]'
 
+# --- CI diagnostics: only when CI or DEVKIT_RUNALL_DIAG is set; the default output stays pinned above
+mkcase "$t/diag"; mkpass "$t/diag/tests/fake-pass.test.sh"
+cat > "$t/diag/tests/fake-fail.test.sh" <<'S'
+#!/usr/bin/env bash
+echo "ok   something good"
+echo "     probe: status=idle nudges=2"
+echo "FAIL fake thing is broken   [[ x = y ]]"
+echo "1 passed, 1 failed"
+exit 1
+S
+chmod +x "$t/diag/tests/fake-fail.test.sh"
+dout=$(DEVKIT_RUNALL_DIAG=1 DEVKIT_TEST_JOBS=2 "$t/diag/tests/run-all.sh" 2>&1)
+ok "diag on: a header names jobs, cores, load and os"            'echo "$dout" | grep -q "^run-all: diagnostics on: jobs=2 cores=.* load=.* os="'
+ok "diag on: a failing suite shows when it ran and the load"      'echo "$dout" | grep -q "^    -- diagnostics: started +[0-9]*s, ran [0-9]*s, load now "'
+ok "diag on: the suite's own probe lines reach the log"           'echo "$dout" | grep -q "^    |      probe: status=idle nudges=2"'
+ok "diag on: passing lines are left out of the dump"              '! echo "$dout" | grep -q "^    | ok "'
+cout=$(CI=true DEVKIT_TEST_JOBS=1 "$t/diag/tests/run-all.sh" 2>&1)
+ok "CI set turns the diagnostics on"                               'echo "$cout" | grep -q "^run-all: diagnostics on:"'
+offout=$(DEVKIT_TEST_JOBS=1 "$t/diag/tests/run-all.sh" 2>&1)
+ok "diag off by default: no header and no dump"                    '! echo "$offout" | grep -q "diagnostics"'
+zout=$(DEVKIT_RUNALL_DIAG=0 CI=true DEVKIT_TEST_JOBS=1 "$t/diag/tests/run-all.sh" 2>&1)
+ok "DEVKIT_RUNALL_DIAG=0 turns it off even under CI"               '! echo "$zout" | grep -q "diagnostics"'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
