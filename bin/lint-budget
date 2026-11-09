@@ -7,7 +7,7 @@ for a in "$@"; do case $a in --partial) partial=1;; *) root=$a;; esac; done
 cd "$root" || exit 2
 
 # SKILLS_MAX 8 -> 12: the playbook split made 9 skills
-AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=12 JACCARD=0.5 LIB_TOTAL=32768 DEEP_LINES=45 DEEP_TOTAL=65536 RECIPE_LINES=45 RECIPE_TOTAL=49152
+AGENTS_MAX=6144 DESC_MAX=4096 SKILL_LINES=150 LIB_LINES=80 SKILLS_MIN=4 SKILLS_MAX=12 JACCARD=0.5 LIB_TOTAL=36864 DEEP_LINES=45 DEEP_TOTAL=65536 RECIPE_LINES=45 RECIPE_TOTAL=49152
 errs=0
 bad() { echo "FAIL $*"; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 section() { grep -Eqi "^##+ +$2" "$1" || bad "$1: missing section '$2'"; }

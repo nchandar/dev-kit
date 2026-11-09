@@ -6,7 +6,7 @@ Record repro, root cause and guard with bin/ledger (phase=debug).
 
 ## Steps
 1. STOP adding features. Preserve evidence: error text, logs, repro command. Do not push past a red build.
-2. Reproduce reliably with a command. No repro: gather logs and environment, bisect (`git bisect`) when it worked before; do not guess a fix.
+2. Reproduce reliably with a command and ledger the repro. No repro: gather logs and environment, bisect (`git bisect`) when it worked before; do not guess a fix.
 3. Localize: narrow by layer (input, logic, data, environment), then to file:line. Read the actual error and the actual state; when stuck, instrument.
 4. Ask "why" until the answer is a wrong decision in the code, not a consequence of an earlier one. Is the state that triggered the symptom legitimate? If the system may be in that state, handling it is the fix.
 5. Restart-only failures: suspect persisted state first (config, caches, locks).
