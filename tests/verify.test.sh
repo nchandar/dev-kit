@@ -110,6 +110,16 @@ ok "slow file: exit 1, reason slow"          '[ $rc -eq 1 ] && field 4 | grep -q
 setrun 'echo "a.test.sh   1 passed, 0 failed   90s"; echo "b.test.sh   1 passed, 0 failed   90s"; echo "c.test.sh   1 passed, 0 failed   90s"'
 echo more2 >> skills/dev-x/SKILL.md; out=$("$verify"); rc=$?
 ok "slow total: exit 1, reason slow"         '[ $rc -eq 1 ] && field 4 | grep -q "slow: total 270s > 200s"'
+# a concurrent run-all prints wall=NNs: summed suite seconds then include waiting for a core, so wall is what the total bounds
+setrun 'echo "a.test.sh   1 passed, 0 failed   90s"; echo "b.test.sh   1 passed, 0 failed   90s"; echo "c.test.sh   1 passed, 0 failed   90s"; echo "wall=95s"'
+echo more3 >> skills/dev-x/SKILL.md; out=$("$verify"); rc=$?
+ok "wall= within the total passes although the summed seconds exceed it" '[ $rc -eq 0 ] && [ "$(field 6)" = pass ]'
+setrun 'echo "a.test.sh   1 passed, 0 failed   10s"; echo "wall=250s"'
+echo more4 >> skills/dev-x/SKILL.md; out=$("$verify"); rc=$?
+ok "wall= over the total fails: reason names the wall" '[ $rc -eq 1 ] && field 4 | grep -q "slow: wall 250s > 200s"'
+setrun 'echo "a.test.sh   1 passed, 0 failed   150s"; echo "wall=60s"'
+echo more5 >> skills/dev-x/SKILL.md; out=$("$verify"); rc=$?
+ok "a slow suite still fails when wall= is within the total" '[ $rc -eq 1 ] && field 4 | grep -q "slow: a.test.sh 150s > 100s"'
 VERIFY_BUDGET="$root/missing" "$verify" >/dev/null 2>"$root/err"; rc=$?
 ok "missing budget file: skipped with a note, not an error" '[ $rc -eq 0 ] && grep -qi budget "$root/err"'
 
