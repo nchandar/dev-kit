@@ -73,12 +73,20 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | `learn` | The local learning inbox |
 | `ledger` | Per-task ledgers |
 | `lint-budget` | Lint fixtures, pass and fail cases |
+| `parallel-sections` | Crash copies stay out of the repo tree while a scan runs |
 | `reconcile` | Open-task and learning listing |
 | `run` | Log plus short summary wrapper |
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
 | `stop-gate` | Parent Stop hook: blocks on unaccepted workers, budget, fail-open |
 | `pstack-adoption` | Wiring of the pstack-derived skills and deep files |
+
+### Parallel-safe suites
+`tests/run-all.sh` runs suites concurrently (by default `min(cores, 4)` at once), so every suite must:
+- make its own `mktemp -d` and write only there, never into the repo tree (`repo-tree-write` in `tests/pitfalls.test.sh`; a justified exception carries a `# repo-write-ok: <why>` tag);
+- avoid process-wide `pkill`/`pgrep -f` without a marker only its own file contains, fixed ports, and a shared HOME or git config;
+
+Knobs: `DEVKIT_TEST_JOBS=N` sets how many suites run at once (`1` runs serially, for debugging; invalid values exit 2). `DEVKIT_TEST_CORES=N` stands in for the detected core count (a test seam). The start order comes from `tests/run-all.weights` (`name seconds` per line, longest first); a suite not listed starts after those, in glob order, so listing a new slow suite is optional and only shortens the wall time.
 
 Real-agent evals cost a few cents each. Run them after changing skills, `spawn` or the learning flow:
 | Script | Checks |

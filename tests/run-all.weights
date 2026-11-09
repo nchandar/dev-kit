@@ -1,0 +1,15 @@
+# Serial seconds per suite, used only to pick the start order (longest first).
+# Format: name seconds. Suites not listed start after these, in glob order, so a new slow suite can be added here to start early; it is optional.
+spawn-interactive 58
+spawn 49
+verify 23
+ledger 12
+reconcile 9
+parallel-sections 6
+lint-budget 5
+spawn-isolation 4
+install-roots 4
+session-task 4
+verify-gate 3
+verify-scan 3
+install 3

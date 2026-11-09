@@ -2,7 +2,7 @@
 # Bug-class guard: grep -E rules over bin/ and tests/, seeded from docs/pitfalls.md.
 # Every rule has a known-bad fixture (must flag) and a known-good one (must pass).
 # A real hit is fixed or carries `# pitfall-ok: <id> <why>` on its line
-# (fixed sleeps in tests carry `# sleep-ok: <why>` instead).
+# (fixed sleeps in tests carry `# sleep-ok: <why>`, repo-tree-write hits `# repo-write-ok: <why>`).
 # tests/pitfalls.test.sh itself is exempt from the src-grep and spawn-isolation
 # scans: it is the registry, so it greps sources by design and never runs spawn.
 # Usage: tests/pitfalls.test.sh
@@ -11,7 +11,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-guards="seq-args portable-cmd lstart-tz bounded-retry decimal-arith sleep-ok spawn-isolation src-grep tripwire"
+guards="seq-args portable-cmd lstart-tz bounded-retry decimal-arith sleep-ok spawn-isolation src-grep tripwire repo-tree-write"
 
 # --- rule implementations: print offending lines, empty when clean
 r_seq() { grep -rn -E '(^|[^A-Za-z0-9_.-])seq +([0-9]+ +)*["]?\$' "$@" 2>/dev/null | grep -v 'pitfall-ok: seq-args' || true; }
@@ -35,6 +35,16 @@ r_arith() { # $(( )) or [[ -op ]] with any variable lacking 10#: 08 reads as oct
 }
 r_sleep() { grep -rn -E '(^|[^"_A-Za-z0-9=])sleep [0-9]' "$@" 2>/dev/null | grep -v 'sleep-ok:' || true; }
 r_srcgrep() { grep -rn -E 'grep( +-[a-zA-Z]+)* +[^|;&]*(\$spawn|\$here/bin|\$spn|bin/spawn)' "$@" 2>/dev/null | grep -v 'pitfall-ok: src-grep' || true; }
+r_repowrite() { # flags a write whose destination is in the repo tree ("$here/" or "$here"/); read-only uses pass. Sees a command only at line start and judges its last argument.
+  for f in "$@"; do
+    awk '
+      /repo-write-ok:/ { next }
+      $0 ~ /sed +-[a-zA-Z]*i[^ ]* +.*"?[$]here"?\// { print FILENAME ":" FNR ": " $0; next }
+      $0 ~ /(^|[^<])>>? *"?[$]here"?\// { print FILENAME ":" FNR ": " $0; next }
+      ($1 == "cp" || $1 == "mv" || $1 == "ln" || $1 == "install" || $1 == "tee" || $1 == "touch" || $1 == "mkdir" || $1 == "rm") && $NF ~ /"?[$]here"?\// { print FILENAME ":" FNR ": " $0 }
+    ' "$f"
+  done
+}
 chk_iso() { # one file: runs spawn as a command but names no isolation (comment lines ignored)
   f=$1; code=$(grep -v -E '^[[:space:]]*#' "$f" 2>/dev/null | grep -v -E '(^|[^A-Za-z_])(grep|cat) ')
   if printf '%s\n' "$code" | grep -q -E '"\$spawn" [A-Za-z-]|bin/spawn"? '; then
@@ -104,6 +114,16 @@ printf '%s\n' "$bad_sg" > "$t/bad.sh"; printf '%s\n' "$good_sg" > "$t/good.sh"
 ok "src-grep flags greps of bin sources" '[ -n "$(r_srcgrep "$t/bad.sh")" ]'
 ok "src-grep passes greps of outputs" '[ -z "$(r_srcgrep "$t/good.sh")" ]'
 
+bad_rw='cp "$here/tests/x.test.sh" "$here/tests/_crash-x.test.sh"'; bad_rw2='echo hi > "$here/tests/out"'; bad_rw3='sed -i.bak s/a/b/ "$here/tests/x.test.sh"'
+good_rw='cp "$here/tests/x.test.sh" "$t/_crash-x.test.sh"'; good_rw2='echo hi > "$t/out"'; good_rw3='cat "$here/docs/pitfalls.md"'
+good_rw4='echo hi > "$here/tests/out" # repo-write-ok: fixture text, never executed'
+bad_rw4='rm -rf "$t" "$here"/tests/_crash-*'
+printf '%s\n' "$bad_rw" "$bad_rw2" > "$t/bad.sh"; printf '%s\n' "$bad_rw3" > "$t/bad3.sh"; printf '%s\n' "$bad_rw4" > "$t/bad4.sh"
+printf '%s\n' "$good_rw" "$good_rw2" "$good_rw3" "$good_rw4" > "$t/good.sh"
+ok "repo-tree-write flags a copy, a redirect and a sed into \$here" '[ -n "$(r_repowrite "$t/bad.sh")" ] && [ -n "$(r_repowrite "$t/bad3.sh")" ]'
+ok "repo-tree-write flags the quote-before-slash spelling (\"\$here\"/path)" '[ -n "$(r_repowrite "$t/bad4.sh")" ]'
+ok "repo-tree-write passes temp-dir writes, reads and the marked line" '[ -z "$(r_repowrite "$t/good.sh")" ]'
+
 # --- repo scans: the current tree must be clean (fixed or allowlisted)
 ok "seq-args: bin/ has no variable-arg seq" '[ -z "$(r_seq "$here/bin")" ]'
 ok "portable-cmd: bin/ has no raw stat/date/sed/readlink" '[ -z "$(r_portable "$here/bin")" ]'
@@ -113,6 +133,7 @@ ok "decimal-arith: bin/ arithmetic is 10# or allowlisted" '[ -z "$(r_arith "$her
 ok "sleep-ok: fixed sleeps in tests carry a why" '[ -z "$(r_sleep "$here"/tests/*.test.sh)" ]'
 srcfiles=""; for f in "$here"/tests/*.test.sh; do case $f in *pitfalls.test.sh) continue;; esac; srcfiles="$srcfiles $f"; done
 ok "src-grep: no raw bin-source greps in tests" '[ -z "$(r_srcgrep $srcfiles)" ]'
+ok "repo-tree-write: no test writes into the repo tree" '[ -z "$(r_repowrite $srcfiles)" ]'
 isobad=""; for f in "$here"/tests/*.test.sh; do case $f in *pitfalls.test.sh) continue;; esac; hit=$(chk_iso "$f"); [ -n "$hit" ] && isobad="$isobad $hit"; done
 ok "spawn-isolation: tests running spawn isolate the view" '[ -z "$isobad" ]'
 
