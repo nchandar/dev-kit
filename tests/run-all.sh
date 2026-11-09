@@ -111,7 +111,7 @@ if [ "$njobs" -le 1 ]; then # serial: stream each line as its suite finishes, ex
   for t in tests/*.test.sh; do
     i=$((i+1)); nn=$(printf '%02d' "$i")
     set -m # its own process group, killed by cleanup; plain wait returns as soon as a trapped signal arrives
-    run_suite "$nn" "$t" &
+    { run_suite "$nn" "$t" & } 2>/dev/null # bash 3.2 prints a setpgid error here when the child exits first; the suite keeps its own redirects
     runner_pid=$!
     set +m
     wait "$runner_pid" 2>/dev/null
@@ -121,7 +121,8 @@ if [ "$njobs" -le 1 ]; then # serial: stream each line as its suite finishes, ex
 elif [ "$count" -gt 0 ]; then
   printf '%s' "$list" | start_order tests/run-all.weights > "$tmp/order"
   set -m # the driver gets its own process group so INT/TERM can kill every child
-  xargs -P "$njobs" -L 1 bash -c 'run_suite "$1" "$2"' _ < "$tmp/order" &
+  exec 3>&2 # xargs keeps the real stderr; only the fork's setpgid noise is dropped
+  { xargs -P "$njobs" -L 1 bash -c 'run_suite "$1" "$2"' _ < "$tmp/order" 2>&3 & } 2>/dev/null
   runner_pid=$!
   set +m
   while IFS=' ' read -r nn path; do
