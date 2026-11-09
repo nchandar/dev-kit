@@ -6,6 +6,9 @@ pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 knobs="DEVKIT_MAX_WORKERS DEVKIT_MAX_LEADS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW_CLOSE_DELAY DEVKIT_VIEW DEVKIT_MODE DEVKIT_POLL DEVKIT_GRACE DEVKIT_NUDGE_WAIT DEVKIT_IDLE_WAIT DEVKIT_WAIT DEVKIT_GATE_POLL DEVKIT_STOP_TIMEOUT"
 val() { env -i "$BASH" -c ". '$defaults' 2>/dev/null; printf %s \"\${$1:-}\""; } # a default, read in a clean environment
+# the same, on a fixed machine (10 cores, 64 GB): the worker pool is machine-derived, so a docs scan against the
+# real value would flag whatever number a CI runner happens to compute (a heading "3.12 Worker ..." matched 12)
+valm() { env -i DEVKIT_CORES=10 DEVKIT_RAM_GB=64 "$BASH" -c ". '$defaults' 2>/dev/null; printf %s \"\${$1:-}\""; }
 
 ok "bin/defaults exists"                                  '[ -f "$defaults" ]'
 # knobs whose default is derived from the machine: the table says auto, the value is a number
@@ -49,12 +52,13 @@ for k in $nknobs; do
 done
 # prose must not restate a numeric default next to its noun, even without the knob name
 noun_scan() { # files... -> lines where a default value sits within 30 chars of its noun
-  w=$(val DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH); c=$(val DEVKIT_CHILD_WAIT); t=$(val DEVKIT_TIMEOUT)
+  w=$(valm DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH); c=$(val DEVKIT_CHILD_WAIT); t=$(val DEVKIT_TIMEOUT)
   for f in "$@"; do case "$f" in *ARCHITECTURE.md) grep -v '^|' "$f";; *) cat "$f";; esac; done |
     grep -iE "workers?.{0,30}max [0-9]+|max [0-9]+.{0,30}workers?|workers?.{0,30}(^|[^0-9])$w([^0-9]|$)|(^|[^0-9])$w([^0-9]|$).{0,30}workers?|depth.{0,30}(^|[^0-9])$d([^0-9]|$)|(^|[^0-9])$d([^0-9]|$).{0,30}depth|(timeout|seconds).{0,30}(^|[^0-9])$t([^0-9]|$)|(^|[^0-9])$t([^0-9]|$).{0,30}(timeout|seconds)|wait.{0,30}(^|[^0-9])$c([^0-9]|$)|(^|[^0-9])$c([^0-9]|$).{0,30}wait"
 }
-tmp=$(mktemp); w=$(val DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH)
+tmp=$(mktemp); w=$(valm DEVKIT_MAX_WORKERS); d=$(val DEVKIT_MAX_DEPTH)
 printf 'up to %s workers\nnesting depth %s\nthe old cap, max 2 workers\n' "$w" "$d" >"$tmp" # fixture built from bin/defaults, no literal values
+ok "the docs scan uses a fixed machine, not the runner (30 workers)" '[ "$w" = 30 ]'
 ok "flags $w next to workers" 'noun_scan "$tmp" | grep -qi workers'
 ok "flags $d next to depth" 'noun_scan "$tmp" | grep -qi depth'
 ok "flags a stale max N next to workers (an old default)" 'noun_scan "$tmp" | grep -qi "max 2"'

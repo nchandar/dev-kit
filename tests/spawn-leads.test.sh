@@ -32,7 +32,9 @@ chmod +x "$t/fake"; export DEVKIT_FAKE="$t/fake"
 echo "do the thing" > "$t/brief.md"
 
 # --- 0. spawn runs from a frozen copy: editing the script mid-run must not crash it
-nfroz() { ls "${TMPDIR:-/tmp}"/dk-spawn.* 2>/dev/null | wc -l | tr -d " "; }; froz0=$(nfroz) # copies from other runs may exist
+# a private TMPDIR: other suites run at the same time and a copy of theirs, alive or stranded by a kill -9, must not count here
+mkdir -p "$t/tmp"; export TMPDIR="$t/tmp"
+nfroz() { ls "$TMPDIR"/dk-spawn.* 2>/dev/null | wc -l | tr -d " "; }
 # an unfrozen spawn can loop or crash once its file moves under it, so the run gets a watchdog
 FAKE_EDIT_SPAWN="$spawn" "$spawn" fz fake "$t/brief.md" >"$t/fz.out" 2>"$t/fz.err" & sp=$!
 ( sleep 30; kill -9 $sp 2>/dev/null ) >/dev/null 2>&1 & wd=$! # sleep-ok: watchdog, killed below
@@ -40,7 +42,7 @@ wait $sp; rc=$?; kill $wd 2>/dev/null; wait $wd 2>/dev/null
 ok "editing bin/spawn while a worker runs does not crash the spawn" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/fz.status && ! grep -q EDITED-SPAWN-RAN "$t/fz.err"'
 ok "the spawn really was edited during that run"                      'grep -q EDITED-SPAWN-RAN "$spawn"' # pitfall-ok: src-grep proves the fixture edit landed in the scratch copy
 cp "$here/bin/spawn" "$spawn"
-ok "no frozen copy is left behind"                                    '[ "$(nfroz)" -le "$froz0" ]'
+ok "no frozen copy is left behind"                                    '[ "$(nfroz)" -eq 0 ]'
 
 # --- 1. --lead implies its own worktree and branch, and records the base commit
 head=$(git rev-parse HEAD)
