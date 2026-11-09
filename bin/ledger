@@ -2,13 +2,15 @@
 # Per-task, append-only TSV ledger. Never rewrites or deletes. One task = one ledger = one directory.
 #   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id; refused inside a worker (exit 3)
 #   ledger current                                      print this session's open task, else exit 1 (uses $CLAUDE_CODE_SESSION_ID)
-#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phase names path, done, base, start, current are reserved)
-#   ledger [-t id] done [summary]                       mark the task finished; refused inside a worker (exit 3)
+#   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phases path, done, base, start, current, verify-gate are reserved)
+#   ledger [-t id] done [--waive "<reason>"] [summary]  mark the task finished; needs a passing verify-gate row for the current tree, or a waive reason of 20+ chars; refused inside a worker (exit 3)
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
+#   ledger [-t id] gate-row <tier> <reason> <evidence> <result>   append the verify-gate row (bin/verify only)
 # Task: -t id, else $DEVKIT_TASK, else the session pointer. No task is an error: there is no shared fallback ledger.
 # The pointer lives at $(ledger base)/run/session-<sid>.task; start rewrites it, only outside workers.
 # $DEVKIT_DIR overrides the .devkit location. $DEVKIT_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
 set -u
+here=$(cd "$(dirname "$0")" && pwd)
 die() { echo "ledger: $*" >&2; exit 2; }
 base() { local d
   if [ -n "${DEVKIT_DIR:-}" ]; then echo "$DEVKIT_DIR"; return; fi
@@ -66,6 +68,35 @@ write_pointer() { # id: atomically remember the task for this session; never fai
   { mkdir -p "$B/run" && printf '%s\n' "$1" > "$p.tmp.$$" && mv -f "$p.tmp.$$" "$p"; } 2>/dev/null \
     || rm -f "$p.tmp.$$" 2>/dev/null
   return 0; }
+# close gate: 4 unless the tree equals the base (no diff) or this task's newest verify-gate row passed for it;
+# a repo with no base ref closes with a note (scratch repos), writes nothing
+gate() { local R t b trc brc row res rsn tier ev k evd runs
+  R=$(git rev-parse --show-toplevel 2>/dev/null) || R=$(dirname "$B") # the caller's repo: a worktree is not the main checkout
+  git -C "$R" rev-parse --show-toplevel >/dev/null 2>&1 || return 0 # outside a git repo there is nothing to verify
+  # a missing or broken checker is a gate failure, never a pass
+  [ -f "$here/verify" ] && [ -x "$here/verify" ] || { echo "ledger: bin/verify is missing or not executable; the verify gate cannot run" >&2; return 4; }
+  t=$(cd "$R" && DEVKIT_TASK=$task "$here/verify" tree 2>/dev/null); trc=$?
+  [ "$trc" -eq 0 ] && [ -n "$t" ] || { echo "ledger: bin/verify tree failed or printed nothing; the verify gate cannot run" >&2; return 4; }
+  b=$(cd "$R" && DEVKIT_TASK=$task "$here/verify" base 2>/dev/null); brc=$?
+  if [ "$brc" -eq 2 ]; then
+    echo "ledger: no base ref or start commit to verify against (bin/verify base exit 2); the verify gate does not apply" >&2
+    return 0; fi
+  [ "$brc" -eq 0 ] && [ -n "$b" ] || { echo "ledger: bin/verify base failed (exit $brc); the verify gate cannot run" >&2; return 4; }
+  k=$(cd "$R" && DEVKIT_TASK=$task "$here/verify" base-kind 2>/dev/null) || k=
+  [ -z "$k" ] || [ "$k" = start ] || echo "ledger: the task's start commit is missing or gone; the base fell back to the merge-base" >&2 # a fallback narrows the proof: say it
+  [ "$t" != "$b" ] || { echo "verified: nodiff tree $t log -${k:+ (base: $k)}"; return 0; } # nothing changed since the base: nothing to verify
+  row=$(awk -F'\t' '$2=="verify-gate"{l=$0} END{print l}' "$D/ledger.tsv")
+  [ -n "$row" ] || { echo "ledger: no verify-gate row for tree $t; run bin/verify, or use --waive \"<reason>\"" >&2; return 4; }
+  res=$(printf '%s' "$row" | cut -f6); rsn=$(printf '%s' "$row" | cut -f4); tier=$(printf '%s' "$row" | cut -f3); ev=$(printf '%s' "$row" | cut -f5)
+  [ "$res" = pass ] || { echo "ledger: the newest verify-gate row is $res for tree $t; run bin/verify, or use --waive \"<reason>\"" >&2; return 4; }
+  case $rsn in *"tree $t"*) ;; *) echo "ledger: the verify pass is for another tree, not $t (the tree changed after it); run bin/verify again, or use --waive \"<reason>\"" >&2; return 4;; esac
+  [ -n "$ev" ] && [ -f "$ev" ] || { echo "ledger: the verify-gate row has no log file at '${ev:-none}'; run bin/verify again, or use --waive \"<reason>\"" >&2; return 4; }
+  evd=$(cd "$(dirname "$ev")" 2>/dev/null && pwd -P) || evd= # physical paths: /var and /private/var are the same dir
+  runs=$(cd "$D/runs" 2>/dev/null && pwd -P) || runs=
+  case $evd in "$runs"|"$runs"/*) [ -n "$runs" ] && [ -s "$ev" ];; *) false;; esac \
+    || { echo "ledger: the verify-gate row needs a non-empty log under the task's runs/; run bin/verify again, or use --waive \"<reason>\"" >&2; return 4; }
+  echo "verified: $tier $rsn log $ev"
+  return 0; }
 
 [ "${1:-}" = base ] && { echo "$B"; exit 0; }
 if [ "${1:-}" = current ]; then
@@ -82,7 +113,8 @@ if [ "${1:-}" = start ]; then
   until id="$slug-$(date +%y%m%d-%H%M%S)-$(printf '%04x' $RANDOM)"; mkdir "$B/tasks/$id" 2>/dev/null; do
     tries=$((tries+1)); [ "$tries" -ge 20 ] && die "cannot create task dir in '$B/tasks' after 20 tries" # pitfall-ok: decimal-arith internal counter, always decimal
   done
-  append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "" open
+  headsha=$(git rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null) || headsha=
+  append "$B/tasks/$id/ledger.tsv" start "${2:-task}${3:+: $3}" "new task" "${headsha:+head $headsha}" open
   printf "$STATE_TEMPLATE" > "$B/tasks/$id/state.md"; exclude_local "$B"
   write_pointer "$id"
   echo "$id"; exit 0
@@ -102,16 +134,29 @@ case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;
+  gate-row) # bin/verify's row write; the phase is reserved so it cannot be hand-written
+    [ $# -eq 5 ] || die "usage: ledger gate-row <tier> <reason> <evidence> <result>"
+    append "$D/ledger.tsv" verify-gate "$2" "$3" "$4" "$5"; exit 0;;
   done)
     depth=${DEVKIT_DEPTH:-0}
     case $depth in ''|*[!0-9]*) echo "ledger: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not close the shared task; write its handoff instead" >&2; exit 3;; esac
     [ "$((10#$depth))" -eq 0 ] || { echo "ledger: a worker (DEVKIT_DEPTH=$depth) must not close the shared task; write its handoff instead" >&2; exit 3; }
-    append "$D/ledger.tsv" done "${2:-finished}" "task complete" "" done
+    waive=; wreason=; summary=${2:-}
+    if [ "${2:-}" = --waive ]; then
+      wreason=${3:-}; summary=${4:-}
+      [ "${#wreason}" -ge 20 ] || die "--waive needs a reason of 20+ characters (why the gate cannot run here); nothing written"
+      waive=1
+    fi
+    if [ -z "$waive" ]; then gate; grc=$?; [ "$grc" -eq 0 ] || exit "$grc"; fi
+    [ -z "$waive" ] || append "$D/ledger.tsv" waive "$wreason" "close allowed" "" waived
+    append "$D/ledger.tsv" done "$summary" "task complete" "" done
+    awk -F'\t' '$2=="waive"{print "waived: "$3}' "$D/ledger.tsv" # every waive stays visible at close
     n=0
     while IFS= read -r l; do case $l in "branch refs/heads/devkit/$task-"*) n=$((n+1));; esac; done < <(git worktree list --porcelain 2>/dev/null) # pitfall-ok: decimal-arith internal counter, always decimal
     [ "$n" -eq 0 ] || echo "ledger: $n worker worktree(s) left for this task; run: $(printf '%q' "$(cd "$(dirname "$0")" && pwd)/spawn") --prune -t $task --yes (add --discard if merged by squash)" >&2
     exit 0;;
 esac
-[ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start are reserved)"
+[ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start, current, verify-gate are reserved)"
+[ "${1:-}" = verify-gate ] && die "phase 'verify-gate' is reserved: bin/verify writes it through ledger gate-row"
 append "$D/ledger.tsv" "$@"
 exit 0

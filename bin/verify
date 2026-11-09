@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# Tiered verify gate: classify the diff against the base, run the matching checks, record one verify-gate ledger row.
+#   verify [--task ID]    run the gate for the working tree of the current repo
+#   verify tree           print the working-tree id (git write-tree of a temporary index; the real index is untouched)
+#   verify base           print the base tree id (the task's start commit, else the merge-base with origin/main, main, origin/master or master); exit 2 when none resolves
+#   verify base-commit    print that base commit's sha (the scanner's input); exit 2 when none resolves
+#   verify base-kind      print which source the base came from: start or merge-base
+# Tiers: nodiff (tree equals base tree: pass, nothing run), light (only README.md, docs/**: lint-budget, tripwire, pitfalls),
+#        full (anything else: tests/run-all.sh, plus the base commit's bin/verify-scan when it has one, else the working copy).
+# The whole run is bound by a watchdog: after $VERIFY_TIMEOUT (else 2x suite_total_s from the budget, else 900s) it TERMs
+# the run's process group, KILLs it 1s later and the gate exits 2 not-run "timeout after Ns"; nothing is left behind.
+# The watchdog polls every $VERIFY_TICK seconds (default 1); a test that expects a fast run sets it lower.
+# TERM, INT or HUP stop the run and its watchdog, record not-run "interrupted" and exit 143, 130 or 129.
+# A pass is recorded only if the tree id is unchanged after the run; a mid-run edit is not-run "tree changed during the run".
+# A failing suite is rerun once on its own; a pass on rerun is still a fail ("flaky: <suite>"). Seconds are checked against $VERIFY_BUDGET (default bin/verify.budget).
+# Exit 0 pass, 1 fail, 2 could not run (missing tool, crash, unparsable output; recorded not-run). Row: phase verify-gate, decision tier, reason "tree <id> <secs>s[; why]", evidence log, result.
+set -u
+here=$(cd "$(dirname "$0")" && pwd); ledger="$here/ledger"; run="$here/run"
+die() { echo "verify: $*" >&2; exit 2; }
+git rev-parse --show-toplevel >/dev/null 2>&1 || die "not inside a git repo"
+cd "$(git rev-parse --show-toplevel)" || exit 2
+
+tree_id() { local d t; d=$(mktemp -d) || return 2
+  t=$(GIT_INDEX_FILE="$d/index" git add -A >/dev/null 2>&1 && GIT_INDEX_FILE="$d/index" git write-tree 2>/dev/null); local rc=$?
+  rm -rf "$d"; [ $rc -eq 0 ] && [ -n "$t" ] || return 2; echo "$t"; }
+
+if [ "${1:-}" = tree ]; then tree_id || die "cannot compute the tree id"; exit 0; fi
+
+task=${DEVKIT_TASK:-}
+if [ "${1:-}" = --task ]; then task=${2:-}; [ -n "$task" ] || die "--task needs an id"; shift 2; fi
+
+start_commit() { # task id -> the commit recorded at start, when it still exists
+  local d s
+  d=$("$ledger" -t "$1" path 2>/dev/null) || return 1
+  s=$(awk -F'\t' '$2=="start"{ if (match($5,/head [0-9a-f]+/)) { print substr($5,RSTART+5,RLENGTH-5); exit } }' "$d/ledger.tsv" 2>/dev/null)
+  [ -n "$s" ] && git cat-file -e "$s^{commit}" 2>/dev/null || return 1
+  printf '%s\n' "$s"; }
+base_commit() { # sets base (sha) and base_kind (start|merge-base); 0 when one resolves
+  local s
+  if [ -n "$task" ]; then s=$(start_commit "$task") || s=; fi
+  if [ -n "$s" ]; then base=$s; base_kind=start; return 0; fi
+  base_kind=merge-base
+  for ref in origin/main main origin/master master; do
+    git rev-parse -q --verify "$ref" >/dev/null 2>&1 || continue
+    base=$(git merge-base HEAD "$ref" 2>/dev/null) && [ -n "$base" ] && return 0
+  done
+  return 1; }
+
+case ${1:-} in
+  base|base-commit|base-kind)
+    [ -n "$task" ] || task=$("$ledger" current 2>/dev/null) || task=
+    base_commit || die "no base ref resolves (no start commit for this task, no origin/main, main, origin/master or master)"
+    case $1 in
+      base) git rev-parse "$base^{tree}" || die "cannot read the base tree";;
+      base-commit) git rev-parse "$base^{commit}" || die "cannot read the base commit";;
+      base-kind) printf '%s\n' "$base_kind";;
+    esac
+    exit 0;;
+esac
+
+[ $# -eq 0 ] || die "usage: verify [--task ID] | verify tree | verify base | verify base-commit"
+[ -n "$task" ] || task=$("$ledger" current 2>/dev/null) || task=
+[ -n "$task" ] || die "no task. Run: ledger start <slug>; set DEVKIT_TASK"
+"$ledger" -t "$task" path >/dev/null 2>&1 || die "task $task is closed or gone"
+export DEVKIT_TASK=$task
+
+tier=-; tree=?; evidence=; run_pid=; watch_pid=; base_kind=
+finish() { # result exit-code why
+  local why=${3:-} reason; reason="tree $tree $SECONDS""s"; [ -z "$base_kind" ] || reason="$reason; base $base_kind"
+  [ -z "$why" ] || reason="$reason; $why"
+  "$ledger" -t "$task" gate-row "$tier" "$reason" "$evidence" "$1" >/dev/null || echo "verify: could not write the ledger row" >&2
+  echo "verify: $1 tier=$tier tree=$tree${why:+ ($why)}"; exit "$2"; }
+cant() { finish not-run 2 "$*"; }
+# A pass covers the tree the run started on: a mid-run edit must not be recorded against the old id.
+pass_if_unchanged() { local now; now=$(tree_id) || cant "cannot recompute the tree id"
+  [ "$now" = "$tree" ] || cant "tree changed during the run"; finish pass 0; }
+# A signal must not leave the run or the watchdog alive: stop both, record not-run, then exit by signal code.
+interrupted() { # signal exit-code
+  trap '' TERM INT HUP
+  [ -z "$run_pid" ] || kill -TERM -- "-$run_pid" 2>/dev/null
+  if [ -n "$watch_pid" ]; then pkill -TERM -P "$watch_pid" 2>/dev/null; kill -TERM "$watch_pid" 2>/dev/null; fi
+  # KILL before waiting: a run that ignores TERM must not keep the handler blocked
+  [ -z "$run_pid" ] || { kill -KILL -- "-$run_pid" 2>/dev/null; wait "$run_pid" 2>/dev/null; }
+  [ -z "$watch_pid" ] || { kill -KILL "$watch_pid" 2>/dev/null; wait "$watch_pid" 2>/dev/null; }
+  finish not-run "$2" "interrupted by SIG$1"; }
+
+# one temp home for run logs and the watchdog's records; removed with the run
+rundir=$(mktemp -d); trip=""; trap 'rm -rf "$rundir" "$trip"' EXIT
+trap 'interrupted TERM 143' TERM
+trap 'interrupted INT 130' INT
+trap 'interrupted HUP 129' HUP
+# watchdog limit: $VERIFY_TIMEOUT, else 2x suite_total_s from the budget, else 900
+runlimit() { local t=${VERIFY_TIMEOUT:-}
+  if [ -n "$t" ]; then case $t in *[!0-9]*|0) t=900;; esac; echo "$t"; return; fi
+  t=$(sed -n 's/^suite_total_s=//p' "${VERIFY_BUDGET:-$here/verify.budget}" | head -1)
+  case $t in ''|*[!0-9]*) t=900;; *) t=$((2*10#$t)) 2>/dev/null; case $t in ''|*[!0-9]*|0) t=900;; esac;; esac
+  echo "$t"; }
+limit=$(runlimit)
+# poll resolution and its tick count; the count rounds up so a run is never cut before $limit
+tick=$(awk -v t="${VERIFY_TICK:-1}" 'BEGIN { if (t + 0 >= 0.01) printf "%g", t; else printf "1" }')
+ticks=$(awk -v l="$limit" -v t="$tick" 'BEGIN { n = int(l / t); if (n * t < l) n++; if (n < 1) n = 1; printf "%d", n }')
+
+# run under a watchdog: the command gets its own process group; past the limit TERM it,
+# then KILL after 1s and record the timeout (pattern: stop_session and cleanup in bin/spawn; there is no `timeout` on macOS)
+# the 1s ticks let a finished run stop the watchdog without killing it, so no job message leaks to stderr
+runlog() { local outf rpid wpid
+  outf=$(mktemp "$rundir/out.XXXXXX"); rm -f "$rundir/stop"; : > "$rundir/fired"
+  perl -e 'setpgrp(0,0); exec @ARGV or exit 127' -- "$run" "$@" > "$outf" 2>&1 & # setpgrp makes the run killable as one group
+  rpid=$!; run_pid=$rpid
+  ( n=0; while [ ! -f "$rundir/stop" ] && [ "$n" -lt "$ticks" ]; do sleep "$tick"; n=$((n+1)); done # pitfall-ok: decimal-arith tick counter, always decimal
+    [ -f "$rundir/stop" ] && exit 0
+    echo timeout >> "$rundir/fired"
+    kill -TERM -- "-$rpid" 2>/dev/null; sleep 1; kill -KILL -- "-$rpid" 2>/dev/null ) 2>/dev/null & wpid=$! # its killed sleep must not print a job message
+  watch_pid=$wpid
+  wait "$rpid" 2>/dev/null; rc=$?; run_pid=
+  : > "$rundir/stop"; wait "$wpid" 2>/dev/null; watch_pid=
+  [ -s "$rundir/fired" ] && cant "timeout after ${limit}s" # TERM, 1s, KILL all happened: no leftovers
+  evidence=$(sed -n 's/.*log=//p' "$outf" | head -1); }
+
+tree=$(tree_id) || cant "cannot compute the tree id"
+base_commit || cant "no base ref resolves (no start commit for this task, no origin/main, main, origin/master or master)"
+base_tree=$(git rev-parse "$base^{tree}") || cant "cannot read the base tree"
+
+if [ "$tree" = "$base_tree" ]; then tier=nodiff; pass_if_unchanged; fi
+tier=light
+while IFS= read -r -d '' p; do
+  case $p in README.md|docs/*) ;; *) tier=full; break;; esac
+done < <(git diff-tree -r --no-renames --name-only -z "$base_tree" "$tree")
+
+if [ "$tier" = light ]; then
+  [ -x bin/lint-budget ] && [ -x tests/pitfalls.test.sh ] || cant "light tier tool missing (bin/lint-budget or tests/pitfalls.test.sh)"
+  trip=$(mktemp -d) # tripwire and call log are relative to the run, removed with rundir
+  printf '#!/usr/bin/env bash\necho "herdr $*" >> "$DEVKIT_TRIPWIRE_LOG"\nexit 127\n' > "$trip/herdr"; chmod +x "$trip/herdr"
+  : > "$trip/calls"
+  DEVKIT_TRIPWIRE_LOG="$trip/calls" PATH="$trip:$PATH" runlog sh -c 'bin/lint-budget && tests/pitfalls.test.sh'
+  [ -s "$trip/calls" ] && finish fail 1 "tripwire: real herdr called"
+  case $rc in 0) pass_if_unchanged;; 1) finish fail 1 "light checks failed";; *) cant "light checks crashed (exit $rc)";; esac
+fi
+
+[ -x tests/run-all.sh ] || cant "tests/run-all.sh missing"
+runlog tests/run-all.sh
+log=$evidence; [ -f "$log" ] || cant "no run log"
+suite_ev=$evidence # the suite log is the pass evidence; a silent scanner would leave an empty log
+# suite lines end in "<N>s"; fields: name, summary..., seconds
+suites=$(grep -E ' [0-9]+s$' "$log" | awk '{print $1, $NF}' | sed 's/s$//')
+case $rc in 0|1) ;; *) cant "run-all crashed (exit $rc)";; esac
+[ -n "$suites" ] || cant "unparsable run-all output (no per-suite seconds)"
+
+if [ $rc -ne 0 ]; then
+  failed=$(grep -E ' [0-9]+s$' "$log" | grep -v ' 0 failed' | awk '{print $1}')
+  [ -n "$failed" ] || finish fail 1 "run-all failed outside a suite"
+  flaky=; hard=
+  for s in $failed; do
+    [ -x "tests/$s" ] || { hard="$hard $s"; continue; }
+    runlog "tests/$s"; if [ $rc -eq 0 ]; then flaky="$flaky $s"; else hard="$hard $s"; fi
+  done
+  [ -z "$hard" ] || finish fail 1 "failed:${hard}"
+  finish fail 1 "flaky:${flaky}"
+fi
+
+# The base commit's scanner is the one that counts: a neutered working copy must not pass itself.
+# s5a adds `verify base-commit` (the task-start base); this falls back to the old merge-base rule when it is absent.
+scan_commit() { "$here/verify" base-commit 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || git merge-base HEAD origin/master 2>/dev/null || git merge-base HEAD master 2>/dev/null; }
+scanner=
+if c=$(scan_commit) && [ -n "$c" ] && git cat-file -e "$c:bin/verify-scan" 2>/dev/null; then
+  scanner="$rundir/verify-scan.base"; git show "$c:bin/verify-scan" > "$scanner" || cant "cannot read the base scanner"; chmod +x "$scanner"
+elif [ -x bin/verify-scan ]; then scanner=bin/verify-scan
+fi
+if [ -n "$scanner" ]; then
+  runlog "$scanner"
+  case $rc in 0) evidence=$suite_ev;; 1) finish fail 1 "scan found problems";; *) cant "verify-scan crashed (exit $rc)";; esac
+fi
+
+budget=${VERIFY_BUDGET:-$here/verify.budget}
+if [ -f "$budget" ]; then
+  file_max=$(sed -n 's/^suite_file_s=//p' "$budget" | head -1); total_max=$(sed -n 's/^suite_total_s=//p' "$budget" | head -1)
+  case $file_max$total_max in ''|*[!0-9]*) cant "unparsable budget file $budget";; esac
+  [ -n "$file_max" ] && [ -n "$total_max" ] || cant "unparsable budget file $budget"
+  total=0
+  while read -r name secs; do
+    total=$((total+secs)) # pitfall-ok: decimal-arith run-all prints $((SECONDS-start)), never zero-padded
+    [ "$secs" -le "$file_max" ] || finish fail 1 "slow: $name ${secs}s > ${file_max}s"
+  done <<< "$suites"
+  [ "$total" -le "$total_max" ] || finish fail 1 "slow: total ${total}s > ${total_max}s"
+else echo "verify: no budget file at $budget, slow check skipped" >&2; fi
+pass_if_unchanged

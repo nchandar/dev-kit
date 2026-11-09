@@ -3,9 +3,12 @@
 set -u
 unset DEVKIT_DEPTH  # a worker running this suite must still be able to start fixture tasks
 unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak into scratch repos
-here=$(cd "$(dirname "$0")/.." && pwd); rec="$here/bin/reconcile"; ledger="$here/bin/ledger"
+here=$(cd "$(dirname "$0")/.." && pwd); rec="$here/bin/reconcile"; ledger="$here/bin/ledger"; verify="$here/bin/verify"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i
 unset DEVKIT_DIR DEVKIT_TASK
@@ -16,7 +19,7 @@ ok "no tasks: friendly message, exit 0"    '[ $rc -eq 0 ] && echo "$out" | grep 
 
 A=$("$ledger" start feat-a "x"); B=$("$ledger" start bug-b "y"); C=$("$ledger" start old-c "z")
 "$ledger" -t "$A" plan "split into 3 slices" why
-"$ledger" -t "$C" done "shipped"
+gate_pass "$C"; "$ledger" -t "$C" done "shipped"
 out=$("$rec")
 ok "lists open tasks only, one line each"  '[ "$(echo "$out" | wc -l)" -eq 2 ] && echo "$out" | grep -q "$A" && echo "$out" | grep -q "$B" && ! echo "$out" | grep -q "$C"'
 ok "line shows last phase and decision"   'echo "$out" | grep "$A" | grep -q "plan: split into 3 slices"'
@@ -109,7 +112,7 @@ echo "running $$ 100" > "$GD/run/wc.status"; echo sess-A > "$GD/run/wc.session"
 ok "gate: live running worker blocks on an open task"  '"$rec" --gate --session sess-A | grep -q "wc running"'
 echo "done 0 100" > "$GD/run/wc.status"; "$ledger" -t "$G" spawn "wc done" cli=fake "" done
 ok "gate: finished unaccepted blocks on an open task"  '"$rec" --gate --session sess-A | grep -q "wc done, unaccepted"'
-"$ledger" -t "$G" done "shipped"
+gate_pass "$G"; "$ledger" -t "$G" done "shipped"
 out=$("$rec" --gate --session sess-A); rc=$?
 ok "gate: closed task, finished unaccepted stays clear" '[ $rc -eq 0 ] && [ -z "$out" ]'
 echo "running $$ 100" > "$GD/run/wc.status"
@@ -181,7 +184,7 @@ P=$("$ledger" start prune-closed "p"); PD=$("$ledger" -t "$P" path); mkdir -p "$
 echo sess-P > "$PD/run/pw.session"
 echo "done 0 100" > "$PD/run/pw.status"; echo r > "$PD/handoffs/pw.md"
 "$ledger" -t "$P" spawn "pw done" cli=fake "" done
-"$ledger" -t "$P" done "shipped"
+gate_pass "$P"; "$ledger" -t "$P" done "shipped"
 "$ledger" -t "$P" prune "w1 pruned" "worktree and branch removed" "/tmp/w1" pruned
 out=$("$rec")
 ok "prune: a pruned closed task is not listed as open"  '! echo "$out" | grep -q "$P"'
@@ -211,7 +214,7 @@ out=$(CLAUDE_CODE_SESSION_ID=$RS "$rec" -t "$EG" --gate); rc=$?
 ok "-t wins over the pointer"                      '[ $rc -eq 1 ] && echo "$out" | grep -q "eg running" && ! echo "$out" | grep -q "rp running"'
 env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$rec" --gate >/dev/null 2>"$t/rec-notask.err"; rc=$?
 ok "no pointer: the existing gate usage error"     '[ $rc -eq 2 ] && grep -q "reconcile --gate: pass --session S, -t ID or set DEVKIT_TASK" "$t/rec-notask.err"'
-"$ledger" -t "$EG" done "closed" >/dev/null 2>&1
+gate_pass "$EG"; "$ledger" -t "$EG" done "closed" >/dev/null 2>&1
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$RS "$rec" --gate 2>&1); rc=$?
 ok "closed pointer: the clear error names the task" '[ $rc -eq 2 ] && echo "$out" | grep -q "last task $EG is closed (or gone)"'
 rm -f "$RGD"/run/* "$EGD"/run/*

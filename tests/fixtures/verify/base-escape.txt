@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+ok "alpha holds" "true"
+false || true
+ok "beta holds" "true"

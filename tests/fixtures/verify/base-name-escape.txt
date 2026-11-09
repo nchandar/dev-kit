@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+ok "alpha holds" "true"
+ok "name: exit 0 here" "true"

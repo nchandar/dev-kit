@@ -6,9 +6,12 @@ unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak
 unset DEVKIT_MODEL DEVKIT_SAFE DEVKIT_DRYRUN DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_VIEW DEVKIT_VIEW_KEEP DEVKIT_VIEW_NOTIFY GIT_CONFIG_COUNT
 export DEVKIT_MODE=headless DEVKIT_VIEW=off
 for i in 0 1 2 3 4 5 6 7 8 9; do unset "GIT_CONFIG_KEY_$i" "GIT_CONFIG_VALUE_$i"; done
-here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"; ledger="$here/bin/ledger"; reconcile="$here/bin/reconcile"
+here=$(cd "$(dirname "$0")/.." && pwd); spawn="$here/bin/spawn"; ledger="$here/bin/ledger"; reconcile="$here/bin/reconcile"; verify="$here/bin/verify"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); live=
 cleanup() { [ -z "$live" ] || kill "$live" 2>/dev/null; rm -rf "$t"; }
 trap cleanup EXIT
@@ -112,7 +115,7 @@ ok "no pointer keeps the old message"                         '[ $rc -eq 2 ] && 
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune --yes 2>&1); rc=$?
 ok "--yes with only the pointer removes the pointed task's worker" '[ $rc -eq 0 ] && [ ! -e "$PPD/wt/pw1" ] && ! git rev-parse --verify -q refs/heads/devkit/$PP-pw1 >/dev/null && [ "$(grep -c "pw1 pruned" "$PPD/ledger.tsv")" -eq 1 ]'
 ok "--yes with only the pointer leaves another task's worker alone" '[ -d "$TD2/wt/ex1" ]'
-"$ledger" -t "$PP" done "closed" >/dev/null 2>&1
+gate_pass "$PP"; "$ledger" -t "$PP" done "closed" >/dev/null 2>&1
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PSS "$spawn" --prune 2>&1); rc=$?
 ok "a closed pointer gives the clear message naming the task" '[ $rc -eq 2 ] && printf "%s\n" "$out" | grep -q "last task $PP is closed (or gone)"'
 

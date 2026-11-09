@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")/.." && pwd); run="$here/bin/run"; ledger="$here/bin/l
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
-cd "$t" && git init -q && unset DEVKIT_DIR
+cd "$t" && git init -q -b main && unset DEVKIT_DIR
 export DEVKIT_TASK=$("$ledger" start run-test x); TD=".devkit/tasks/$DEVKIT_TASK"
 
 out=$("$run" true); rc=$?
