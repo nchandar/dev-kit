@@ -26,7 +26,7 @@ gate_task() { # dir session-or-empty [closed=1]
     [ -s "$s" ] || continue # spawn writes the status file non-atomically; skip a half-written one
     read -r st pid _ < "$s"
     if [ -n "$want" ]; then sess=$(cat "$d/run/$id.session" 2>/dev/null); [ "$sess" = "$want" ] || continue; fi
-    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then echo "$id running  task=$tid"; continue; else st=killed; fi; fi
+    if [ "$st" = running ]; then if kill -0 "$pid" 2>/dev/null; then [ -e "$d/run/$id.detached" ] || echo "$id running  task=$tid"; continue; else st=killed; fi; fi
     [ -n "$closed" ] && continue # closed with done: only still-live running workers gate
     awk -F'\t' -v id="$id" '$2=="spawn"{split($3,w," "); if(w[1]==id && w[2]!="nudge" && w[2]!="scout") ex=NR} $2=="accept"{split($3,w," "); if(w[1]==id) ac=NR} END{exit (ac>ex && ac>0)?0:1}' "$d/ledger.tsv" || echo "$id $st, unaccepted  task=$tid"
   done; }

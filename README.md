@@ -69,7 +69,7 @@ Workers skip permission prompts but can never push.
 | `DEVKIT_IDLE_WAIT` | seconds an interactive worker may sit idle with no final handoff before spawn nudges it once; idle that long again fails the run; 0 disables |
 | `DEVKIT_MODEL` | model name for workers (cheaper runs) |
 | `DEVKIT_SAFE=1` | restricted worker permissions |
-| `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT`, `DEVKIT_STOP_TIMEOUT` | hung-worker timeout, live workers, nesting depth, nested slot wait, cap on the opencode session delete; defaults are in the ARCHITECTURE.md env table |
+| `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_LEADS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT`, `DEVKIT_STOP_TIMEOUT` | hung-worker timeout, live workers, live leads, nesting depth, nested slot wait, cap on the opencode session delete; defaults are in the ARCHITECTURE.md env table |
 
 ## Under the hood
 ![Detailed architecture](docs/architecture.svg)

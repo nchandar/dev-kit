@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one sub-agent to completion on any CLI. Brief in, handoff out. Blocks; caller may background with &.
-# Usage: bin/spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>
+# Usage: bin/spawn [--shape ship|scout] [--worktree] [--lead] [--model M] <id> <claude|codex|opencode> <brief-file>
 #        <id>: lowercase letter first, then lowercase letters, digits, - or _; 1-32 chars (herdr agent-name rule)
 #        bin/spawn [opts] --prompt "text" <id> <cli>        inline brief, saved to <task>/briefs/<id>.md
 #        bin/spawn --doctor                                  which CLIs are installed and still accept our flags
@@ -14,7 +14,15 @@
 #   The brief goes in <task>/briefs/<id>.prompt and the agent gets one line pointing at it; the handoff file is the only DONE signal. Headless stays the fallback.
 # Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env knobs (defaults in bin/defaults, table in ARCHITECTURE.md): DEVKIT_MAX_WORKERS (repo-wide), DEVKIT_MAX_DEPTH (nesting), DEVKIT_CHILD_WAIT (nested spawns only), DEVKIT_TIMEOUT (zero turns it off), plus DEVKIT_MODEL, DEVKIT_DRYRUN (print the command only), DEVKIT_DIR
 set -u
-here=$(dirname "$0")
+# bash reads a script as it runs, so editing this file (or checking out another branch under it) mid-run crashes a live spawn:
+# run from a private copy, unlinked at once (the open file stays readable); the env pair is consumed here so nested spawns freeze afresh
+if [ "${DEVKIT_SPAWN_FROZEN:-}" = "$0" ] && [ -n "${DEVKIT_SPAWN_HOME:-}" ]; then
+  here=$DEVKIT_SPAWN_HOME; rm -f "$0"; unset DEVKIT_SPAWN_FROZEN DEVKIT_SPAWN_HOME
+else
+  src=$(cd "$(dirname "$0")" && pwd) || exit 2
+  frozen=$(mktemp "${TMPDIR:-/tmp}/dk-spawn.XXXXXX") && cp "$0" "$frozen" || { echo "spawn: cannot freeze a copy of itself" >&2; exit 2; }
+  DEVKIT_SPAWN_FROZEN=$frozen DEVKIT_SPAWN_HOME=$src exec "${BASH:-bash}" "$frozen" "$@"
+fi
 . "$here/defaults" || { echo "spawn: cannot load $here/defaults" >&2; exit 2; }
 
 # flags each adapter relies on, checked against the CLI's own --help (catches version drift on a new machine)
@@ -99,12 +107,13 @@ if [ "${1:-}" = --prune ]; then # remove accepted workers' worktrees; dry run un
   exit 0
 fi
 
-shape=ship; wt=0; model=${DEVKIT_MODEL:-}; inline=
+shape=ship; wt=0; lead=0; model=${DEVKIT_MODEL:-}; inline=
 while [ $# -gt 0 ]; do case $1 in
-  --shape) shape=${2-}; shift 2;; --worktree) wt=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
+  --shape) shape=${2-}; shift 2;; --worktree) wt=1; shift;; --lead) lead=1; shift;; --model) model=$2; shift 2;; --prompt) inline=$2; shift 2;; *) break;; esac; done
 case $shape in ship|scout) ;; *) echo "spawn: --shape must be ship or scout" >&2; exit 2;; esac
+[ "$lead" -eq 0 ] || wt=1 # a lead can never share the main checkout
 want=3; [ -n "$inline" ] && want=2
-[ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
+[ $# -eq $want ] || { echo "usage: spawn [--shape ship|scout] [--worktree] [--lead] [--model M] <id> <cli> <brief-file|--prompt text>" >&2; exit 2; }
 id=$1 cli=$2 brief=${3:-}
 # the id names the herdr agent, branch, run files and handoff; herdr rejects anything else only after launch
 # explicit letters: [a-z] ranges match uppercase in some locales
@@ -126,6 +135,8 @@ root=$(pwd -P); CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
 case $CAP in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_WORKERS must be a whole number" >&2; exit 2;; esac
 [ "$CAP" -ge 1 ] || { echo "spawn: DEVKIT_MAX_WORKERS must be at least 1" >&2; exit 2; }
 case $DEVKIT_CHILD_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_CHILD_WAIT must be a whole number" >&2; exit 2;; esac
+case $DEVKIT_MAX_LEADS in ''|*[!0-9]*) echo "spawn: DEVKIT_MAX_LEADS must be a whole number" >&2; exit 2;; esac
+[ "$DEVKIT_MAX_LEADS" -ge 1 ] || { echo "spawn: DEVKIT_MAX_LEADS must be at least 1" >&2; exit 2; }
 case $TMO in ''|*[!0-9]*) echo "spawn: DEVKIT_TIMEOUT must be a whole number" >&2; exit 2;; esac
 STOPTMO=$DEVKIT_STOP_TIMEOUT
 case $STOPTMO in ''|*[!0-9]*) echo "spawn: DEVKIT_STOP_TIMEOUT must be a whole number" >&2; exit 2;; esac
@@ -183,7 +194,8 @@ make_prompt() { local spawnrule="Do not spawn agents" wtrule=
   [ $wt = 0 ] || wtrule="
 Your working directory is $T/wt/$id. Edit and commit ONLY inside it, with relative paths; run pwd and git rev-parse --abbrev-ref HEAD first; the main checkout at $root is read-only for you."
   echo "FIRST ACTION, before any other tool call: read $(cd "$here/.." && pwd)/skills/$(worker_route "$1")/SKILL.md by path and open its Checklist verbatim in your host todo list (TaskCreate, TodoWrite, update_plan or todowrite, whichever you have; if the tool is deferred, load it with ToolSearch first) so it shows in your side panel. Mark the current step in_progress, tick each item as you finish it; a skipped item stays listed with a reason. Only then start the work below.
-You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only: never run 'bin/ledger done'; the parent closes the task. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf$wtrule
+You are dev-kit sub-agent '$id' (shape: $shape). Read AGENTS.md. Your task is '$task' (DEVKIT_TASK is set): log with bin/ledger only: never run 'bin/ledger done'; the parent closes the task. Do not start a new task or contact other workers. $spawnrule. Never git push, open PRs, or publish anything; only the main agent asks the user. Change only what the brief needs$( [ $shape = scout ] && echo '; this is a scout: change NO code, report only'). When finished, write your handoff (result PASS|ISSUES|BLOCKED, evidence, files changed, open questions, next step, learnings: any reusable lesson, each with a pointer) to this absolute path: $hf
+Before each slice and again before your handoff, read $T/updates/$id.md if it exists: it holds corrections from the main agent. Follow them and list each update and what you did about it in the handoff.$wtrule
 
 Route: $(worker_route "$1") (the checklist above). The brief's scope and non-goals override the playbook where they conflict. End your handoff with a '## Checklist' section copying every item as [x] done, [-] skipped (reason) or [ ] open.
 
@@ -203,7 +215,7 @@ set_guard() { local gn r # $1=workdir
 qesc() { local v=${1//\\/\\\\}; printf '%s' "${v//\"/\\\"}"; } # backslash and quote escaping for JSON and TOML strings
 # the pane's shell belongs to herdr, so spawn's own exports never reach the worker: pass them through tab create --env
 build_ienv() { local k i n; ienv=(--env "DEVKIT_TASK=$task" --env "DEVKIT_DEPTH=$DEVKIT_DEPTH" --env "DEVKIT_DIR=$H")
-  for k in DEVKIT_MAX_WORKERS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_MODE DEVKIT_SAFE DEVKIT_MODEL; do [ -z "${!k:-}" ] || ienv+=(--env "$k=${!k}"); done
+  for k in DEVKIT_MAX_WORKERS DEVKIT_MAX_LEADS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_MODE DEVKIT_SAFE DEVKIT_MODEL; do [ -z "${!k:-}" ] || ienv+=(--env "$k=${!k}"); done
   [ "$cli" != claude ] || ienv+=(--env "CLAUDE_CODE_ENABLE_TODO_TOOLS=1") # without it a worker claude has no TaskCreate/TodoWrite, so no checklist panel
   [ "$cli" != opencode ] || [ -z "$model" ] || ienv+=(--env "OPENCODE_CONFIG_CONTENT={\"model\":\"$(qesc "$model")\"}")
   n=$((10#${GIT_CONFIG_COUNT:-0})); [ "$n" -eq 0 ] || ienv+=(--env "GIT_CONFIG_COUNT=$n")
@@ -254,7 +266,36 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 if [ -f "$st" ]; then read -r sst spid _ < "$st" 2>/dev/null || true; else sst= spid=; fi
 if [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null; then echo "spawn: $id is already running (pid $spid); pick another id" >&2; exit 2; fi
 [ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
+# leads run for hours and each owns a worktree: bound them repo-wide (a live lead = a detached marker with a running status whose pid answers)
+# note: two leads spawned in the same instant can both pass this check
+if [ "$lead" -eq 1 ]; then
+  nlead=0
+  for df in "$H"/tasks/*/run/*.detached; do [ -f "$df" ] || continue
+    lst= lpid=; read -r lst lpid _ < "${df%.detached}.status" 2>/dev/null || true
+    [ "$df" != "$T/run/$id.detached" ] || continue
+    [ "${lst:-}" = running ] && [ -n "${lpid:-}" ] && kill -0 "$lpid" 2>/dev/null && nlead=$((nlead+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  if [ "$nlead" -ge "$DEVKIT_MAX_LEADS" ]; then echo "spawn: $nlead live lead(s) already, at the limit DEVKIT_MAX_LEADS=$DEVKIT_MAX_LEADS; wait for one to finish or raise it" >&2; exit 4; fi
+fi
 
+# owned paths: a column-0 `owns: a b` line (outside code fences) is recorded; an overlap with a live lead is a WARN, never a refusal
+owns=$(brieftext | awk '/^```/{f=!f; next} !f && /^owns:/{sub(/^owns:[[:space:]]*/,""); print}' | tr -s ' \t\n' ' ' | sed 's/^ //; s/ $//')
+norm=; for o in $owns; do while [ "${o%/}" != "$o" ]; do o=${o%/}; done; norm="$norm $o"; done; owns=${norm# } # trailing slashes would hide a prefix match
+rm -f "$T/run/$id.owns"
+if [ -n "$owns" ]; then
+  for of in "$H"/tasks/*/run/*.owns; do [ -f "$of" ] || continue
+    oid=${of##*/}; oid=${oid%.owns}; ob=${of%.owns}
+    [ -f "$ob.detached" ] && [ "$of" != "$T/run/$id.owns" ] || continue
+    ost= opid=; read -r ost opid _ < "$ob.status" 2>/dev/null || true
+    [ "${ost:-}" = running ] && [ -n "${opid:-}" ] && kill -0 "$opid" 2>/dev/null || continue
+    for a in $owns; do for b in $(cat "$of"); do
+      case "$a/" in "$b"/*) hit=$b;; *) case "$b/" in "$a"/*) hit=$a;; *) hit=;; esac;; esac
+      [ -z "$hit" ] || { echo "spawn: WARN $id owns '$a' which overlaps '$b' owned by live lead $oid; coordinate or expect merge conflicts" >&2
+        "$here/ledger" -t "$task" spawn "$id owns-overlap" "'$a' overlaps '$b' of lead $oid" "$of" warning 2>/dev/null || true; }
+    done; done
+  done
+  echo "$owns" > "$T/run/$id.owns"
+fi
 # concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead/reused pid, no pid after 1s) are reclaimed under a per-slot lock
 slot=
 slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching start time, or (kill -9 of spawn) its worker still runs
@@ -343,10 +384,14 @@ if [ $wt = 1 ]; then
   else
     git worktree remove --force "$wd" 2>/dev/null || rm -rf "$wd"
     git worktree add -q "$wd" -b "$br" 2>/dev/null || git worktree add -q "$wd" "$br" || { echo "spawn: worktree failed" >&2; exit 1; }
+    # the commit the lead started from; only a fresh worktree sets it, a respawn keeps the original
+    [ "$lead" -eq 0 ] || git -C "$wd" rev-parse HEAD > "$T/run/$id.base" 2>/dev/null || true
   fi
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 # the parent Stop hook matches workers to their session; a respawn must not keep a stale id
+# a lead runs long on its own; the Stop hook skips it while it lives, never after it exits (a stale marker must not outlive a respawn)
+rm -f "$T/run/$id.detached"; [ "$lead" -eq 0 ] || : > "$T/run/$id.detached"
 rm -f "$T/run/$id.session"; [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] || echo "$CLAUDE_CODE_SESSION_ID" > "$T/run/$id.session" 2>/dev/null || true
 # HEAD plus content hashes of tracked changes and untracked files, so commits and repeat edits show up too
 snap() { { git -C "$wd" rev-parse HEAD 2>/dev/null; git -C "$wd" diff HEAD -- . ':(exclude).devkit' 2>/dev/null

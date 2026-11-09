@@ -63,7 +63,8 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
 
 ### 3.4 spawn (`bin/spawn`)
 - Purpose: run one sub-agent on any CLI (a herdr tab TUI when herdr is up, else headless), brief in, handoff out. Blocks; the caller backgrounds it.
-- Usage: `spawn [--shape ship|scout] [--worktree] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
+- Usage: `spawn [--shape ship|scout] [--worktree] [--lead] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
+- Updates file: every worker prompt tells the worker to read `<task>/updates/<id>.md` before each slice and before its handoff, so the main agent changes a running worker's scope by appending a line, with no interrupt and no approval prompt. A cross-session message is for urgent interrupts only; a worker in another permission mode holds it until the user approves it.
 - Also: `--doctor` (CLIs installed, adapter flags still valid), `--close-views` (close kept herdr tabs).
 - Herdr view: when herdr is up, the tab tails the worker log. The opencode adapter names its session (`ses_dk_*`) and the tab attaches to it with `opencode -s <id>` instead, so the new tab runs the agent; a session that never appears falls back to the log tail.
 - Interactive (`DEVKIT_MODE`, default `auto`): with herdr up and a real CLI (claude, codex, opencode; never `fake`, never `DEVKIT_VIEW=off`), the worker is the normal TUI in a herdr tab, so its todo or plan panel shows. Flow: `tab create --env` (depth, task, dir, push-guard pair and set knobs; the pane shell is herdr's, so spawn's exports do not reach it) then `agent start <id> --kind <cli> -- <flags>` then one `agent prompt` line "Read <task>/briefs/<id>.prompt and follow it". No `-p`, `exec` or `run`.
@@ -97,7 +98,7 @@ sequenceDiagram
 
 - States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed HEAD, tracked content or untracked files outside `.devkit/`; checked by content hash, so commits and repeat edits count).
 - Interrupt (INT, TERM, HUP): spawn stops the worker and its children, closes the herdr tab (or records it under `DEVKIT_VIEW_KEEP`), frees the slot, and writes `killed` to the status and the ledger.
-- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives. A `kill -9` of spawn runs no cleanup: the slot stays counted while the worker lives (the slot records the worker pid), and the worker is stopped by the timeout guard.
+- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives. `bin/spawn` re-executes itself from a private copy (`$TMPDIR/dk-spawn.*`, unlinked at start) so editing the script or switching the main checkout's branch mid-run cannot crash a live spawn; the copy reads `bin/defaults` and `bin/ledger` from the original dir. A `kill -9` of spawn runs no cleanup: the slot stays counted while the worker lives (the slot records the worker pid), and the worker is stopped by the timeout guard.
 
 Defaults live in `bin/defaults` (an env var of the same name overrides it); `tests/defaults.test.sh` keeps this table equal to them.
 
@@ -105,8 +106,10 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 |---|---|---|
 | `--shape` | `ship` | `scout` adds "change NO code" to the prompt and checks the tree after |
 | `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `devkit/<task>-<id>` |
+| `--lead` | off | Long-lived lead: implies `--worktree`, writes `run/<id>.detached` and (fresh worktree only) `run/<id>.base`, the commit it started from |
 | `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
-| `DEVKIT_MAX_WORKERS` | 10 | Slot count, repo-wide; extras wait, stale slots (dead/reused pid, no pid after 1s) reclaimed under a per-slot mkdir lock (5s expiry) with a start-time check against pid reuse |
+| `DEVKIT_MAX_WORKERS` | auto | Slot count, repo-wide; auto means min(3 x cores, RAM in GB) within 4..64, or 10 when the machine cannot be read (`DEVKIT_CORES` and `DEVKIT_RAM_GB` override detection, e.g. for a container RAM limit): one pool shared by leads and their helpers, first come first served (no per-lead budget); a nested spawn past the pool waits `DEVKIT_CHILD_WAIT` then exits 4; extras wait, stale slots (dead/reused pid, no pid after 1s) reclaimed under a per-slot mkdir lock (5s expiry) with a start-time check against pid reuse |
+| `DEVKIT_MAX_LEADS` | auto | Live `--lead` workers, repo-wide; auto means at most half the worker pool and at most 10 (at least 1); a `--lead` spawn past it exits 4 with a message (counted from `run/<id>.detached` plus a running status, so leads of other tasks count too) |
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
 | `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
@@ -163,6 +166,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Budget: 3 blocks in a row (under Claude's cap of 8), then fail-open with a stderr warning and a ledger row `gate fail-open`; the counter resets when the gate clears. Anything unexpected also fails open with a stderr line: no executable `ledger` beside the script (symlinked file), malformed input or no `session_id`, a `session_id` outside `A-Za-z0-9_-`, or `reconcile --gate` exiting other than 1. The ledger row goes to every task with outstanding workers.
 - Scoping: `bin/spawn` writes `run/<id>.session` from `CLAUDE_CODE_SESSION_ID`; the hook's `session_id` selects only that session's workers.
 - Workers of tasks already closed with `done` are not gated, except one that is still running (pid alive): `reconcile --gate --session S` reports it so the Stop hook holds.
+- `bin/spawn --lead` writes `run/<id>.detached`: `reconcile --gate` skips that worker while its pid lives, so a long-running lead does not block the parent's turns. `ledger accept "<id> accepted"` for a lead refuses (exit 5) unless its branch `devkit/<task>-<id>` contains the tip of the repo's default branch (`origin/HEAD` when set, else `main`, else `master`; `git merge-base --is-ancestor`); the message says how many commits behind and to rebase, and `rejected` rows are never checked. Once it exits (done, failed, killed, or by the `DEVKIT_TIMEOUT` guard) it needs an `accept` row like any worker; the task line and `reconcile <task>` still show it, but `--gate` and `--wait` skip it while it lives (so `--wait` returns at once; poll the task line to watch a lead), and a respawn without `--lead` removes the marker.
 - Claude only; other CLIs rely on spawn's exit row and `bin/reconcile`. Workers are exempt (`DEVKIT_DEPTH` set).
 - Wiring: `install.sh` prints the hook snippet; the user merges it into `~/.claude/settings.json`.
 

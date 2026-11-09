@@ -31,6 +31,7 @@ chmod +x "$t/fake"; export DEVKIT_FAKE="$t/fake"
 out=$(DEVKIT_DRYRUN=1 "$spawn" --worktree pw fake "$t/brief.md")
 ok "worktree prompt: the real worktree path, relative paths only" 'printf "%s\n" "$out" | grep -qF "/tasks/$TA/wt/pw. Edit and commit ONLY inside it, with relative paths"'
 ok "worktree prompt: the real main root is read-only" 'printf "%s\n" "$out" | grep -qF "the main checkout at $tp is read-only for you"'
+ok "prompt: the worker reads its updates file before each slice and before the handoff" 'printf "%s\n" "$out" | grep -qF "/tasks/$TA/updates/pw.md" && printf "%s\n" "$out" | grep -qF "Before each slice"'
 ok "worktree prompt: it asks for pwd and the branch first" 'printf "%s\n" "$out" | grep -qF "run pwd and git rev-parse --abbrev-ref HEAD first"'
 out=$(DEVKIT_DRYRUN=1 "$spawn" npw fake "$t/brief.md")
 ok "no --worktree: the prompt rule is unchanged" '! printf "%s\n" "$out" | grep -qF "Your working directory is"'
