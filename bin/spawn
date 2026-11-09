@@ -119,6 +119,7 @@ depth=$((10#$depth)); MAXD=$((10#$MAXD)) # force decimal: 08/09 are not octal
 case $cli in claude|codex|opencode|fake) ;; *) echo "spawn: unknown cli '$cli'" >&2; exit 2;; esac
 case $DEVKIT_MODE in auto|interactive|headless) ;; *) echo "spawn: DEVKIT_MODE must be auto, interactive or headless" >&2; exit 2;; esac
 case $DEVKIT_NUDGE_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_NUDGE_WAIT must be a whole number of seconds" >&2; exit 2;; esac
+case $DEVKIT_IDLE_WAIT in ''|*[!0-9]*) echo "spawn: DEVKIT_IDLE_WAIT must be a whole number of seconds" >&2; exit 2;; esac
 [ -n "$inline" ] || [ -r "$brief" ] || { echo "spawn: cannot read brief $brief" >&2; exit 2; }
 
 root=$(pwd -P); CAP=$DEVKIT_MAX_WORKERS; TMO=$DEVKIT_TIMEOUT
@@ -231,7 +232,7 @@ ipanes() { # $1=workdir $2=pane id -> tabargs, startargs, promptargs
 todorule="FIRST ACTION, before any other tool call: open the checklist from that file in your host todo list (TaskCreate, TodoWrite, update_plan or todowrite)."
 # glyphs and boxes a CLI draws for a task list; plain words would match our own echoed prompt
 todoseen='☐|☒|◼|◻|▢|\[[ x~-]\] |Todos'
-nudged=0
+nudged=0; idlenudged=0; idle_since=0
 
 # herdr view or interactive mode needs a live herdr; an explicit interactive request must not silently run headless
 view=0; imode=0; ilist=" claude codex opencode "
@@ -432,10 +433,26 @@ if [ $imode = 1 ]; then
   fi
   # an errored agent get is "still working" unless the pane is gone: a flaky call must not end the run on a partial handoff
   idle_agent() { local o; if o=$(herdr agent get "$id" 2>/dev/null); then ! printf '%s' "$o" | grep -q '"agent_status": *"working"'; else ! herdr pane get "$vpane" >/dev/null 2>&1; fi; }
+  # the idle guard counts only idle or done: blocked (a dialog waits for a person) and unknown are never nudged, and an errored get is not idle
+  quit_agent() { local o; o=$(herdr agent get "$id" 2>/dev/null) || return 1; printf '%s' "$o" | grep -qE '"agent_status": *"(idle|done)"'; }
   t0=$(date +%s); gone=0; agone=0
   while [ -z "$istate" ]; do
-    # done = a handoff that ends with its ## Checklist, or any handoff once the agent stops working; an early partial handoff keeps the run open
-    if [ -s "$hf" ] && { grep -q '^## Checklist' "$hf" || idle_agent; }; then sleep "$DEVKIT_GRACE"; istate=done; break; fi # grace: the worker may still be writing
+    # done = a handoff that ends with its ## Checklist; an early partial handoff keeps the run open
+    # (DEVKIT_IDLE_WAIT=0 also takes any handoff once the agent stops working, the old rule)
+    if [ -s "$hf" ] && { grep -q '^## Checklist' "$hf" || { [ "$DEVKIT_IDLE_WAIT" -le 0 ] && idle_agent; }; }; then sleep "$DEVKIT_GRACE"; istate=done; break; fi # grace: the worker may still be writing
+    # an idle agent with no final handoff has quit early: nudge once, then fail rather than wait out the timeout
+    if [ "$DEVKIT_IDLE_WAIT" -gt 0 ]; then
+      if quit_agent; then
+        now=$(date +%s); [ "$idle_since" -gt 0 ] || idle_since=$now
+        if [ $(( now - idle_since )) -ge "$DEVKIT_IDLE_WAIT" ]; then # pitfall-ok: decimal-arith epoch seconds are decimal
+          if [ "$idlenudged" = 0 ]; then
+            idlenudged=1; idle_since=$now
+            herdr agent prompt "$id" "You stopped without a final handoff. Finish the work, then write your handoff, ending with its ## Checklist section, to $hf." >/dev/null 2>&1
+            "$here/ledger" -t "$task" spawn "$id nudge" "idle ${DEVKIT_IDLE_WAIT}s with no final handoff; asked the worker to finish" "$hf" nudged 2>/dev/null || true
+          else istate=failed; ireason="idle without final handoff (idle ${DEVKIT_IDLE_WAIT}s after a nudge)"; break; fi
+        fi
+      else idle_since=0; fi
+    fi
     if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     if [ "$nudged" = 0 ] && [ "$DEVKIT_NUDGE_WAIT" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$DEVKIT_NUDGE_WAIT" ]; then # pitfall-ok: decimal-arith epoch seconds are decimal
       nudged=1 # once only: a second nudge would read as noise to a busy agent
@@ -453,7 +470,8 @@ if [ $imode = 1 ]; then
     fi
     sleep "$DEVKIT_POLL"
   done
-  [ "$istate" = done ] || [ -s "$hf" ] || { echo "$ireason"; herdr pane read --lines 20 "$vpane" 2>/dev/null; } > "$log"
+  [ "$istate" = done ] || [ -s "$hf" ] || { herdr pane read --lines 20 "$vpane" 2>/dev/null; echo "$ireason"; } > "$log" # reason last: the handoff keeps only the log tail
+  [ "$istate" = done ] || [ ! -s "$hf" ] || [ -z "$ireason" ] || echo "$ireason" >> "$log" # a kept draft still gets the reason on record
   [ "$istate" = done ] || rc=1
 else
 # own process group (set -m, only for this launch) so timeout and interrupt can signal the whole tree with kill -- -$wpid
