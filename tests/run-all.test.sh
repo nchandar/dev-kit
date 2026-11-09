@@ -149,6 +149,8 @@ ctl="$t/order-ctl"; mkweighted "$ctl"
 DEVKIT_TEST_JOBS=2 "$ctl/tests/run-all.sh" >/dev/null 2>&1
 ok "weights control: without a weights file the lightest suite (glob order first) starts at once" '[ "$(cat "$ctl/light.seen" 2>/dev/null)" -eq 0 ]'
 
+# bash 3.2 prints "child setpgid ... Operation not permitted" when a job-controlled child exits before the parent places it in its group (seen under load); silence it at each launch
+ok "set -m launches are wrapped so a setpgid message cannot reach the output" '[ "$(awk "/^[[:space:]]*set -m/{f=1;next} /^[[:space:]]*set \\+m/{f=0} f && /&\$/ && !/2>\/dev\/null/{n++} END{print n+0}" "$here/tests/run-all.sh")" -eq 0 ]'
 eq="$t/eq"; mkcase "$eq"; mkpass "$eq/tests/fake-a.test.sh"; mkfail "$eq/tests/fake-b.test.sh"; mkcrash "$eq/tests/fake-c.test.sh"
 eq1=$(DEVKIT_TEST_JOBS=1 "$eq/tests/run-all.sh" 2>&1); er1=$?
 eq4=$(DEVKIT_TEST_JOBS=4 "$eq/tests/run-all.sh" 2>&1); er4=$?

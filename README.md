@@ -66,6 +66,7 @@ Workers skip permission prompts but can never push.
 | `DEVKIT_MODE` | `auto` runs claude, codex and opencode as their interactive TUI in a herdr tab when herdr is up; `headless` forces `-p`; `interactive` fails (exit 2) without herdr |
 | `DEVKIT_POLL`, `DEVKIT_GRACE` | seconds between handoff checks in interactive mode (2); seconds a worker may keep writing after its handoff appears (10) |
 | `DEVKIT_NUDGE_WAIT` | seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (20); 0 disables |
+| `DEVKIT_IDLE_WAIT` | seconds an interactive worker may sit idle with no final handoff before spawn nudges it once; idle that long again fails the run; 0 disables |
 | `DEVKIT_MODEL` | model name for workers (cheaper runs) |
 | `DEVKIT_SAFE=1` | restricted worker permissions |
 | `DEVKIT_TIMEOUT`, `DEVKIT_MAX_WORKERS`, `DEVKIT_MAX_DEPTH`, `DEVKIT_CHILD_WAIT`, `DEVKIT_STOP_TIMEOUT` | hung-worker timeout, live workers, nesting depth, nested slot wait, cap on the opencode session delete; defaults are in the ARCHITECTURE.md env table |
