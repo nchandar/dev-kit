@@ -31,4 +31,26 @@ ok "model-check: chart at 2 workers, check at 3, 500 states" "grep -q 'chart at 
 ok "model-check: every rule fails on a broken variant" "grep -qi 'broken variant' $m"
 ok "model-check: never weaken a rule"                "grep -qi 'never weaken' $m"
 ok "model-check: a finding needs a replay on real code" "grep -qi replay $m && grep -qi 'real code' $m"
+
+# R3: the explicit-only skill
+s=skills/dev-model-check/SKILL.md
+ok "skill exists, at most 150 lines"                 "[ -f $s ] && [ \$(wc -l < $s) -le 150 ]"
+ok "skill is explicit-only and named dev-model-check" "grep -q '^name: dev-model-check$' $s && grep -q '^disable-model-invocation: true$' $s"
+ok "skill description is one line starting Use when" "grep -q '^description: Use when' $s && [ \$(grep -c '^description:' $s) -eq 1 ]"
+ok "skill has the five required sections"            "for h in 'When to Use' Checklist Rationalizations 'Red Flags' Verification; do grep -q \"^## \$h\" $s || exit 1; done"
+ok "skill reads both deep files and library/state"   "grep -q 'library/deep/model-check' $s && grep -q 'library/deep/verify-sync' $s && grep -q 'library/state' $s"
+ok "skill opens the host todo list"                  "grep -q 'host todo list' $s"
+ok "skill mentions bin/ledger"                       "grep -q 'bin/ledger' $s"
+ok "skill: no outside references"                    "! grep -Eq '\.\./|references/' $s"
+
+# R4: wiring, no new route, install link
+ok "README lists dev-model-check"                    "grep -q 'dev-model-check' README.md"
+ok "CONTRIBUTING mentions dev-model-check"           "grep -q 'dev-model-check' CONTRIBUTING.md"
+ok "ARCHITECTURE mentions dev-model-check"           "grep -q 'dev-model-check' ARCHITECTURE.md"
+ok "AGENTS.md and CLAUDE.md mention dev-model-check" "grep -q 'dev-model-check' AGENTS.md && grep -q 'dev-model-check' CLAUDE.md"
+ok "dev-feature Reads points at model-check"         "grep -q 'dev-model-check' skills/dev-feature/SKILL.md"
+ok "no new route: dev-mode stays unaware"            "! grep -q 'model-check' skills/dev-mode/SKILL.md"
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+HOME="$t" ./install.sh >/dev/null 2>&1
+ok "install.sh links dev-model-check for every CLI"  '[ -f "$t/.claude/skills/dev-model-check/SKILL.md" ] && [ -f "$t/.codex/skills/dev-model-check/SKILL.md" ] && [ -f "$t/.agents/skills/dev-model-check/SKILL.md" ]'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

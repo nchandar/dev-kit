@@ -26,6 +26,7 @@ Ask in plain words and run `/dev-mode`, which picks the playbook. Name one to sk
 | `dev-spawn` | "open a codex instance and run X" | one worker per task (interactive herdr tab, headless fallback) on claude, codex or opencode | a short handoff with evidence |
 | `dev-eval` | "did that skill change help?" | blind candidate runs, a blind judge, a recommendation | a verdict: promote, drop or rerun |
 | `dev-learn` | "learn from this" | dedupes queued lessons, drafts a library change on a branch | a diff you approve |
+| `dev-model-check` | "model-check this race" | pick one promise, model it in TLA+, check it with TLC, draw a chart, keep the coverage record and sync commit | a counterexample or a pass, a chart, a drift tripwire |
 
 Route skills are playbooks with one shape: You own, Reads (the library files and when), a Checklist the agent opens as a visible todo list and ticks off (skipped steps stay, with a reason), Hand off to, and Reply. They are explicit-only: type `/dev-mode` and it picks one, or type `/dev-debug` and the like directly.
 
