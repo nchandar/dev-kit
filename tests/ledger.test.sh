@@ -10,6 +10,7 @@ cd "$t" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q
 unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK DEVKIT_DEPTH
 unset CLAUDE_CODE_SESSION_ID
 verify="$here/bin/verify"
+export VERIFY_TICK=0.1 # watchdog poll resolution: bounds unchanged, the idle wait after an instant run shrinks
 # a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
 gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
   && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
@@ -107,7 +108,7 @@ ok "a short field stays silent"                    '[ -z "$err" ]'
 # --- hardening fixes (scHard 3, 4, 10)
 ro=$(mktemp -d); chmod 555 "$ro"
 ( DEVKIT_DIR="$ro/newdir" DEVKIT_DEPTH=0 "$ledger" start ro-test >/dev/null 2>"$t/ro.err" ) & rop=$!
-sleep 4 # sleep-ok: the 4s IS the fail-fast budget under test
+p=0; while kill -0 $rop 2>/dev/null && [ $p -lt 40 ]; do sleep 0.1; p=$((p+1)); done # sleep-ok: bounded poll, the 4s cap is the fail-fast budget under test
 if kill -0 $rop 2>/dev/null; then kill -9 $rop 2>/dev/null; wait $rop 2>/dev/null; rorc=124; else wait $rop; rorc=$?; fi
 ok "unwritable base: start fails fast instead of hanging" '[ $rorc -ne 124 ] && [ $rorc -ne 0 ] && grep -qi "cannot create" "$t/ro.err"'
 chmod 755 "$ro"; rm -rf "$ro"
