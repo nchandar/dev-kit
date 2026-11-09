@@ -26,6 +26,10 @@ ok "feature hands off to dev-review"            'grep -q "^\*\*Hand off to:\*\*.
 ok "refactor hands off to dev-review"           'grep -q "^\*\*Hand off to:\*\*.*dev-review" skills/dev-refactor/SKILL.md'
 ok "debug hands off to dev-review and dev-research" 'grep "^\*\*Hand off to:\*\*" skills/dev-debug/SKILL.md | grep -q dev-review && grep "^\*\*Hand off to:\*\*" skills/dev-debug/SKILL.md | grep -q dev-research'
 ok "research hands off to dev-feature"          'grep -q "^\*\*Hand off to:\*\*.*dev-feature" skills/dev-research/SKILL.md'
+ok "dev-debug names bin/ledger repro"           'grep -q "bin/ledger repro" skills/dev-debug/SKILL.md'
+ok "dev-debug names bin/ledger live"            'grep -q "bin/ledger live" skills/dev-debug/SKILL.md'
+ok "dev-feature names bin/ledger live"          'grep -q "bin/ledger live" skills/dev-feature/SKILL.md'
+ok "verify playbook names repro and live rows"  'grep -q "bin/ledger repro" library/verify.md && grep -q "bin/ledger live" library/verify.md'
 
 m=skills/dev-mode/SKILL.md
 ok "dev-mode holds no chain rules"              '! body $m | grep -q "research -> dev-feature" && ! body $m | grep -q "debug -> dev-review"'

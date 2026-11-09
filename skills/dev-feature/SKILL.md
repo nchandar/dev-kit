@@ -31,7 +31,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 6. Independent slices: run in parallel worktrees via dev-spawn (ship shape); you merge, workers never do.
 - [ ] 7. Runtime path touched? follow library/observability. User-visible? follow library/ui-browser. External library? follow library/docs-grounding. Building an app? also library/deep/app-verification-recipe; TypeScript: library/deep/typescript; UI: library/deep/experience-first.
 - [ ] 8. Review: follow skills/dev-review/SKILL.md on the full diff; fix blockers.
-- [ ] 9. Verify: follow library/verify against the spec's acceptance criteria.
+- [ ] 9. Verify: follow library/verify against the spec's acceptance criteria; run the real tool live in an isolated scratch copy and ledger it (`bin/ledger live "<tool and scenarios>" "<what you saw>" "<evidence path>" pass` or fail).
 - [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 **Hand off to:** dev-review on the full diff, then ship. A structure-only change goes to dev-refactor instead.
