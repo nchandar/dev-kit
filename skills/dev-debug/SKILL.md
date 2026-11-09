@@ -17,7 +17,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 **You own:** one bug, from a command-line repro to a closed regression test and a verified fix.
 
-**Reads:** always library/principles (step 0), library/debug-method, library/doubt, library/tdd, library/verify, library/git-ship, library/state. If the cause took a deep dig: library/observability. If the bug crosses components: library/explain-html. If building, deploying or setting up tooling: library/recipes/index.
+**Reads:** always library/principles (step 0), library/debug-method, library/doubt, library/tdd, library/verify, library/git-ship, library/state. If the cause took a deep dig: library/observability and library/deep/observe-and-test. If the bug crosses components: library/explain-html. If building, deploying or setting up tooling: library/recipes/index.
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
@@ -29,7 +29,8 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 5. Regression test first: follow library/tdd; see it fail for the right reason, then add neighbor tests (sibling cases of the same fault class, boundary values, what must not change): several tests per bug, not one. A bug is closed only with those regression tests plus a docs/pitfalls.md row (or a new pitfalls rule); read docs/pitfalls.md at recon.
 - [ ] 6. List 2-3 fix options with a recommendation and ask the user's pick; then the smallest fix, no drive-by edits. Test green, then the full suite.
 - [ ] 7. Verify: follow library/verify; re-run the original repro and ledger its pass (`bin/ledger repro "<same command>" "now passes" "<log>" pass`), plus one adjacent case. Then run the real tool live in an isolated scratch copy and ledger it (`bin/ledger live "<tool and scenarios>" "<what you saw>" "<evidence path>" pass` or fail). Then follow skills/dev-review/SKILL.md on the diff and fix blockers.
-- [ ] 8. Observability gap? (the cause took a deep dig) library/observability. Then commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 7a. Signal check: read existing signals before adding any (library/debug-method); the cause took a deep dig? add the missing signal and assert it in a test (library/observability, library/deep/observe-and-test).
+- [ ] 8. Commit via library/git-ship with the root cause in the message. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 
 Stuck after 3 failed hypotheses: write the state as a ledger row (phase=next) and stop or escalate.
 

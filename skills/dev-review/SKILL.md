@@ -17,7 +17,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 **You own:** findings on two axes (Standards and Spec) with a recorded disposition for each.
 
-**Reads:** always library/principles (step 0), library/simplify, library/doubt, library/state, library/deep/blast-radius. If the diff touches security: library/security. If it touches performance: library/performance.
+**Reads:** always library/principles (step 0), library/simplify, library/doubt, library/state, library/deep/blast-radius. If the diff touches security: library/security. If it touches performance: library/performance. If it touches a runtime path: library/observability.
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches.
@@ -29,6 +29,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 4. Run both via dev-spawn (scout shape) in parallel and wait for both reports.
 - [ ] 5. Blast radius: follow library/deep/blast-radius for each changed contract.
 - [ ] 6. Merge: dedupe, order by severity (bug, regression, standards, nit), drop anything without file:line.
+- [ ] 6a. Runtime path touched? a changed or added signal has a test asserting it (library/observability).
 - [ ] 7. Risky change? library/doubt on your merged conclusion.
 - [ ] 8. Each blocker is fixed or accepted with a recorded reason. Re-check the diff after fixes. Closeout: follow library/state. Then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
 

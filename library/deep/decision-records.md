@@ -11,7 +11,7 @@
 3. Keep it to one page: Context (the forces and constraints now), Options (2 to 3 real ones), Choice, Why, Rejected (each with the reason it lost), Consequences (including the downsides we accept), Revisit when (a concrete trigger, such as "if volume passes 10k/day").
 4. Write it when deciding, not afterward; reasons fade fast. Rejected options matter most: they stop the next person from reopening a settled question.
 5. Never edit history. If the decision changes, write a new record that supersedes the old one and mark the old one superseded.
-6. Deprecation is a decision too. Record: why the old thing no longer earns its upkeep, the replacement (never deprecate without a working one), consumer count, advisory or compulsory, and the removal condition.
+6. Deprecation is a decision too (see library/deep/deprecation-and-migration). Record: why the old thing no longer earns its upkeep, the replacement (never deprecate without a working one), consumer count, advisory or compulsory, and the removal condition.
 7. Migrate in steps that can be reversed: build the replacement, announce, move consumers one by one (adapter, strangler, or flag), confirm zero usage by metrics, then remove. The owner of the old system carries the migration work.
 8. Schema changes: expand, backfill, switch reads, contract. Additive first; the drop is its own later deploy, because data cannot be rolled back.
 9. Internal-only API (no external consumers, confirmed by search): migrate every caller and delete the old API in the same wave; update tests to the new contract and delete tests that only pinned old internals. Any unseen consumer means the reversible migration step above applies instead.
