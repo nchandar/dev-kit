@@ -9,7 +9,7 @@ ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)
 root=$(mktemp -d); trap 'rm -rf "$root"' EXIT
 unset DEVKIT_DIR
 export VERIFY_BUDGET="$root/budget"; printf 'suite_file_s=100\nsuite_total_s=200\n' > "$VERIFY_BUDGET"
-export VERIFY_TICK=0.1 # watchdog poll resolution: bounds unchanged, the idle wait after an instant run shrinks
+export VERIFY_TICK=0.02 # watchdog poll resolution: bounds unchanged, the idle wait after an instant run shrinks
 
 # fresh scratch repo on branch main with fake gate tools; prints nothing, cds into it
 mkrepo() { local d; d=$(mktemp -d "$root/r.XXXXXX"); cd "$d" || exit 2
@@ -135,11 +135,11 @@ mkrepo; ( cd "$root" && mkdir -p nogit && cd nogit && "$verify" >/dev/null 2>&1 
 ok "outside a git repo: exit 2"              '[ $rc -eq 2 ]'
 
 # --- s1b: the watchdog bounds the gate run
-mkrepo; export VERIFY_TIMEOUT=2
-setrun 'echo "slow.test.sh   1 passed, 0 failed   1s"; sleep 3917' # sleep-ok: the fake run must outlive the 2s limit so the watchdog fires
+mkrepo; export VERIFY_TIMEOUT=1
+setrun 'echo "slow.test.sh   1 passed, 0 failed   1s"; sleep 3917' # sleep-ok: the fake run must outlive the 1s limit so the watchdog fires
 echo more >> skills/dev-x/SKILL.md; : > "$VT_MARK"; out=$("$verify" >/dev/null 2>&1); rc=$?
 ok "hung suite: exit 2, row not-run"         '[ $rc -eq 2 ] && [ "$(field 6)" = not-run ]'
-ok "row reason names the timeout"            'field 4 | grep -q "timeout after 2s"'
+ok "row reason names the timeout"            'field 4 | grep -q "timeout after 1s"'
 # a generic "sleep 30" also matches other sessions' processes, so match this run's own 3917 marker only
 ok "nothing is left behind"                  '[ -z "$(pgrep -f "sleep 3917" 2>/dev/null)" ]'
 unset VERIFY_TIMEOUT # back to the budget-derived default for the next runs

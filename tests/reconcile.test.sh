@@ -130,16 +130,16 @@ SECONDS=0; out=$("$rec" --wait); rc=$?
 ok "wait: returns at once when clear"                 '[ $rc -eq 0 ] && [ -z "$out" ] && [ $SECONDS -lt 2 ]'
 "$ledger" -t "$G" spawn "w4 done" cli=fake "" done; "$ledger" -t "$G" accept "w4 accepted" ok "" pass
 echo "running $$ 100" > "$GD/run/w4.status"
-(sleep 2; echo "done 0 100" > "$GD/run/w4.status") & # sleep-ok: flips the status while --wait polls
+(sleep 2; echo "done 0 100" > "$GD/run/w4.status") & # sleep-ok: flips after --wait's first gate check even on a slow box; the 1s poll makes the call block >=1s
 SECONDS=0; out=$("$rec" --wait); rc=$?; el=$SECONDS
 ok "wait: blocks until the running worker finishes"   '[ $rc -eq 0 ] && [ -z "$out" ] && [ $el -ge 1 ]'
 "$ledger" -t "$G" spawn "w5 done" cli=fake "" done
 echo "running $$ 100" > "$GD/run/w5.status"
-(sleep 2; echo "done 0 100" > "$GD/run/w5.status") & # sleep-ok: flips the status while --wait polls
+(sleep 0.1; echo "done 0 100" > "$GD/run/w5.status") & # sleep-ok: flips the status while --wait polls
 out=$("$rec" --wait); rc=$?
 ok "wait: lists a finished but unaccepted worker"     '[ $rc -eq 1 ] && echo "$out" | grep -q "w5 done, unaccepted"'
 echo "running $$ 100" > "$GD/run/w5.status"
-SECONDS=0; out=$(DEVKIT_WAIT=2 "$rec" --wait 2>&1); rc=$?; el=$SECONDS
+SECONDS=0; out=$(DEVKIT_WAIT=1 "$rec" --wait 2>&1); rc=$?; el=$SECONDS
 ok "wait: times out with exit 1 and says so"          '[ $rc -eq 1 ] && echo "$out" | grep -q "timed out" && echo "$out" | grep -q "w5 running" && [ $el -le 4 ]'
 unset DEVKIT_TASK; echo "running $$ 100" > "$GD/run/ws.status"; echo sess-A > "$GD/run/ws.session"
 out=$("$rec" --wait --session sess-B); rc=$?

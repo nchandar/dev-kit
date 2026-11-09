@@ -1,6 +1,6 @@
 # Suite time budget, sourced by shell. Raising a number is a gate edit and needs user approval; the bar only ratchets down.
-# Baseline: slowest suite spawn-interactive 141.4s, total 320s over 27 suites (slowest x1.5 up to 5; total x1.3 up to 30).
+# Baseline: slowest suite spawn-interactive 58s, total 203s over 31 suites (slowest x1.5 up to 5; total x1.3 up to 5). Was 141.4s and 320s (an earlier run; the 2026-11-08 serial baseline was 143s and 383s) before the speedup.
 # Max seconds any single tests/*.test.sh may take.
-suite_file_s=215
+suite_file_s=90
 # Max seconds the whole tests/run-all.sh suite run may take.
-suite_total_s=420
+suite_total_s=265

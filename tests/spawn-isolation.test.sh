@@ -89,7 +89,7 @@ rm -f "$DEVKIT_DIR/km.marker"
 FAKE_ROOT="$tp" FAKE_ROOT_EDIT=1 FAKE_MARK="$DEVKIT_DIR/km.marker" FAKE_SLEEP=30 "$spawn" --worktree km1 fake "$t/brief.md" 2>"$t/km1.err" &
 sp=$!
 n=0; while [ ! -e "$DEVKIT_DIR/km.marker" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n+1)); done # sleep-ok: bounded poll for the fake worker to edit the root
-kill -TERM $sp; wait $sp; rc=$?; sleep 1 # sleep-ok: let the trap and cleanup finish
+kill -TERM $sp; wait $sp; rc=$?; p=0; while ! grep -q "km1 isolation-violation" $TD/ledger.tsv && [ $p -lt 50 ]; do sleep 0.02; p=$((p+1)); done # sleep-ok: bounded poll for the cleanup guard to write its row
 ok "killed: the guard still runs in cleanup, state stays killed" '[ $rc -ne 0 ] && grep -q "^killed" $TD/run/km1.status && grep -q "spawn: WARN km1 " "$t/km1.err" && [ "$(grep -c "km1 isolation-violation" $TD/ledger.tsv)" -eq 1 ]'
 ok "killed: the warning appears exactly once" '[ "$(grep -c "^spawn: WARN km1 " "$t/km1.err")" -eq 1 ]'
 

@@ -46,6 +46,17 @@ ok "3 reruns: identical entries and targets, one per skill per root, no dangling
 [ -z "$out" ] || echo "$out"
 ok "the repo has dev-* skills to compare" '[ "$want" -ge 1 ]'
 
+# the four mutant suites are independent (own repo copy, own fake HOME) and share the box with the
+# prune/nest checks below, so start them now and collect at the end
+mkrepo() { mkdir "$t/$1"; cp -R "$here/skills" "$t/$1/skills"; sed "$2" "$here/install.sh" > "$t/$1/install.sh"; chmod +x "$t/$1/install.sh"; }
+mkrepo m_nest 's/ln -sfn/ln -sf/'
+mkrepo m_real 's/if \[ -e "\$2" \] && \[ ! -L "\$2" \]; then/if false; then/'
+mkrepo m_root 's# "\$HOME/.agents/skills"; do# ; do#'
+mkrepo m_dup 's#link "\$d" "\$root/\$(basename "\$d")"#link "$d" "$root/$(basename "$d")"; link "$d" "$root/$(basename "$d")-copy"#'
+for m in m_nest m_real m_root m_dup; do
+  ( suite "$m" "$t/$m/install.sh" "$t/$m" >/dev/null 2>&1; echo $? > "$t/$m.rc" ) &
+done
+
 # prune: only a dangling dev-* symlink into this repo's skills dir goes; all else stays
 h="$t/stale"; mkdir "$h"; HOME="$h" "$here/install.sh" >/dev/null 2>&1
 for r in $roots; do
@@ -78,14 +89,9 @@ ok "rerun prints no pruned line" '! grep -q "^pruned" "$h/rerun.out"'
 h="$t/nest"; mkdir "$h"; HOME="$h" "$here/install.sh" >/dev/null 2>&1; HOME="$h" "$here/install.sh" >/dev/null 2>&1
 ok "two reruns create no dev-mode/dev-mode link in a root or in the repo" '[ ! -e "$h/.claude/skills/dev-mode/dev-mode" ] && [ ! -L "$here/skills/dev-mode/dev-mode" ] && [ ! -L "$h/.agents/dev-kit/dev-kit" ]'
 
-# mutation: each broken installer, in a scratch repo copy, must fail the suite
-mkrepo() { mkdir "$t/$1"; cp -R "$here/skills" "$t/$1/skills"; sed "$2" "$here/install.sh" > "$t/$1/install.sh"; chmod +x "$t/$1/install.sh"; }
-mkrepo m_nest 's/ln -sfn/ln -sf/'
-mkrepo m_real 's/if \[ -e "\$2" \] && \[ ! -L "\$2" \]; then/if false; then/'
-mkrepo m_root 's# "\$HOME/.agents/skills"; do# ; do#'
-mkrepo m_dup 's#link "\$d" "\$root/\$(basename "\$d")"#link "$d" "$root/$(basename "$d")"; link "$d" "$root/$(basename "$d")-copy"#'
+wait
 for m in m_nest m_real m_root m_dup; do
-  mo=$(suite "$m" "$t/$m/install.sh" "$t/$m" 2>/dev/null); mrc=$?
+  mrc=$(cat "$t/$m.rc")
   ok "mutation $m is caught ($mrc checks failed)" '[ $mrc -gt 0 ]'
 done
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
