@@ -46,8 +46,18 @@ chmod +x "$tmp/herdr"
 export PATH="$tmp:$PATH"
 fail=0
 
+# diagnostics for CI logs: off by default so the pinned output format holds; on when CI is set or DEVKIT_RUNALL_DIAG=1
+diag=0; case "${DEVKIT_RUNALL_DIAG:-${CI:-}}" in ''|0|false) ;; *) diag=1;; esac
+load_avg() { uptime 2>/dev/null | sed 's/.*load averages*: *//'; }
+export DEVKIT_RUNALL_T0=$(date +%s)
+if [ "$diag" = 1 ]; then
+  cores_raw=${DEVKIT_TEST_CORES:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null)}
+  printf 'run-all: diagnostics on: jobs=%s cores=%s load=%s os=%s\n' "$njobs" "${cores_raw:-?}" "$(load_avg)" "$(uname -sr 2>/dev/null)" >&2
+fi
+
 run_suite() { # nn path: one suite, buffered so a driver can stream its line later
   st=$SECONDS
+  printf '%s\n' "$(( $(date +%s) - DEVKIT_RUNALL_T0 ))" > "$DEVKIT_RUNALL_TMP/$1.start"  # pitfall-ok: decimal-arith epoch seconds
   "$2" > "$DEVKIT_RUNALL_TMP/$1.out" 2>&1
   rc=$?
   printf '%s\n' "$rc" > "$DEVKIT_RUNALL_TMP/$1.rc"
@@ -67,7 +77,11 @@ print_suite() { # nn path: one line in today's format, FAIL lines indented below
   printf '%-26s %s   %ss\n' "$name" "$summary" "$secs"
   case $summary in
     *" 0 failed"*) ;;
-    *) fail=1; grep '^FAIL' "$tmp/$1.out" 2>/dev/null | sed 's/^/    /' || true;;
+    *) fail=1; grep '^FAIL' "$tmp/$1.out" 2>/dev/null | sed 's/^/    /' || true
+       if [ "$diag" = 1 ]; then # what the runner saw when it failed, so a CI log explains a flake
+         printf '    -- diagnostics: started +%ss, ran %ss, load now %s\n' "$(cat "$tmp/$1.start" 2>/dev/null || echo ?)" "$secs" "$(load_avg)"
+         grep -v '^ok ' "$tmp/$1.out" 2>/dev/null | tail -n 25 | sed 's/^/    | /' || true
+       fi;;
   esac
 }
 
