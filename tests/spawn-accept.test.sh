@@ -86,15 +86,17 @@ unblock f1; wait "$sp" 2>/dev/null; sp=
 gate; ok "F1: after the exit row the respawn still needs an accept" '[ "$grc" -eq 1 ] && echo "$out" | grep -q "w3 done, unaccepted"'
 accept w3; gate; ok "F1: the new accept clears it" '[ "$grc" -eq 0 ]'
 
-# --- F3: an accept of a finished worker must not be outranked by a later exit row
+# --- F3: pin the order: an accept is only ever made at a done status, which must not exist before its row
 block "spawn w4 done" f3
 start_held w4; waitfor w4 running; rm -f "$t/hold.w4"; waitfile "$t/m.f3"
-accepted=0
-if [ "$(status w4)" = done ]; then accept w4; accepted=1; fi # the old order publishes done first
-unblock f3; wait "$sp" 2>/dev/null; sp=
-waitfor w4 done # the ok below asserts the status, so a timeout here fails there
-[ "$accepted" = 1 ] || accept w4 # the new order publishes the row first
-gate; ok "F3: an accept of a finished worker is not outranked" '[ "$grc" -eq 0 ] && [ "$(status w4)" = done ]'
+# the acceptor runs while the exit row is held: on the old order it sees done and accepts inside the window;
+# on the fixed order done can only appear after the row, so it accepts there
+( n=0; while [ "$(status w4)" != done ] && [ $n -lt 300 ]; do sleep 0.02; n=$((n+1)); done; [ "$(status w4)" = done ] && accept w4 ) & acc=$! # sleep-ok: bounded poll for the first observable done
+sleep 0.3 # sleep-ok: the old order has published done by now; the fixed order cannot
+ok "F3: done is not published while the exit row is held" '[ "$(status w4)" != done ]'
+unblock f3
+wait "$acc"; wait "$sp" 2>/dev/null; sp=
+gate; ok "F3: an accept made at the first observable done is not outranked" '[ "$grc" -eq 0 ] && [ "$(status w4)" = done ]'
 accept w4 # keep the fixture clean for the next scenario
 
 # --- same fault class: the interrupt path also wrote status before its killed row

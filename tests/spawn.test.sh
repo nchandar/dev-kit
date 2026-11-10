@@ -427,6 +427,7 @@ rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 sleep 30 & live=$! # sleep-ok: live lock-owner fixture, killed right after
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
 ln -s "$live " "$DEVKIT_DIR/run/slot.1.lock"
+touch -h -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock" # only the owner rule can keep it: the old age rule would steal it
 DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lke fake "$t/brief.md" 2>/dev/null; rc=$?
 ok "a live lock owner without a start record is not stolen" '[ $rc -eq 4 ] && [ -L "$DEVKIT_DIR/run/slot.1.lock" ]'
 kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
@@ -482,6 +483,45 @@ n=0; while [ ! -d "$DEVKIT_DIR/run/slot.1" ] && [ $n -lt 50 ]; do sleep 0.1; n=$
 wait $sa; kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 ok "a stalled claimer keeps its slot (a second spawn finds none free)" '[ $rc -eq 4 ]'
 rm -rf "$DEVKIT_DIR/run/slot.2" "$DEVKIT_DIR/run/slot.2.lock"
+
+# --- hardening 8: a claim takes the same owner lock as a reclaim, so a reclaimer cannot move a fresh pid aside
+ps_stall() { # $1=pid to stall on $2=entered marker $3=release marker: ps blocks inside the reclaimer's liveness check and then reports a 2001 start
+  local d=$t/psstall; mkdir -p "$d"
+  printf '#!/bin/sh\ncase "$*" in *"-p %s"*) : > %s; n=0; while [ ! -e %s ] && [ $n -lt 200 ]; do sleep 0.02; n=$((n+1)); done; echo "Mon Jan  1 00:00:00 2001"; exit;; esac\nexec %s "$@"\n' "$1" "$2" "$3" "$real_ps" > "$d/ps" # sleep-ok: bounded poll inside the stub, released by the test
+  chmod +x "$d/ps"; echo "$d"
+}
+sleep 30 & owner=$! # sleep-ok: owner fixture the reclaimer judges dead by its start record
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo "$owner" > "$DEVKIT_DIR/run/slot.1/pid"; echo bogus > "$DEVKIT_DIR/run/slot.1/start"
+rm -f "$t/ps.in" "$t/ps.out"; pd=$(ps_stall "$owner" "$t/ps.in" "$t/ps.out")
+: > "$DEVKIT_DIR/events"
+PATH="$pd:$PATH" DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 FAKE_ID=sr1 DEVKIT_MAX_WORKERS=1 "$spawn" sr1 fake "$t/brief.md" 2>/dev/null & ra=$!
+n=0; while [ ! -e "$t/ps.in" ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done # sleep-ok: bounded poll until the reclaimer is in its liveness check
+rm -rf "$DEVKIT_DIR/run/slot.1" # the owner's exit trap removes its dir
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=sr2 DEVKIT_MAX_WORKERS=1 "$spawn" sr2 fake "$t/brief.md" 2>/dev/null & rb=$!
+n=0; while [ $n -lt 10 ] && [ "$(awk '/ start/{n++} END{print n+0}' "$DEVKIT_DIR/events")" -eq 0 ]; do sleep 0.05; n=$((n+1)); done # sleep-ok: bounded window for a wrongly admitted claim to start its worker
+started=$(awk '/ start/{n++} END{print n+0}' "$DEVKIT_DIR/events")
+: > "$t/ps.out"; kill -TERM "$ra" "$rb" 2>/dev/null; wait "$ra" 2>/dev/null; wait "$rb" 2>/dev/null
+ok "a stalled reclaimer's lock keeps a fresh claim out of its slot" '[ "$started" -eq 0 ]'
+kill "$owner" 2>/dev/null; wait "$owner" 2>/dev/null
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+
+# the fence: a reclaim that judged a pid dead must not free a slot a fresh claim has taken.
+# claim() is executed from an extracted copy (not grepped): slot_live is stubbed to swap the dir at the read.
+claim_src="$t/claim.fn"; sed -n '/^slot_lock() {/,/^}/p; /^claim() {/,/^  done; return 1; }/p' "$spawn" > "$claim_src"
+ok "claim() and slot_lock() are extractable for the fence unit test" '[ "$(grep -c "^slot_lock() {" "$claim_src")" -eq 1 ] && [ "$(grep -c "^claim() {" "$claim_src")" -eq 1 ] && [ "$(grep -c "done; return 1; }" "$claim_src")" -eq 1 ]'
+sleep 30 & fresh=$! # sleep-ok: the fresh claim's live pid, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+( H="$DEVKIT_DIR"; CAP=1; slot=
+  . "$claim_src"
+  slot_live() { # the reclaimer reads a dead pid, then a fresh claim replaces the dir in the same window
+    if [ -z "${swapped:-}" ]; then swapped=1; rm -rf "$1"; mkdir -p "$1"; echo "$fresh" > "$1/pid"
+      LC_ALL=C TZ=UTC ps -o lstart= -p "$fresh" > "$1/start"; fi
+    return 1; }
+  claim
+  echo "slot=${slot:-none} pid=$(cat "$H/run/slot.1/pid" 2>/dev/null)" > "$t/fence.out" )
+ok "the fence restores a fresh pid it moved aside" 'grep -qx "slot=none pid=$fresh" "$t/fence.out"'
+kill "$fresh" 2>/dev/null; wait "$fresh" 2>/dev/null
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # kill -9 of spawn frees no slot while its worker still runs
 sleep 30 & live=$! # sleep-ok: live worker fixture, killed right after
