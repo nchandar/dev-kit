@@ -306,20 +306,36 @@ slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching 
   fi
   wp=$(cat "$1/wpid" 2>/dev/null); [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null
 }
-claim() { local n d p lock live s pp own opid ost st
+# take a slot lock, or steal it from a dead, reused or legacy owner; 0 means taken
+slot_lock() { local l=$1 s=$2 own opid ost
+  ln -s "$$ $s" "$l" 2>/dev/null && return 0
+  own=$(readlink "$l" 2>/dev/null); opid=${own%% *}
+  # the lock names its owner (pid + start): steal only a dead or reused owner, never by age; re-read before rm so a fresh lock is spared
+  if [ -z "$own" ]; then [ -d "$l" ] && rm -rf "$l" # a legacy dir lock has no owner; a symlink that vanished mid-read is not ours to judge
+  elif ! kill -0 "$opid" 2>/dev/null; then [ "$(readlink "$l" 2>/dev/null)" = "$own" ] && rm -rf "$l"
+  else ost=${own#* }
+    if [ -n "$ost" ] && [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$opid" 2>/dev/null)" != "$ost" ] && [ "$(readlink "$l" 2>/dev/null)" = "$own" ]; then rm -rf "$l"; fi
+  fi
+  ln -s "$$ $s" "$l" 2>/dev/null
+}
+claim() { local n d p lock live s pp self
+  self=$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then
+      # a claim and a reclaim are exclusive on a slot, so a reclaimer cannot move a fresh pid aside
+      if ! slot_lock "$lock" "$self"; then rm -rf "$d"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
       # pid first: until it exists a reclaimer may treat the dir as abandoned
-      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
+      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; rm -f "$lock"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
       # CAP may have been lowered while higher slots live; a fresh dir must not push the live count over it
       live=0; for s in "$H"/run/slot.*; do case $s in "$d"|*.lock) continue;; esac
         [ -d "$s" ] || continue; pp=$(cat "$s/pid" 2>/dev/null); [ -n "$pp" ] || continue
         slot_live "$s" "$pp" && live=$((live+1)); done # pitfall-ok: decimal-arith internal counter
       if [ "$live" -ge "$CAP" ]; then rm -rf "$d"
-      else LC_ALL=C TZ=UTC ps -o lstart= -p $$ > "$d/start" 2>/dev/null
+      else [ -z "$self" ] || echo "$self" > "$d/start" 2>/dev/null
         # a reclaimer may still have removed the dir; only a verified pid means the slot is ours
-        if [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ]; then slot=$d; return 0; fi; fi
-    elif ln -s "$$ $(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)" "$lock" 2>/dev/null; then
+        if [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ]; then slot=$d; rm -f "$lock"; return 0; fi; fi
+      rm -f "$lock"
+    elif slot_lock "$lock" "$self"; then
       p=$(cat "$d/pid" 2>/dev/null)
       if [ -z "$p" ]; then sleep 1; p=$(cat "$d/pid" 2>/dev/null); fi
       if [ -z "$p" ] || ! slot_live "$d" "$p"; then
@@ -330,14 +346,6 @@ claim() { local n d p lock live s pp own opid ost st
         rm -f "$st"
       fi
       rm -f "$lock"
-    else
-      own=$(readlink "$lock" 2>/dev/null); opid=${own%% *}
-      # the lock names its owner (pid + start): steal only a dead or reused owner, never by age; re-read before rm so a fresh lock is spared
-      if [ -z "$own" ]; then [ -d "$lock" ] && rm -rf "$lock" # a legacy dir lock has no owner; a symlink that vanished mid-read is not ours to judge
-      elif ! kill -0 "$opid" 2>/dev/null; then [ "$(readlink "$lock" 2>/dev/null)" = "$own" ] && rm -rf "$lock"
-      else ost=${own#* }
-        if [ -n "$ost" ] && [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$opid" 2>/dev/null)" != "$ost" ] && [ "$(readlink "$lock" 2>/dev/null)" = "$own" ]; then rm -rf "$lock"; fi
-      fi
     fi
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
@@ -399,7 +407,9 @@ if [ $wt = 1 ]; then
   fi
 fi
 # a start row outdates any earlier accept: a respawn is unreviewed even if it dies without its exit row
-"$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null || true
+if ! "$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null; then
+  echo "spawn: cannot record the start row for $id; not starting it" >&2; exit 2
+fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 # the parent Stop hook matches workers to their session; a respawn must not keep a stale id
 # a lead runs long on its own; the Stop hook skips it while it lives, never after it exits (a stale marker must not outlive a respawn)
@@ -570,7 +580,9 @@ else
   echo "missing" > "$T/run/$id.checklist"; echo "spawn: $id checklist missing from handoff $hf" >&2
 fi
 # publish the terminal row before the status: a parent may only see done after its row exists
-"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
+if ! "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null && [ "$state" = done ]; then
+  echo "spawn: cannot record the exit row for $id; not reporting done" >&2; state=failed
+fi
 echo "$state $rc $(date +%s)" > "$st"
 [ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
 if [ $imode = 1 ]; then
