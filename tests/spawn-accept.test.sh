@@ -92,7 +92,7 @@ start_held w4; waitfor w4 running; rm -f "$t/hold.w4"; waitfile "$t/m.f3"
 accepted=0
 if [ "$(status w4)" = done ]; then accept w4; accepted=1; fi # the old order publishes done first
 unblock f3; wait "$sp" 2>/dev/null; sp=
-waitfor w4 done || true
+waitfor w4 done # the ok below asserts the status, so a timeout here fails there
 [ "$accepted" = 1 ] || accept w4 # the new order publishes the row first
 gate; ok "F3: an accept of a finished worker is not outranked" '[ "$grc" -eq 0 ] && [ "$(status w4)" = done ]'
 accept w4 # keep the fixture clean for the next scenario
