@@ -318,7 +318,7 @@ slot_lock() { local l=$1 s=$2 own opid ost
   fi
   ln -s "$$ $s" "$l" 2>/dev/null
 }
-claim() { local n d p lock live s pp self
+claim() { local n d p lock live s pp self st
   self=$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then
@@ -507,6 +507,8 @@ if [ $imode = 1 ]; then
     # done = a handoff that ends with its ## Checklist; an early partial handoff keeps the run open
     # (DEVKIT_IDLE_WAIT=0 also takes any handoff once the agent stops working, the old rule)
     if [ -s "$hf" ] && { grep -q '^## Checklist' "$hf" || { [ "$DEVKIT_IDLE_WAIT" -le 0 ] && idle_agent; }; }; then sleep "$DEVKIT_GRACE"; istate=done; break; fi # grace: the worker may still be writing
+    # a deadline that has passed ends the run before any nudge: a slow poll can land on the same second as the idle deadline
+    if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     # an idle agent with no final handoff has quit early: nudge once, then fail rather than wait out the timeout
     if [ "$DEVKIT_IDLE_WAIT" -gt 0 ]; then
       if quit_agent; then
@@ -520,7 +522,6 @@ if [ $imode = 1 ]; then
         fi
       else idle_since=0; fi
     fi
-    if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     if [ "$nudged" = 0 ] && [ "$DEVKIT_NUDGE_WAIT" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$DEVKIT_NUDGE_WAIT" ]; then # pitfall-ok: decimal-arith epoch seconds are decimal
       nudged=1 # once only: a second nudge would read as noise to a busy agent
       if ! herdr pane read --lines 60 "$vpane" 2>/dev/null | grep -qE "$todoseen"; then
