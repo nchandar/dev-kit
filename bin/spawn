@@ -306,28 +306,46 @@ slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching 
   fi
   wp=$(cat "$1/wpid" 2>/dev/null); [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null
 }
-claim() { local n d p p2 lock m live s pp
+# take a slot lock, or steal it from a dead, reused or legacy owner; 0 means taken
+slot_lock() { local l=$1 s=$2 own opid ost
+  ln -s "$$ $s" "$l" 2>/dev/null && return 0
+  own=$(readlink "$l" 2>/dev/null); opid=${own%% *}
+  # the lock names its owner (pid + start): steal only a dead or reused owner, never by age; re-read before rm so a fresh lock is spared
+  if [ -z "$own" ]; then [ -d "$l" ] && rm -rf "$l" # a legacy dir lock has no owner; a symlink that vanished mid-read is not ours to judge
+  elif ! kill -0 "$opid" 2>/dev/null; then [ "$(readlink "$l" 2>/dev/null)" = "$own" ] && rm -rf "$l"
+  else ost=${own#* }
+    if [ -n "$ost" ] && [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$opid" 2>/dev/null)" != "$ost" ] && [ "$(readlink "$l" 2>/dev/null)" = "$own" ]; then rm -rf "$l"; fi
+  fi
+  ln -s "$$ $s" "$l" 2>/dev/null
+}
+claim() { local n d p lock live s pp self st
+  self=$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then
+      # a claim and a reclaim are exclusive on a slot, so a reclaimer cannot move a fresh pid aside
+      if ! slot_lock "$lock" "$self"; then rm -rf "$d"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
       # pid first: until it exists a reclaimer may treat the dir as abandoned
-      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
+      if ! echo $$ > "$d/pid" 2>/dev/null; then rm -rf "$d"; rm -f "$lock"; n=$((n+1)); continue; fi # pitfall-ok: decimal-arith internal counter
       # CAP may have been lowered while higher slots live; a fresh dir must not push the live count over it
       live=0; for s in "$H"/run/slot.*; do case $s in "$d"|*.lock) continue;; esac
         [ -d "$s" ] || continue; pp=$(cat "$s/pid" 2>/dev/null); [ -n "$pp" ] || continue
         slot_live "$s" "$pp" && live=$((live+1)); done # pitfall-ok: decimal-arith internal counter
       if [ "$live" -ge "$CAP" ]; then rm -rf "$d"
-      else LC_ALL=C TZ=UTC ps -o lstart= -p $$ > "$d/start" 2>/dev/null
+      else [ -z "$self" ] || echo "$self" > "$d/start" 2>/dev/null
         # a reclaimer may still have removed the dir; only a verified pid means the slot is ours
-        if [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ]; then slot=$d; return 0; fi; fi
-    elif mkdir "$lock" 2>/dev/null; then
+        if [ "$(cat "$d/pid" 2>/dev/null)" = "$$" ]; then slot=$d; rm -f "$lock"; return 0; fi; fi
+      rm -f "$lock"
+    elif slot_lock "$lock" "$self"; then
       p=$(cat "$d/pid" 2>/dev/null)
       if [ -z "$p" ]; then sleep 1; p=$(cat "$d/pid" 2>/dev/null); fi
-      if [ -z "$p" ] || ! slot_live "$d" "$p"; then p2=$(cat "$d/pid" 2>/dev/null); [ "$p2" = "$p" ] && rm -rf "$d"; fi
-      rm -rf "$lock"
-    else
-      m=$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null) # pitfall-ok: portable-cmd GNU-or-BSD fallback pair
-      case $m in ''|*[!0-9]*) m=;; esac # the GNU fallback prints filesystem info, not an mtime; a vanished lock must not reach the arithmetic
-      if [ -n "$m" ] && [ $(( $(date +%s) - m )) -gt 5 ]; then rm -rf "$lock"; fi # pitfall-ok: decimal-arith date is decimal, m guarded by -n
+      if [ -z "$p" ] || ! slot_live "$d" "$p"; then
+        # fence: move the pid we judged dead aside; a fresh claim writes a new one, so a late rm cannot free it
+        st="$d/pid.reap.$$"; mv "$d/pid" "$st" 2>/dev/null
+        if [ "$(cat "$st" 2>/dev/null)" = "$p" ]; then rm -rf "$d"
+        elif [ -e "$st" ]; then mv -f "$st" "$d/pid" 2>/dev/null; fi
+        rm -f "$st"
+      fi
+      rm -f "$lock"
     fi
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
@@ -354,14 +372,14 @@ cleanup() { local rc=$?
     [ -z "$guard" ] || { pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; }
     kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
     kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null
-    echo "killed $rc $(date +%s)" > "$st"
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+    echo "killed $rc $(date +%s)" > "$st"
   fi
   if [ "$imode" = 1 ] && [ "$istarted" = 1 ] && [ "$idone" != 1 ]; then # before the tab exists an early exit keeps its real status
-    echo "killed $rc $(date +%s)" > "$st"
     if [ -n "$vpane" ] && [ ! -s "$hf" ]; then { echo "# $id (auto-generated)"; echo "status: killed (exit $rc), no handoff written. Last output:"; herdr pane read --lines 20 "$vpane" 2>/dev/null; } > "$hf"; fi
     herdr notification show "$id killed" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+    echo "killed $rc $(date +%s)" > "$st"
     stop_session
   fi
   iso_check # killed and interrupted runs are compared here too
@@ -387,6 +405,10 @@ if [ $wt = 1 ]; then
     # the commit the lead started from; only a fresh worktree sets it, a respawn keeps the original
     [ "$lead" -eq 0 ] || git -C "$wd" rev-parse HEAD > "$T/run/$id.base" 2>/dev/null || true
   fi
+fi
+# a start row outdates any earlier accept: a respawn is unreviewed even if it dies without its exit row
+if ! "$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null; then
+  echo "spawn: cannot record the start row for $id; not starting it" >&2; exit 2
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 # the parent Stop hook matches workers to their session; a respawn must not keep a stale id
@@ -485,6 +507,8 @@ if [ $imode = 1 ]; then
     # done = a handoff that ends with its ## Checklist; an early partial handoff keeps the run open
     # (DEVKIT_IDLE_WAIT=0 also takes any handoff once the agent stops working, the old rule)
     if [ -s "$hf" ] && { grep -q '^## Checklist' "$hf" || { [ "$DEVKIT_IDLE_WAIT" -le 0 ] && idle_agent; }; }; then sleep "$DEVKIT_GRACE"; istate=done; break; fi # grace: the worker may still be writing
+    # a deadline that has passed ends the run before any nudge: a slow poll can land on the same second as the idle deadline
+    if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     # an idle agent with no final handoff has quit early: nudge once, then fail rather than wait out the timeout
     if [ "$DEVKIT_IDLE_WAIT" -gt 0 ]; then
       if quit_agent; then
@@ -498,7 +522,6 @@ if [ $imode = 1 ]; then
         fi
       else idle_since=0; fi
     fi
-    if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     if [ "$nudged" = 0 ] && [ "$DEVKIT_NUDGE_WAIT" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$DEVKIT_NUDGE_WAIT" ]; then # pitfall-ok: decimal-arith epoch seconds are decimal
       nudged=1 # once only: a second nudge would read as noise to a busy agent
       if ! herdr pane read --lines 60 "$vpane" 2>/dev/null | grep -qE "$todoseen"; then
@@ -557,6 +580,10 @@ elif [ -n "$cl" ]; then
 else
   echo "missing" > "$T/run/$id.checklist"; echo "spawn: $id checklist missing from handoff $hf" >&2
 fi
+# publish the terminal row before the status: a parent may only see done after its row exists
+if ! "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null && [ "$state" = done ]; then
+  echo "spawn: cannot record the exit row for $id; not reporting done" >&2; state=failed
+fi
 echo "$state $rc $(date +%s)" > "$st"
 [ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
 if [ $imode = 1 ]; then
@@ -584,5 +611,4 @@ elif [ $view = 1 ]; then
   else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
   vdone=1
 fi
-"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]
