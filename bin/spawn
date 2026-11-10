@@ -507,12 +507,14 @@ if [ $imode = 1 ]; then
     # done = a handoff that ends with its ## Checklist; an early partial handoff keeps the run open
     # (DEVKIT_IDLE_WAIT=0 also takes any handoff once the agent stops working, the old rule)
     if [ -s "$hf" ] && { grep -q '^## Checklist' "$hf" || { [ "$DEVKIT_IDLE_WAIT" -le 0 ] && idle_agent; }; }; then sleep "$DEVKIT_GRACE"; istate=done; break; fi # grace: the worker may still be writing
-    # a deadline that has passed ends the run before any nudge: a slow poll can land on the same second as the idle deadline
-    if [ "$TMO" -gt 0 ] && [ $(( $(date +%s) - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
+    # one clock sample per poll: the deadline and the idle guard must agree, or a poll that straddles
+    # a second nudges a worker whose deadline already passed and then times it out a poll later
+    now=$(date +%s)
+    if [ "$TMO" -gt 0 ] && [ $(( now - t0 )) -ge "$TMO" ]; then : > "$T/run/$id.timedout"; istate=timeout; ireason="timed out after ${TMO}s"; break; fi # pitfall-ok: decimal-arith epoch seconds are decimal
     # an idle agent with no final handoff has quit early: nudge once, then fail rather than wait out the timeout
     if [ "$DEVKIT_IDLE_WAIT" -gt 0 ]; then
       if quit_agent; then
-        now=$(date +%s); [ "$idle_since" -gt 0 ] || idle_since=$now
+        [ "$idle_since" -gt 0 ] || idle_since=$now
         if [ $(( now - idle_since )) -ge "$DEVKIT_IDLE_WAIT" ]; then # pitfall-ok: decimal-arith epoch seconds are decimal
           if [ "$idlenudged" = 0 ]; then
             idlenudged=1; idle_since=$now
