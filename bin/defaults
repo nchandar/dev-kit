@@ -20,7 +20,7 @@ devkit_auto_workers() { local c m w
 : "${DEVKIT_MAX_LEADS:=$(l=$((DEVKIT_MAX_WORKERS/2)); [ "$l" -ge 1 ] || l=1; [ "$l" -le 10 ] || l=10; echo "$l")}" # pitfall-ok: decimal-arith pool is a number
 : "${DEVKIT_MAX_DEPTH:=3}"
 : "${DEVKIT_CHILD_WAIT:=60}"
-: "${DEVKIT_TIMEOUT:=900}"
+: "${DEVKIT_TIMEOUT:=7200}" # a ship or debug worker runs tests and model checks; 900 s killed two with uncommitted work, the idle guard still fails a hung one early
 : "${DEVKIT_VIEW_CLOSE_DELAY:=2}"
 : "${DEVKIT_VIEW:=herdr}"
 : "${DEVKIT_MODE:=auto}"

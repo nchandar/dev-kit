@@ -72,6 +72,7 @@ tailargs() { grep '^agent start' "$HERDR_LOG" | sed 's/^.* -- //'; }
 # bounded polls replace fixed sleeps: they end as soon as the thing happens, so the wait is a guard, not a cost
 waitlog() { local n=0; while [ $n -lt 200 ] && ! grep -q "$1" "${2:-$HERDR_LOG}" 2>/dev/null; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (200 tries) for a herdr log line
 waitfile() { local n=0; while [ $n -lt 200 ] && [ ! -s "$1" ]; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (200 tries) for a non-empty file
+waitcount() { local n=0 c; while [ $n -lt 200 ]; do c=$(grep -c "$1" "$2" 2>/dev/null); [ "${c:-0}" -gt "$3" ] && return 0; sleep 0.05; n=$((n+1)); done; return 1; } # sleep-ok: bounded poll (200 tries) until a log has more matching lines
 gonepoll() { local n=0; while [ $n -lt 20 ] && pgrep -f "$1" >/dev/null 2>&1; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (20 tries) until the process is gone
 
 # --- claude: launch
@@ -112,11 +113,19 @@ DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HER
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig1.log" DEVKIT_TIMEOUT=20 STUB_AGENT_STATUS=idle STUB_PANE="$(seq 1 25)" irun2 "$spawn" ig1 claude "$t/brief.md" 2>"$t/ig1.err" & p2=$!
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig3.log" DEVKIT_TIMEOUT=20 STUB_FIX=1 STUB_AGENT_STATUS=idle irun2 "$spawn" ig3 claude "$t/brief.md" 2>"$t/ig3.err" & p3=$!
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig4.log" STUB_AGENT_STATUS=working DEVKIT_TIMEOUT=4 irun2 "$spawn" ig4 claude "$t/brief.md" 2>"$t/ig4.err" & p4=$!
-# ig5: idle 1.2 s, working 3.2 s, idle again; a clock that never reset would nudge at 5 s, a reset one not before 9 s (timeout 8)
-echo idle > "$t/ig5.status"; ( waitlog "^agent prompt ig5 " "$t/ig5.log"; sleep 1.2; echo working > "$t/ig5.status"; sleep 3.2; echo idle > "$t/ig5.status" ) >/dev/null 2>&1 & p6=$! # sleep-ok: scripted status flips on a fixed timeline
+# ig5: idle 1.2 s, working until spawn has observed it, then idle 3.2 s; a clock that never reset would nudge
+# at ~5 s, a reset one only after the timeout (8 s). The flip waits for the observed agent get, so load cannot skip the working window
+echo idle > "$t/ig5.status"
+( waitlog "^agent prompt ig5 " "$t/ig5.log"; sleep 1.2 # sleep-ok: the idle phase is the case's own scripted timeline
+  printf 'working\n' > "$t/ig5.status.new"; mv "$t/ig5.status.new" "$t/ig5.status"
+  b=$(grep -c '^agent get ig5' "$t/ig5.log" 2>/dev/null)
+  waitcount '^agent get ig5' "$t/ig5.log" "${b:-0}"
+  sleep 3.2; printf 'idle\n' > "$t/ig5.status.new"; mv "$t/ig5.status.new" "$t/ig5.status" ) >/dev/null 2>&1 & p6=$! # sleep-ok: 3.2 s working tail, then the second idle phase
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig5.log" STUB_STATUS_FILE="$t/ig5.status" DEVKIT_IDLE_WAIT=4 DEVKIT_TIMEOUT=8 irun2 "$spawn" ig5 claude "$t/brief.md" 2>"$t/ig5.err" & p5=$!
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 HERDR_LOG="$t/ig6.log" DEVKIT_TIMEOUT=20 STUB_DROP=0 STUB_DRAFT=1 STUB_AGENT_STATUS=idle DEVKIT_IDLE_WAIT=0 irun2 "$spawn" ig6 claude "$t/brief.md" 2>"$t/ig6.err" & p7=$!
 DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=1 HERDR_LOG="$t/ig7.log" DEVKIT_TIMEOUT=4 STUB_AGENT_STATUS=blocked irun2 "$spawn" ig7 claude "$t/brief.md" 2>"$t/ig7.err" & p8=$!
+# ig8: idle from the start with the idle deadline on the same second as the timeout: the deadline wins, never a nudge
+DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=4 HERDR_LOG="$t/ig8.log" STUB_AGENT_STATUS=idle DEVKIT_TIMEOUT=4 irun2 "$spawn" ig8 claude "$t/brief.md" 2>"$t/ig8.err" & p9=$!
 waitlog "^agent prompt ig7 " "$t/ig7.log" # ig7 runs 4 s: a live spawn holds its worker slot here
 ok "idle-guard cases keep their worker slots out of the shared run dir (the INT test counts slot dirs)" '[ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 
@@ -387,7 +396,29 @@ ok "edge: herdr dying mid-run is a failed state with a reason, not a hang" '[ $r
 ok "edge: herdr dying mid-run leaves a handoff stub naming the cause" 'grep -qi "pane gone" $TD/handoffs/hx1.md'
 
 # the idle-guard cases share this task dir and its worker slots: let them end before a section fakes slot dirs
-wait $p1; r_e2=$?; wait $p2; r_ig1=$?; wait $p3; r_ig3=$?; wait $p4; wait $p5; wait $p6; wait $p7; r_ig6=$?; wait $p8
+wait $p1; r_e2=$?; wait $p2; r_ig1=$?; wait $p3; r_ig3=$?; wait $p4; wait $p5; wait $p6; wait $p7; r_ig6=$?; wait $p8; wait $p9
+# ig9: the deadline and the idle guard must read one clock sample per poll. The fake date makes the
+# CI race deterministic: poll 4 checks the deadline at t0+TMO-1 and the idle guard at t0+TMO, so the
+# old two-sample order nudges a worker whose deadline has passed, then times it out one poll later.
+# The sequence drives the old order first (100,100 at polls 1 and 2, then 103/104 at poll 4); the fixed
+# order reads every other value and reaches 104 at poll 8, where the deadline wins.
+ck="$t/clock"; mkdir -p "$ck"; real_date=$(command -v date)
+cat > "$ck/date" <<'D'
+#!/usr/bin/env bash
+if [ "$*" = "+%s" ]; then
+  while ! mkdir "$CLOCK_N.lock" 2>/dev/null; do sleep 0.01; done # sleep-ok: tiny lock for the one counter
+  n=$(cat "$CLOCK_N" 2>/dev/null || echo 0)
+  v=$(sed -n "$((n+1))p" "$CLOCK_SEQ" 2>/dev/null); [ -n "$v" ] || v=$(tail -1 "$CLOCK_SEQ")
+  echo $((n+1)) > "$CLOCK_N"; rmdir "$CLOCK_N.lock"; echo "$v"
+else
+  exec "$REAL_DATE" "$@"
+fi
+D
+chmod +x "$ck/date"
+printf '100\n100\n100\n100\n100\n101\n101\n102\n102\n103\n104\n105\n' > "$t/clock.seq"
+( export PATH="$ck:$hs:$PATH" CLOCK_SEQ="$t/clock.seq" CLOCK_N="$t/clock.n" REAL_DATE="$real_date"
+  DEVKIT_DIR="$t/igd" DEVKIT_TASK="$TI" DEVKIT_NUDGE_WAIT=0 DEVKIT_IDLE_WAIT=4 HERDR_LOG="$t/ig9.log" \
+  STUB_AGENT_STATUS=idle DEVKIT_TIMEOUT=4 DEVKIT_POLL=0 "$spawn" ig9 claude "$t/brief.md" ) 2>"$t/ig9.err"; r_ig9=$?
 # --- H: review fixes
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo $$ > "$DEVKIT_DIR/run/slot.1/pid" # a live holder of the only slot
 DEVKIT_DEPTH=1 DEVKIT_MAX_WORKERS=1 DEVKIT_CHILD_WAIT=1 irun "$spawn" ex4 claude "$t/brief.md" 2>/dev/null; rc=$?
@@ -419,6 +450,8 @@ ok "a final handoff after the nudge ends done, nudged once" '[ $r_ig3 -eq 0 ] &&
 ok "an agent that keeps working is never nudged (the timeout still applies)" 'grep -q "^timeout" $TDI/run/ig4.status && [ $(nudges ig4) -eq 0 ]'
 echo "     idle-flip: status=$(cut -d' ' -f1 "$TDI/run/ig5.status" 2>/dev/null) nudges=$(nudges ig5)"
 ok "idle that flips back to working resets the clock: no nudge, the timeout ends it" 'grep -q "^timeout" $TDI/run/ig5.status && [ $(nudges ig5) -eq 0 ]'
+ok "an idle agent whose nudge deadline is the timeout deadline is timed out, not nudged" 'grep -q "^timeout" $TDI/run/ig8.status && [ $(nudges ig8) -eq 0 ]'
+ok "one clock sample per poll: a deadline that passed cannot also nudge (ig9)" '[ $r_ig9 -ne 0 ] && grep -q "^timeout" $TDI/run/ig9.status && [ $(nudges ig9) -eq 0 ]'
 ok "a blocked agent is never nudged (no keystroke into a dialog); the timeout ends it" 'grep -q "^timeout" $TDI/run/ig7.status && [ $(nudges ig7) -eq 0 ] && [ $(grep -c "^agent prompt ig7 " "$t/ig7.log") -eq 1 ]'
 ok "DEVKIT_IDLE_WAIT=0 keeps the old rule: draft + idle finishes, checklist flagged missing" '[ $r_ig6 -eq 0 ] && grep -q "^missing" $TDI/run/ig6.checklist && [ $(nudges ig6) -eq 0 ]'
 
