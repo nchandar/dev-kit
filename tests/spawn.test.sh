@@ -134,6 +134,21 @@ third=$(awk '$2=="start"{print $1}' $DEVKIT_DIR/events | sort -n | tail -1)
 firstend=$(awk '$2=="end"{print $1}' $DEVKIT_DIR/events | sort -n | head -1)
 ok "cap=2 holds across different tasks" '[ "$third" -ge "$firstend" ]'
 
+# a killed spawner's slot stays counted while its worker runs: six claimers, two slots, kill -9 both holders
+: > $DEVKIT_DIR/events
+hold="$t/k.hold"; : > "$hold"; spids=()
+for i in 1 2 3 4 5 6; do FAKE_HOLD=$hold FAKE_ID=ck$i DEVKIT_MAX_WORKERS=2 "$spawn" ck$i fake "$t/brief.md" & spids+=($!); done
+n=0; while [ "$(awk '$2=="start"' $DEVKIT_DIR/events | wc -l | tr -d ' ')" -lt 2 ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done # sleep-ok: bounded poll until both slots are held
+n=0; while [ "$(ls "$DEVKIT_DIR"/run/slot.*/wpid 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ] && [ $n -lt 100 ]; do sleep 0.05; n=$((n+1)); done # sleep-ok: bounded poll until the held slots record their workers
+for id in $(awk '$2=="start"{print $3}' $DEVKIT_DIR/events | head -2); do kill -9 "${spids[$(( ${id#ck} - 1 ))]}" 2>/dev/null; done
+sleep 0.3 # sleep-ok: a wrongly freed live slot would let a third worker start in this window
+starts=$(awk '$2=="start"' $DEVKIT_DIR/events | wc -l | tr -d ' ')
+held=0; for d in "$DEVKIT_DIR"/run/slot.*; do case $d in *.lock) continue;; esac; [ -d "$d" ] || continue
+  wp=$(cat "$d/wpid" 2>/dev/null); [ -n "$wp" ] && kill -0 "$wp" 2>/dev/null && held=$((held+1)); done
+rm -f "$hold"; wait
+ok "a killed spawner keeps its live worker's slot counted (no third start)" '[ "$starts" -eq 2 ] && [ "$held" -eq 2 ]'
+ok "the freed slots are reclaimed and all six workers finish" '[ -s $TD/handoffs/ck6.md ] && [ "$(cd $TD/handoffs && ls ck1.md ck2.md ck3.md ck4.md ck5.md ck6.md | wc -l | tr -d " ")" -eq 6 ]'
+
 : > $DEVKIT_DIR/events
 hold="$t/m.hold"; : > "$hold"
 for i in $(seq 1 10); do FAKE_HOLD=$hold FAKE_ID=m$i FAKE_SLEEP=1 DEVKIT_MAX_WORKERS=10 "$spawn" m$i fake "$t/brief.md" & done
@@ -394,25 +409,32 @@ ok "a non-numeric cap fails closed (exit 2) instead of misclaiming" '[ $rc -eq 2
 
 # --- hardening 3: the reaped pid is cleared so cleanup cannot signal a reused pid (behavior: interrupted-spawn test above frees its slot with no orphan worker)
 
-# --- hardening 4: a per-slot mkdir lock guards stale-slot reclaim
+# --- hardening 4: the reclaim lock names its owner (pid + start); only a dead or reused owner is stolen
 mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
 FAKE_ID=lk0 DEVKIT_MAX_WORKERS=1 "$spawn" lk0 fake "$t/brief.md"
-ok "a stale slot is reclaimed under its lock, lock released" '[ -s $TD/handoffs/lk0.md ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.*.lock 2>/dev/null)" ]'
-mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
-s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lk1 fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
-ok "a fresh per-slot lock blocks reclaim of a stale slot" '[ $rc -eq 4 ] && [ "$el" -ge 1 ]'
+ok "a stale slot is reclaimed, no lock left" '[ -s $TD/handoffs/lk0.md ] && [ -z "$(ls -d $DEVKIT_DIR/run/slot.*.lock 2>/dev/null)" ]'
+# the regression: a live owner's lock is never taken, however old it is (the old 5s mtime expiry did take it)
+sleep 30 & live=$! # sleep-ok: live lock-owner fixture, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+ln -s "$live $(LC_ALL=C TZ=UTC ps -o lstart= -p "$live")" "$DEVKIT_DIR/run/slot.1.lock"
+touch -h -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
+s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lkl fake "$t/brief.md" 2>/dev/null; rc=$?; el=$(( $(date +%s)-s0 ))
+ok "a live lock owner is not stolen however old the lock is" '[ $rc -eq 4 ] && [ "$el" -ge 1 ] && [ -L "$DEVKIT_DIR/run/slot.1.lock" ] && [ "$(cat "$DEVKIT_DIR/run/slot.1/pid")" = 99999999 ]'
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
-# GNU stat: -c fails if the lock vanished mid-race, and the BSD-style -f fallback then prints multi-line filesystem info, not a number
-sb="$t/stat-stub"; mkdir -p "$sb"
-cat > "$sb/stat" <<'S'
-#!/usr/bin/env bash
-case "$1" in -c) exit 1;; -f) printf '  File: "%s"\n    ID: 0 Namelen: 255\n' "$3";; *) exit 1;; esac
-S
-chmod +x "$sb/stat"
-mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo $$ > "$DEVKIT_DIR/run/slot.1/pid"
-PATH="$sb:$PATH" DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>"$t/lk3.err"; rc=$?
-ok "a lock whose mtime cannot be read does not kill the spawner" '[ $rc -eq 4 ] && ! grep -q "unbound variable" "$t/lk3.err"'
+# a live owner whose start record is missing is still not stolen (same rule as an empty slot start)
+sleep 30 & live=$! # sleep-ok: live lock-owner fixture, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+ln -s "$live " "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=1 DEVKIT_MAX_WORKERS=1 "$spawn" lke fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a live lock owner without a start record is not stolen" '[ $rc -eq 4 ] && [ -L "$DEVKIT_DIR/run/slot.1.lock" ]'
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+# a legacy directory lock (the pre-owner format) has no record; it must not wedge the slot
+mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+FAKE_ID=lkg DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 DEVKIT_MAX_WORKERS=1 "$spawn" lkg fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a legacy directory lock is reclaimed, not fatal" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lkg.md ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # --- hardening 5: a slot dir without a pid file gets a 1s grace, then counts as stale
@@ -421,11 +443,18 @@ s0=$(date +%s); DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk2 DEVKIT_MAX_WORKER
 ok "a slot dir without a pid file is reclaimed after a grace" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk2.md ] && [ "$el" -ge 1 ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
-# --- hardening 6: a lock older than 5s is removed (behavior test below covers GNU/BSD stat)
-mkdir -p "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
-touch -t 200001010000 "$DEVKIT_DIR/run/slot.1.lock"
-DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lk3 DEVKIT_MAX_WORKERS=1 "$spawn" lk3 fake "$t/brief.md" 2>/dev/null; rc=$?
-ok "a lock older than 5s is removed and the stale slot reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lk3.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
+# --- hardening 6: a dead or reused owner's lock is reclaimed at once; its age plays no part
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+ln -s "99999998 Mon Jan  1 00:00:00 2001" "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lkd DEVKIT_MAX_WORKERS=1 "$spawn" lkd fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a dead lock owner's fresh lock is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lkd.md ] && [ ! -e "$DEVKIT_DIR/run/slot.1.lock" ]'
+rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
+sleep 30 & live=$! # sleep-ok: live-pid fixture, killed right after
+mkdir -p "$DEVKIT_DIR/run/slot.1"; echo 99999999 > "$DEVKIT_DIR/run/slot.1/pid"
+ln -s "$live bogus start" "$DEVKIT_DIR/run/slot.1.lock"
+DEVKIT_DEPTH=1 DEVKIT_CHILD_WAIT=5 FAKE_ID=lkr DEVKIT_MAX_WORKERS=1 "$spawn" lkr fake "$t/brief.md" 2>/dev/null; rc=$?
+kill "$live" 2>/dev/null; wait "$live" 2>/dev/null || true
+ok "a lock whose owner pid was reused is reclaimed" '[ $rc -eq 0 ] && [ -s $TD/handoffs/lkr.md ]'
 rm -rf "$DEVKIT_DIR/run/slot.1" "$DEVKIT_DIR/run/slot.1.lock"
 
 # --- hardening 7: pid reuse is guarded by a start-time record
