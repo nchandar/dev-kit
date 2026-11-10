@@ -407,7 +407,9 @@ if [ $wt = 1 ]; then
   fi
 fi
 # a start row outdates any earlier accept: a respawn is unreviewed even if it dies without its exit row
-"$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null || true
+if ! "$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null; then
+  echo "spawn: cannot record the start row for $id; not starting it" >&2; exit 2
+fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 # the parent Stop hook matches workers to their session; a respawn must not keep a stale id
 # a lead runs long on its own; the Stop hook skips it while it lives, never after it exits (a stale marker must not outlive a respawn)
@@ -578,7 +580,9 @@ else
   echo "missing" > "$T/run/$id.checklist"; echo "spawn: $id checklist missing from handoff $hf" >&2
 fi
 # publish the terminal row before the status: a parent may only see done after its row exists
-"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
+if ! "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null && [ "$state" = done ]; then
+  echo "spawn: cannot record the exit row for $id; not reporting done" >&2; state=failed
+fi
 echo "$state $rc $(date +%s)" > "$st"
 [ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
 if [ $imode = 1 ]; then

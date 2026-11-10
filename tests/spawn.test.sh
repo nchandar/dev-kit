@@ -691,4 +691,17 @@ for good in a a1 a-b a_b c6c ri1d "$long32"; do
   ok "valid id '$good' passes the id check" '[ $rc -eq 0 ]'
 done
 
+# --- hardening 9: a failed start or exit ledger row fails closed (the gate trusts those rows)
+BIN="$t/bin"; mkdir -p "$BIN"; cp -R "$here/bin/." "$BIN"/
+cat > "$BIN/ledger" <<'L'
+#!/usr/bin/env bash
+if [ -n "${FAIL_ROW:-}" ] && printf '%s' "$*" | grep -qF -- " $FAIL_ROW "; then exit 1; fi
+exec "$REAL_LEDGER" "$@"
+L
+chmod +x "$BIN/ledger"
+FAIL_ROW="spawn fr1 running" REAL_LEDGER="$here/bin/ledger" FAKE_ID=fr1 "$BIN/spawn" fr1 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a failed start row fails the spawn before the worker starts" '[ $rc -eq 2 ] && [ ! -e "$DEVKIT_DIR/fakepid.fr1" ]'
+FAIL_ROW="spawn fr2 done" REAL_LEDGER="$here/bin/ledger" FAKE_ID=fr2 "$BIN/spawn" fr2 fake "$t/brief.md" 2>/dev/null; rc=$?
+ok "a failed exit row is not reported done" '[ $rc -ne 0 ] && [ "$(cut -d" " -f1 $TD/run/fr2.status)" = failed ] && [ -s $TD/handoffs/fr2.md ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
