@@ -354,14 +354,14 @@ cleanup() { local rc=$?
     [ -z "$guard" ] || { pkill -P "$guard" 2>/dev/null; kill "$guard" 2>/dev/null; }
     kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 1
     kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null
-    echo "killed $rc $(date +%s)" > "$st"
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+    echo "killed $rc $(date +%s)" > "$st"
   fi
   if [ "$imode" = 1 ] && [ "$istarted" = 1 ] && [ "$idone" != 1 ]; then # before the tab exists an early exit keeps its real status
-    echo "killed $rc $(date +%s)" > "$st"
     if [ -n "$vpane" ] && [ ! -s "$hf" ]; then { echo "# $id (auto-generated)"; echo "status: killed (exit $rc), no handoff written. Last output:"; herdr pane read --lines 20 "$vpane" 2>/dev/null; } > "$hf"; fi
     herdr notification show "$id killed" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
+    echo "killed $rc $(date +%s)" > "$st"
     stop_session
   fi
   iso_check # killed and interrupted runs are compared here too
@@ -388,6 +388,8 @@ if [ $wt = 1 ]; then
     [ "$lead" -eq 0 ] || git -C "$wd" rev-parse HEAD > "$T/run/$id.base" 2>/dev/null || true
   fi
 fi
+# a start row outdates any earlier accept: a respawn is unreviewed even if it dies without its exit row
+"$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null || true
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"
 # the parent Stop hook matches workers to their session; a respawn must not keep a stale id
 # a lead runs long on its own; the Stop hook skips it while it lives, never after it exits (a stale marker must not outlive a respawn)
@@ -557,6 +559,8 @@ elif [ -n "$cl" ]; then
 else
   echo "missing" > "$T/run/$id.checklist"; echo "spawn: $id checklist missing from handoff $hf" >&2
 fi
+# publish the terminal row before the status: a parent may only see done after its row exists
+"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 echo "$state $rc $(date +%s)" > "$st"
 [ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
 if [ $imode = 1 ]; then
@@ -584,5 +588,4 @@ elif [ $view = 1 ]; then
   else sleep "$DEVKIT_VIEW_CLOSE_DELAY"; herdr tab close "$vtab" >/dev/null 2>&1; fi
   vdone=1
 fi
-"$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" "$state" 2>/dev/null || true
 [ $state = done ]
