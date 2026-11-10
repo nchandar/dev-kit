@@ -64,7 +64,7 @@ accept w1; gate; ok "S0: the second accept clears it" '[ "$grc" -eq 0 ]'
 start_plain w2; wait "$sp" 2>/dev/null; sp=; accept w2
 gate; ok "F2 setup: the first run is accepted" '[ "$grc" -eq 0 ]'
 start_held w2; waitfor w2 running
-ok "F2: a respawn writes a start row" 'grep -qE "^[^\t]*\tspawn\tw2 running\t" "$TD/ledger.tsv"'
+ok "F2: a respawn writes a start row" 'awk -F"\t" '"'"'$2=="spawn" && $3=="w2 running"{f=1} END{exit !f}'"'"' "$TD/ledger.tsv"'
 kill -9 "$sp" 2>/dev/null; wait "$sp" 2>/dev/null; sp=
 [ ! -s "$DEVKIT_DIR/fakepid.w2" ] || kill -9 "$(cat "$DEVKIT_DIR/fakepid.w2")" 2>/dev/null
 rm -rf "$DEVKIT_DIR"/run/slot.*
