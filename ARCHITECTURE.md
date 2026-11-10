@@ -112,7 +112,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `DEVKIT_MAX_LEADS` | auto | Live `--lead` workers, repo-wide; auto means at most half the worker pool and at most 10 (at least 1); a `--lead` spawn past it exits 4 with a message (counted from `run/<id>.detached` plus a running status, so leads of other tasks count too) |
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
-| `DEVKIT_TIMEOUT` | 900 s | 0 disables; hung worker is TERMed, then KILLed |
+| `DEVKIT_TIMEOUT` | 7200 s | 0 disables; hung worker is TERMed, then KILLed |
 | `DEVKIT_STOP_TIMEOUT` | 10 s | Cap on `opencode session delete` at worker exit (at least 1; TERM, then KILL) |
 | `DEVKIT_SAFE` | unset | Restricted permissions instead of skipping them |
 | `DEVKIT_DRYRUN` | unset | Print the CLI command and exit |
