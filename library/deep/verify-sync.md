@@ -7,8 +7,8 @@
 - Covered code changed since the sync commit: run the drift pass in dev-maintain-formal-verification-skill against this file.
 
 ## Steps
-1. Keep a coverage record next to the check: the files and functions it covers, the property it guards, its bounds and assumptions, the command that runs it, the repo that holds the covered code, and the sync commit. Point to it from `<task>/state.md`. A check without a record is a draft.
-2. The sync commit is the last commit of the repo that holds the covered code where someone confirmed the check still describes it. A green run alone never advances it.
+1. Keep a coverage record next to the check: the files and functions it covers, the property it guards, its bounds and assumptions, the command that runs it, the repo that holds the covered code, and the sync commit. Write the machine-readable part as `<task>/model/coverage.env` with `sync=<sha>`, `files=<space separated paths>` and optional `cmd=`; `bin/model-drift` reads only `sync` and `files`; `cmd=` and an optional `functions=` are informational. Point to it from `<task>/state.md`. A check without a record is a draft.
+2. The sync commit is the last commit of the repo that holds the covered code where someone confirmed the check still describes it. A green run alone never advances it; when the repo moved but the covered diff is empty and the rerun and the break test pass, advance it (repo moved, nothing covered did).
 3. Before trusting a result, diff the covered code from the sync commit to HEAD: `git diff <sync>..HEAD -- <covered files>`. Read the commit messages too, and look for covered code renamed, moved or split, and for new writers of the guarded state.
 4. Give each change one outcome:
    - in sync: nothing the check describes changed, and it passes.
