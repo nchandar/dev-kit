@@ -349,4 +349,21 @@ ok "kill mid-write: the backup was already written" '[ "$(backups "$H7")" = 1 ]'
 # --- arg handling stays strict
 ok "extra args with --apply: rejected" 'env HOME="$t/fresh" PATH="$fb:$base_path" /bin/bash "$setup" --apply extra >/dev/null 2>&1; [ $? -eq 2 ]'
 
+# --- symlinked configs: both backups land beside the link the user sees, never in its target repo
+H17="$t/home17"; make_ready_home "$H17"
+rm -f "$H17/.config/opencode/opencode.jsonc"
+printf '{"plugin":[]}\n' > "$H17/dotfiles/opencode.jsonc"
+ln -s ../../dotfiles/opencode.jsonc "$H17/.config/opencode/opencode.jsonc"
+log="$t/t17.log"; : > "$log"
+yes | run_apply "$H17" "$fb:$toolsbin:$base_path" "$log" "$t/inst17" > "$t/t17.out" 2>&1; rc=$?
+ok "symlinked configs: exits 0" '[ $rc -eq 0 ]'
+ok "symlinked configs: the settings backup sits beside the link" '[ "$(find "$H17/.claude" -maxdepth 1 -name "settings.json.devkit-bak-*" | wc -l | tr -d " ")" = 1 ]'
+ok "symlinked configs: the opencode backup sits beside the link" '[ "$(find "$H17/.config/opencode" -maxdepth 1 -name "opencode.jsonc.devkit-bak-*" | wc -l | tr -d " ")" = 1 ]'
+ok "symlinked configs: no backup lands in the link target repo" '[ "$(backups "$H17/dotfiles")" = 0 ]'
+ok "symlinked configs: both links are kept" '[ -L "$H17/.claude/settings.json" ] && [ -L "$H17/.config/opencode/opencode.jsonc" ]'
+ok "symlinked configs: both targets got the change" '[ "$(allow_rows "$H17/dotfiles/claude-settings.json" | wc -l | tr -d " ")" -eq 6 ] && [ "$(todo_flag "$H17/dotfiles/opencode.jsonc")" = True ]'
+b17=$(backups "$H17")
+yes | run_apply "$H17" "$fb:$toolsbin:$base_path" "$log" "$t/inst17" > "$t/t17b.out" 2>&1
+ok "symlinked configs: a rerun adds no backup" '[ "$(backups "$H17")" = "$b17" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]
