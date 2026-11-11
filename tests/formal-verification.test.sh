@@ -27,7 +27,7 @@ ok "model-check: TLC default, stateful tests, Quint, Apalache" "for w in TLC 'st
 ok "model-check: plain TLC command"                  "grep -q 'tlc2.TLC' $m && grep -q -- '-workers 1' $m"
 ok "model-check: chart through tlachart with the full command" "grep -qF 'tlachart SPEC.tla --config SPEC.cfg --view VIEW.mjs --out DIR' $m"
 ok "model-check: without tlachart, the chart is blocked and the user is asked" "grep -qF 'chart blocked and ask' $m && grep -qF 'do not install unasked' $m"
-ok "model-check: optional pele SVG over the tlachart output" "grep -qi 'optional' $m && grep -qF 'pele' $m && grep -qF 'render(' $m && grep -qi 'svg' $m"
+ok "model-check: optional pele SVG over the tlachart output" "grep -qi 'optional' $m && grep -qF 'pele' $m && grep -qF 'bin/chart-svg' $m && grep -qi 'plain text' $m && grep -qi 'svg' $m"
 ok "model-check: chart at 2 actors, check at 3, 500 states" "grep -q 'chart at 2 actors' $m && grep -q 'check at 3 actors' $m && grep -q '500' $m"
 ok "model-check: every rule fails on a broken variant" "grep -qi 'broken variant' $m"
 ok "model-check: never weaken a rule"                "grep -qi 'never weaken' $m"

@@ -26,7 +26,7 @@
    ```
 
    No `tlachart`: report the chart blocked and ask; do not install unasked. The TLC result still stands.
-   Optional: when `pele` (MIT, `bun add pele`) is installed, turn `DIR/chart.mmd` into SVG with `render(source).svg` from `pele` and present that page. Show a render error with `textContent`; without `pele`, present `DIR/chart.mmd` as is.
+   Optional: when `pele` (MIT, `bun add pele`) is installed, `bin/chart-svg DIR/chart.mmd DIR/chart.svg` writes the SVG page and prints a render error as plain text; without `pele`, present `DIR/chart.mmd` as is.
 8. Every rule must fail on a broken variant: remove a check or reorder a step in a copy, watch TLC report that rule, then drop the break. A rule never seen failing is untested.
 9. Never weaken a rule, a constant or a bound to get a pass. Report the failure with TLC's shortest trace in the code's words.
 10. A model finding is a hypothesis until you replay the trace against the real code, one action per step, as a test or a live repro. If the replay cannot fail, the model is wrong until you show otherwise.

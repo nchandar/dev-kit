@@ -8,7 +8,7 @@ Both must pass before every commit:
 tests/run-all.sh      # all suites with fake CLIs, then the lint; no tokens
 bin/lint-budget       # caps, names, references, public-safety scan
 ```
-Requirements: bash 3.2 or newer, git 2.31 or newer. Standard Unix tools only (no Python, Node, jq).
+Requirements: bash 3.2 or newer, git 2.31 or newer, perl. `bin/setup` also uses python3 when present for JSON settings edits; no Node or jq.
 
 ## 2. Layout
 | Path | Purpose |
@@ -70,12 +70,16 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | Suite | Covers |
 |---|---|
 | `install` | `install.sh` under a fake HOME |
+| `chart-svg` | `bin/chart-svg`: usage, missing tools, render errors, no partial file, output mode |
 | `learn` | The local learning inbox |
 | `ledger` | Per-task ledgers |
 | `lint-budget` | Lint fixtures, pass and fail cases |
 | `parallel-sections` | Crash copies stay out of the repo tree while a scan runs |
 | `reconcile` | Open-task and learning listing |
 | `run` | Log plus short summary wrapper |
+| `setup` | `bin/setup --check`: core, tools, claude, codex, opencode, sync, goldens, read-only |
+| `setup-apply` | `bin/setup --apply`: prompts, fake installers, backup, idempotent, symlink-safe |
+| `setup-sync` | Repo sync: discovery, ff-only pull, frozen copy, optional installers |
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
 | `stop-gate` | Parent Stop hook: blocks on unaccepted workers, budget, fail-open |
