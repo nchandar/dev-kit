@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Report whether the covered files moved since the sync commit. Read-only: never advances sync=.
+# Usage: bin/model-drift RECORD [--repo DIR]
+# RECORD is a key=value file: sync=<sha>, files=<space separated paths relative to the repo>, optional cmd=.
+# Compares the working tree to the sync commit. One line: in-sync (exit 0) or "drifted: <changed covered files>" (exit 1); bad usage or record exits 2.
+set -u
+die() { echo "model-drift: $*" >&2; exit 2; }
+usage() { die "usage: bin/model-drift RECORD [--repo DIR]"; }
+
+record= repo=.
+while [ $# -gt 0 ]; do
+  case $1 in
+    --repo) [ $# -ge 2 ] || usage; repo=$2; shift 2;;
+    -*) usage;;
+    *) [ -z "$record" ] || usage; record=$1; shift;;
+  esac
+done
+[ -n "$record" ] || usage
+[ -f "$record" ] || die "no such record: $record"
+[ -d "$repo" ] || die "no such repo: $repo"
+root=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null) || die "not a git repo: $repo"
+
+sync= files=
+while IFS= read -r line || [ -n "$line" ]; do
+  case $line in ''|'#'*) continue;; esac
+  key=${line%%=*}
+  [ "$key" != "$line" ] || die "bad record line: $line"
+  case $key in
+    sync) sync=${line#*=};;
+    files) files=${line#*=};;
+  esac
+done < "$record"
+[ -n "$sync" ] || die "record has no sync="
+[ -n "$files" ] || die "record has no files="
+git -C "$root" cat-file -e "$sync^{commit}" 2>/dev/null || die "unknown sync sha: $sync"
+
+changed=
+for f in $files; do
+  at_sync=0; now=0
+  git -C "$root" cat-file -e "$sync:$f" 2>/dev/null && at_sync=1
+  [ -e "$root/$f" ] && now=1
+  # a path in neither place is a typo, and a typo must not read as in-sync
+  [ $at_sync = 1 ] || [ $now = 1 ] || die "covered path not found: $f"
+  if [ $at_sync = 0 ]; then changed="$changed${changed:+ }$f"; continue; fi
+  # an untracked file under a covered path is a new writer that diff cannot see
+  if [ -n "$(git -C "$root" ls-files --others --exclude-standard -- "$f")" ]; then changed="$changed${changed:+ }$f"; continue; fi
+  # against the working tree, so an uncommitted edit counts as drift too
+  git -C "$root" diff --quiet "$sync" -- "$f"; rc=$?
+  case $rc in
+    0) ;;
+    1) changed="$changed${changed:+ }$f";;
+    *) die "cannot diff $f (exit $rc)";;
+  esac
+done
+if [ -z "$changed" ]; then printf 'in-sync\n'; exit 0; fi
+printf 'drifted: %s\n' "$changed"; exit 1

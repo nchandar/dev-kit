@@ -22,7 +22,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 ## Checklist
 - [ ] 0. Load the coverage record and sync commit from `<task>/model/`; no record means the check is a draft, so send it back to the create skill.
-- [ ] 1. Diff the covered code from the sync commit: `git diff <sync>..HEAD -- <covered files>`. Read the commit messages too; look for renamed, moved or split code and for new writers of the guarded state.
+- [ ] 1. Run `bin/model-drift <task>/model/coverage.env` first: `in-sync` means no covered file changed, `drifted: <files>` names the rest. Diff those files from the sync commit: `git diff <sync>..HEAD -- <covered files>`. Read the commit messages too; look for renamed, moved or split code and for new writers of the guarded state.
 - [ ] 2. Give each change one outcome:
   - in sync: nothing the check describes changed, and it passes;
   - updated: the code moved and you changed the model or harness to match, and it passes;

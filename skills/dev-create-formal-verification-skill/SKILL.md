@@ -24,13 +24,13 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 0. Skim library/principles.
 - [ ] 1. Pick the target: the promise whose break harms most and that tests rarely reach (a lease held twice, two writers, a rerun that double-charges). Write one plain sentence and one INVARIANT per rule; if the model has no variable for a rule, add it.
 - [ ] 2. Point each model step at code a reviewer can open (file:line). One code step stays one model step. Name actions in the repo's words.
-- [ ] 3. Choose the tool: TLC on a small TLA+ design by default; stateful property tests when the real code is cheap to drive; Quint and Apalache only if the user names them. Ledger the choice and why.
+- [ ] 3. Choose the tool: TLC on a small TLA+ design by default; a stateful property test against a small reference model (library/deep/property-check) for sequential or crash-free logic the code can drive; Quint and Apalache only if the user names them. Ledger the choice and why.
 - [ ] 4. Check at 3 actors (or the narrowest bound that shows the race); chart at 2 actors. Keep the constants small and list what the model excludes: timers, lock or lease expiry, stalls, non-atomic commands.
-- [ ] 5. Keep the spec in `<task>/model/`, run plain TLC, and record the exact line it prints. No error means the model holds, not the code, and not under any timing the model omits.
+- [ ] 5. Keep the spec in `<task>/model/`, run plain TLC, and record the exact line it prints. No error means the model holds, not the code, and not under any timing the model omits; when a timeout is the only guard, also check an untimed variant (library/deep/model-check step 5).
 - [ ] 6. Prove every rule can fail: remove a check or reorder a step in a copy, watch TLC name that rule, drop the break. A rule never seen failing is untested; never weaken a rule or raise a bound to get a pass.
 - [ ] 7. When Bun and `tlachart` are present, draw the chart from the same spec and config; without `tlachart`, report the chart blocked and ask; do not install unasked. The TLC result still stands.
-- [ ] 8. Replay each counterexample on the real code, one action per step, as a test or a live repro, and once more with a stall injected past each expiry. A finding with no failing replay is a hypothesis, not a bug.
-- [ ] 9. Record the coverage (files and functions, property, bounds, exclusions, command, repo) and the sync commit where the model matched the code, in `<task>/model/`, pointed to from `<task>/state.md`. A check without a record is a draft.
+- [ ] 8. Replay each counterexample on the real code, one action per step, as a test or a live repro, and once more with a stall injected past each expiry (shadow one command to inject it, library/deep/model-check step 10). A finding with no failing replay is a hypothesis, not a bug.
+- [ ] 9. Record the coverage (files and functions, property, bounds, exclusions, command, repo) and the sync commit where the model matched the code in `<task>/model/coverage.env` as `sync=<sha>`, `files=<space separated paths>` and optional `cmd=`, pointed to from `<task>/state.md`. A check without a record is a draft.
 - [ ] 10. Closeout: follow library/state, then `bin/ledger done "<summary>"` or a `next` row.
 
 **Hand off to:** dev-maintain-formal-verification-skill for later drift; dev-debug when a replay shows a real bug; dev-review when the skill changed.
