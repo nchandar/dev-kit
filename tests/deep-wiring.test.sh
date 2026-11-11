@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wiring checks for the pstack adoption (what lint-budget cannot see). Usage: tests/pstack-adoption.test.sh
+# Wiring checks for the deep files and routes (what lint-budget cannot see). Usage: tests/deep-wiring.test.sh
 set -u
 here=$(cd "$(dirname "$0")/.." && pwd); cd "$here" || exit 2
 pass=0; fail=0
@@ -7,7 +7,7 @@ ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)
 refd() { grep -rlq "library/deep/$1" skills library/*.md; }
 
 for d in sketch writing ketchup blast-radius app-verification-recipe typescript experience-first overnight; do
-  ok "deep $d exists with a pstack source line"  "[ -f library/deep/$d.md ] && grep -q '^Source: pstack' library/deep/$d.md"
+  ok "deep $d exists and is not empty"  "[ -s library/deep/$d.md ]"
   ok "deep $d is referenced from a skill or library file"  "refd $d"
 done
 ok "dev-refactor skill exists"                    '[ -f skills/dev-refactor/SKILL.md ]'

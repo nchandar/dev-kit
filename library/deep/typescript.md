@@ -17,5 +17,3 @@
 ## Red Flags
 - `as` used to silence the compiler.
 - Unparsed `unknown` or `any` passed inward.
-
-Source: pstack/typescript-best-practices

@@ -17,5 +17,3 @@
 - Citing this with no script or generator in the diff.
 - Reviewer can only verify by redoing the work.
 - Hand edits across dozens of files.
-
-Source: pstack/principle-build-the-lever

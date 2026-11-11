@@ -79,7 +79,7 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
 | `stop-gate` | Parent Stop hook: blocks on unaccepted workers, budget, fail-open |
-| `pstack-adoption` | Wiring of the pstack-derived skills and deep files |
+| `deep-wiring` | Deep files exist and skills, routes and evals point at them |
 
 ### Parallel-safe suites
 `tests/run-all.sh` runs suites concurrently (by default `min(cores, 4)` at once), so every suite must:

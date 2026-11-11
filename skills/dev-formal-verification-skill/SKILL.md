@@ -25,7 +25,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 1. Triage by what exists:
   - no model for the promise: hand the build to dev-create-formal-verification-skill;
   - a model exists but covered code changed since its sync commit: hand to dev-maintain-formal-verification-skill;
-  - a chart or explanation only: run the TLC and statechart commands in library/deep/model-check and stop.
+  - a chart or explanation only: run the TLC and tlachart commands in library/deep/model-check and stop.
 - [ ] 2. Name the promise in one sentence and the harm if it breaks, so the chosen skill starts from a target, not a tour.
 - [ ] 3. Closeout: follow library/state, then `bin/ledger done "<summary>"` or a `next` row.
 

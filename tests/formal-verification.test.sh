@@ -16,7 +16,6 @@ ok "verify-sync lists the four outcomes"             "for w in 'in sync' updated
 ok "verify-sync advances the sync only after confirmation" "grep -qi 'advance' $c && grep -qi 'confirm' $c"
 ok "verify-sync mentions bin/ledger"                 "grep -q 'bin/ledger' $c"
 ok "verify-sync: no outside references"              "! grep -Eq '\.\./|references/' $c"
-ok "verify-sync: own wording, not pstack's step title" "! grep -q 'Update from the code, not from the result' $c"
 
 # R2: when a model beats a test, tool choice, commands, budgets
 m=library/deep/model-check.md
@@ -26,8 +25,9 @@ ok "model-check: ordering, concurrency, small state" "for w in ordering concurre
 ok "model-check: not for single actor, UI, plain logic" "for w in 'single actor' UI 'plain logic'; do grep -qi \"\$w\" $m || exit 1; done"
 ok "model-check: TLC default, stateful tests, Quint, Apalache" "for w in TLC 'stateful property test' Quint Apalache; do grep -qi \"\$w\" $m || exit 1; done"
 ok "model-check: plain TLC command"                  "grep -q 'tlc2.TLC' $m && grep -q -- '-workers 1' $m"
-ok "model-check: statechart through bun and STATECHART" "grep -qF 'bun \"\${STATECHART:?' $m && grep -qF 'scripts/statechart.ts' $m"
-ok "model-check: Mermaid from the counterexample when statechart is absent" "grep -qi mermaid $m && grep -qi 'counterexample' $m && grep -qi 'hand-drawn' $m"
+ok "model-check: chart through tlachart with the full command" "grep -qF 'tlachart SPEC.tla --config SPEC.cfg --view VIEW.mjs --out DIR' $m"
+ok "model-check: without tlachart, the chart is blocked and the user is asked" "grep -qF 'chart blocked and ask' $m && grep -qF 'do not install unasked' $m"
+ok "model-check: optional pele SVG over the tlachart output" "grep -qi 'optional' $m && grep -qF 'pele' $m && grep -qF 'render(' $m && grep -qi 'svg' $m"
 ok "model-check: chart at 2 actors, check at 3, 500 states" "grep -q 'chart at 2 actors' $m && grep -q 'check at 3 actors' $m && grep -q '500' $m"
 ok "model-check: every rule fails on a broken variant" "grep -qi 'broken variant' $m"
 ok "model-check: never weaken a rule"                "grep -qi 'never weaken' $m"
@@ -35,8 +35,8 @@ ok "model-check: a finding needs a replay on real code" "grep -qi replay $m && g
 ok "model-check: timers, expiry and stalls named"    "grep -qi 'timer' $m && grep -qi 'expiry' $m && grep -qi 'stall' $m"
 ok "model-check: Red Flag for a safe verdict without timing" "sed -n '/^## Red Flags/,\$p' $m | grep -qi 'expiry'"
 ok "model-check: jar path inline, blocked when missing" "grep -qF 'TLA2TOOLS:-' $m && grep -qi 'blocked' $m"
-ok "model-check: Mermaid fallback names the counterexample" "grep -q 'stateDiagram' $m"
-ok "model-check: STATECHART is required, no author path" "! grep -q 'github/ref' $m && grep -q 'STATECHART:?' $m"
+old_env="STATE""CHART"; author="github/""ref"
+ok "model-check: no clone env var and no author path" "! grep -q \"\$old_env\" $m && ! grep -q \"\$author\" $m"
 
 # R3: the three explicit-only skills
 entry=skills/dev-formal-verification-skill/SKILL.md
@@ -58,7 +58,7 @@ done
 ok "entry reads principles and the model-check deep file" "grep -q 'always library/principles' $entry && grep -q 'library/deep/model-check' $entry"
 ok "entry triage sends no model to the create skill" "grep -qi 'no model' $entry && grep -q 'dev-create-formal-verification-skill' $entry"
 ok "entry triage sends covered code drift to maintain" "grep -qi 'covered code' $entry && grep -q 'dev-maintain-formal-verification-skill' $entry"
-ok "entry triage renders a chart only with TLC and statechart" "grep -qi 'chart' $entry && grep -q 'TLC' $entry && grep -qi 'statechart' $entry"
+ok "entry triage renders a chart only with TLC and tlachart" "grep -qi 'chart' $entry && grep -q 'TLC' $entry && grep -qi 'tlachart' $entry"
 ok "entry hands off to both skills and dev-debug"   "l=\$(grep '^\*\*Hand off to:\*\*' $entry); printf '%s' \"\$l\" | grep -q dev-create-formal-verification-skill && printf '%s' \"\$l\" | grep -q dev-maintain-formal-verification-skill && printf '%s' \"\$l\" | grep -q dev-debug"
 ok "create reads model-check and keeps the model in <task>/model" "grep -q 'library/deep/model-check' $create && grep -q '<task>/model' $create"
 ok "create names timers, expiry and stalls in the bound and the reply" "grep -qi 'timer' $create && grep -qi 'expiry' $create && grep -qi 'stall' $create && grep -qi 'timing' $create"

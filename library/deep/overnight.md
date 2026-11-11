@@ -18,5 +18,3 @@
 - "Run for 8 hours" as the finish condition.
 - Pushing or merging unattended.
 - A loop with no cap.
-
-Source: pstack/autonomous-run

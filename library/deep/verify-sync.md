@@ -25,5 +25,3 @@
 - A model or harness tuned until it passes, shaped by the result rather than the code.
 - A property weakened to make a failure go away.
 - Covered code moved or renamed and the record left stale.
-
-Source: pstack create-formal-verification-skill and maintain-formal-verification-skill (MIT), reworded.

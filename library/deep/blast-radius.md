@@ -14,5 +14,3 @@
 
 ## Red Flags
 - a convincing writeup with no run. Write "unproven" instead.
-
-Source: pstack/blast-radius

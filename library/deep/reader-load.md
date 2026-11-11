@@ -16,5 +16,3 @@
 - An abstraction exists for a future implementation that does not exist.
 - A flat module relies on many mutable globals.
 - Adjacent layers expose the same API with different names.
-
-Source: pstack/principle-minimize-reader-load

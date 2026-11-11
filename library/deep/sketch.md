@@ -17,5 +17,3 @@
 - One candidate only.
 - Sketch treated as paperwork.
 - Patching a wrong shape.
-
-Source: pstack/architect

@@ -16,5 +16,3 @@
 - A run started with no decision attached.
 - A single run, no spread, no named limiter.
 - A gain larger than the time the changed part took.
-
-Source: pstack/principle-explain-the-number

@@ -18,5 +18,3 @@
 - Business rules inside handlers or framework glue.
 - Two string args that can be swapped without a compile error.
 - A hand-written type duplicating a schema.
-
-Source: pstack/principle-boundary-discipline + principle-type-system-discipline

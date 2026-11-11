@@ -16,5 +16,3 @@
 - "Workers must not edit the same file" written as a rule only.
 - A lock added as the first answer.
 - Intermittent failures that vanish on rerun.
-
-Source: pstack/principle-separate-before-serializing-shared-state

@@ -17,5 +17,3 @@
 - "One more tweak" after two failures.
 - No written premise.
 - Fixes that compensate instead of removing the cause.
-
-Source: pstack/principle-attack-the-premise
