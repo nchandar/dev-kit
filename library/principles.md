@@ -20,7 +20,7 @@ Architecture defaults
 10. Record the decision that is hard to reverse: what, why, and what you rejected (library/deep/decision-records).
 
 Test and prove
-11. Red first, for the right reason. Test behavior at the public seam, then break the behavior on purpose and watch the test fail (library/tdd, library/deep/test-strategy). A signal you add gets a test too (library/deep/observe-and-test).
+11. Red first, for the right reason. Test behavior at the public seam, then break the behavior on purpose and watch the test fail (library/tdd, library/deep/test-strategy). A signal you add gets a test too (library/deep/observe-and-test). An ordering or lease bug tests rarely reach: model it, then replay the trace (library/deep/model-check, library/deep/verify-sync).
 12. Verify the real artifact, never a proxy. A script you cite is a file in the diff (library/verify, library/deep/build-the-lever).
 13. Before trusting a number, name its limiter and its noise floor (library/deep/explain-the-number).
 14. Done is the task's acceptance criteria plus the standing bar (library/deep/definition-of-done).

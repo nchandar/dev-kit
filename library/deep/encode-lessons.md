@@ -17,5 +17,3 @@
 ## Red Flags
 - Repeating a rule in prompts, comments, and reviews instead of enforcing it.
 - Adding a warning that can be ignored when a failing check is possible.
-
-Source: pstack/principle-encode-lessons-in-structure

@@ -15,5 +15,3 @@
 - Pasting full test output or large files into the working conversation.
 - Repeating broad searches after the relevant result is already recorded.
 - Delegating without a cap on scope or a required summary format.
-
-Source: pstack/principle-guard-the-context-window

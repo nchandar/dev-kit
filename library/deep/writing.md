@@ -22,5 +22,3 @@
 
 ## Red Flags
 - A doc that follows every rule yet reads like a machine wrote it: rewrite the sentence.
-
-Source: pstack/technical-writing

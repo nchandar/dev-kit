@@ -14,5 +14,3 @@
 - option added "just in case"
 - error state is a raw exception
 - no prototype for a novel interaction.
-
-Source: pstack/principle-experience-first

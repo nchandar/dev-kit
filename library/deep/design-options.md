@@ -18,5 +18,3 @@
 - Selecting the first workable approach without comparison.
 - New behavior scattered as conditionals across existing callers.
 - Premature abstraction where three explicit cases would be clearer.
-
-Source: pstack/principle-exhaust-the-design-space; principle-redesign-from-first-principles; principle-foundational-thinking

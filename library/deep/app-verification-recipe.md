@@ -15,5 +15,3 @@
 ## Red Flags
 - Driving the app through test-only endpoints or screen coordinates.
 - Evidence stored where cleanup deletes it.
-
-Source: pstack/create-verification-skill

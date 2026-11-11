@@ -16,5 +16,3 @@
 - A step that assumes the previous run finished or started clean.
 - A lock or marker with no way to judge it stale.
 - Crash recovery that means manual cleanup.
-
-Source: pstack/principle-make-operations-idempotent

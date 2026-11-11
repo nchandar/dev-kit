@@ -17,5 +17,3 @@
 - A new feature that is "one more branch".
 - Phase-named modules repeating the same domain rule.
 - An abstraction that adds indirection but removes no branch, duplicate rule or invalid state.
-
-Source: pstack/principle-model-the-domain

@@ -19,5 +19,3 @@
 ## Red Flags
 - Narrating process instead of outcomes.
 - A decision listed without a recommendation.
-
-Source: pstack/ketchup
