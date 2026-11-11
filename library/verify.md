@@ -17,9 +17,10 @@ Record each check with bin/ledger (phase=verify, evidence=command + key output l
 10. After launching any long background job (suite, worker, deploy), read its first output within a minute to confirm it actually started; do not wait for the exit notice. A missing task id or flag fails in seconds and is invisible until then.
 
 ## Closing gate
-Run `bin/verify` before `bin/ledger done`: done exits 4 unless the newest verify-gate row passed for the current tree id (`git write-tree` of a temporary index, so an edit after the pass is another tree) and its log file exists. Only `bin/verify` writes that row; a hand-written phase is refused. The tree id ignores uncommitted submodule edits.
+Run `bin/verify` before `bin/ledger done`: done exits 4 unless the newest verify-gate row passed for the current tree id (`git write-tree` of a temporary index, so an edit after the pass is another tree) and its log file exists. Only `bin/verify` writes that row; a hand-written phase is refused. The tree id ignores uncommitted submodule edits. A tree equal to the base is `nodiff`: no row is written and the evidence is `-`.
 The base is the task's start commit (its start row `head <sha>`, printed by `bin/verify base-commit`); older tasks fall back to the merge-base with origin/main, main, origin/master or master. Only a tree equal to the base closes with no row.
 Tiers: no diff runs nothing; docs-only (README.md, docs/**) runs the light tier; anything else runs the full suite plus scanner. AGENTS.md, skills/, library/, opencode/commands/ are code, not docs.
+A new `tests/verify*.test.sh` is itself a gate edit (`bin/verify-scan`), so adding one leaves the scan red until the user approves; report it, never weaken the test.
 Exit codes: 0 pass, 1 fail, 2 could not run (recorded not-run, never a pass).
 A gated close prints `verified: <tier> <reason> log <evidence>`.
 `--waive "<reason of 20+ chars>"` closes anyway, writes a waive row, and every later close prints it.

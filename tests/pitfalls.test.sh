@@ -2,7 +2,7 @@
 # Bug-class guard: grep -E rules over bin/ and tests/, seeded from docs/pitfalls.md.
 # Every rule has a known-bad fixture (must flag) and a known-good one (must pass).
 # A real hit is fixed or carries `# pitfall-ok: <id> <why>` on its line
-# (fixed sleeps in tests carry `# sleep-ok: <why>`, repo-tree-write hits `# repo-write-ok: <why>`).
+# (fixed sleeps in tests carry `# sleep-ok: <why>`, repo-tree-write hits `# repo-write-ok: <why>`, spawn-isolation hits `# pitfall-ok: spawn-isolation <why>`).
 # tests/pitfalls.test.sh itself is exempt from the src-grep and spawn-isolation
 # scans: it is the registry, so it greps sources by design and never runs spawn.
 # Usage: tests/pitfalls.test.sh
@@ -24,7 +24,7 @@ r_retry() { # flags until/while-true loops whose line plus 6 followers name no b
       printf '%s\n' "$(sed -n "${ln},$((ln+6))p" "$f")" | grep -q -E 'tries|waited|timeout|CHILD_WAIT|-(ge|gt)[[:space:]]+["]?[$A-Za-z0-9]|pitfall-ok: bounded-retry' \
         || out="${out}${f}:${ln}: unbounded retry loop (no counter or timeout nearby)
 "
-    done < <(grep -n -E '(^|[^A-Za-z0-9_])(until[[:space:]]|while +(true|:)([[:space:];]|$))' "$f" 2>/dev/null | cut -d: -f1)
+    done < <(grep -n -E '(^[[:space:]]*|[;&|()][[:space:]]*)(until[[:space:]]|while +(true|:)([[:space:];]|$))' "$f" 2>/dev/null | grep -v -E '^[0-9]+:[[:space:]]*#' | cut -d: -f1)
   done
   printf '%s' "$out"
 }
@@ -45,9 +45,9 @@ r_repowrite() { # flags a write whose destination is in the repo tree ("$here/" 
     ' "$f"
   done
 }
-chk_iso() { # one file: runs spawn as a command but names no isolation (comment lines ignored)
-  f=$1; code=$(grep -v -E '^[[:space:]]*#' "$f" 2>/dev/null | grep -v -E '(^|[^A-Za-z_])(grep|cat) ')
-  if printf '%s\n' "$code" | grep -q -E '"\$spawn" [A-Za-z-]|bin/spawn"? '; then
+chk_iso() { # one file: runs spawn as a command but names no isolation (comment lines and stored paths ignored; a `pitfall-ok: spawn-isolation` line is exempt)
+  f=$1; code=$(grep -v -E '^[[:space:]]*#' "$f" 2>/dev/null | grep -v 'pitfall-ok: spawn-isolation' | grep -v -E '(^|[^A-Za-z_])(grep|cat) ')
+  if printf '%s\n' "$code" | grep -q -E '(^|[^A-Za-z0-9_=])("\$spawn"|"?[^"[:space:]]*bin/spawn"?) [A-Za-z-]'; then
     printf '%s\n' "$code" | grep -q -E 'DEVKIT_VIEW=off' || printf '%s\n' "$code" | grep -q -E 'PATH=.*(stub|hs)|herdr-stub|/stubs' \
       || echo "$f: runs spawn without DEVKIT_VIEW=off or a PATH stub"
   fi
@@ -83,6 +83,8 @@ mkdir "$t/fx"; cp "$t/bad.sh" "$t/fx/bad.sh"; cp "$t/good.sh" "$t/fx/good.sh"
 ok "bounded-retry dir scan flags a fixture directory" '[ -n "$(retry_scan "$t/fx")" ]'
 ok "bounded-retry flags a bare until loop" '[ -n "$(r_retry "$t/bad.sh")" ]'
 ok "bounded-retry passes a counted loop" '[ -z "$(r_retry "$t/good.sh")" ]'
+printf '%s\n' '#!/usr/bin/env bash' '# wait until the lock frees' 'echo "bounded until later"' > "$t/c_until.sh"
+ok "bounded-retry ignores until in comments and prose" '[ -z "$(r_retry "$t/c_until.sh")" ]'
 
 bad_ar='[ "$depth" -lt "$MAXD" ]'; good_ar='[ "$((10#$depth))" -eq 0 ]'; good_ar2='[ "$tries" -ge 20 ] # pitfall-ok: decimal-arith internal counter, always decimal'
 printf '%s\n' "$bad_ar" > "$t/bad.sh"; printf '%s\n' "$good_ar" "$good_ar2" > "$t/good.sh"
@@ -108,6 +110,10 @@ ok "spawn-isolation flags a path-prefixed bin/spawn" '[ -n "$(chk_iso "$t/badp.s
 ok "spawn-isolation ignores DEVKIT_VIEW=off in a comment" '[ -n "$(chk_iso "$t/badc.sh")" ]'
 ok "spawn-isolation passes a path-prefixed run with the view off" '[ -z "$(chk_iso "$t/goodp.sh")" ]'
 ok "spawn-isolation passes DEVKIT_VIEW=off" '[ -z "$(chk_iso "$t/goodt.sh")" ]'
+printf '%s\n' 'spawn="$here/bin/spawn" ; ledger=x' > "$t/storep.sh"
+printf '%s\n' '"$here/bin/spawn" x fake brief.md # pitfall-ok: spawn-isolation probe text, never executed' > "$t/markp.sh"
+ok "spawn-isolation ignores a stored path" '[ -z "$(chk_iso "$t/storep.sh")" ]'
+ok "spawn-isolation honors the pitfall-ok marker" '[ -z "$(chk_iso "$t/markp.sh")" ]'
 
 bad_sg='grep -q "cannot load" "$here/bin/spawn"'; good_sg='grep -q "^done" "$TD/run/v4.status"'
 printf '%s\n' "$bad_sg" > "$t/bad.sh"; printf '%s\n' "$good_sg" > "$t/good.sh"

@@ -89,6 +89,7 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 `tests/run-all.sh` runs suites concurrently (by default `min(cores, 4)` at once), so every suite must:
 - make its own `mktemp -d` and write only there, never into the repo tree (`repo-tree-write` in `tests/pitfalls.test.sh`; a justified exception carries a `# repo-write-ok: <why>` tag);
 - avoid process-wide `pkill`/`pgrep -f` without a marker only its own file contains, fixed ports, and a shared HOME or git config;
+- unset `DEVKIT_DIR`, `DEVKIT_TASK`, `DEVKIT_DEPTH` and `CLAUDE_CODE_SESSION_ID` before building or entering a scratch repo: the harness exports them and they would point the fake task at the real one.
 
 Knobs: `DEVKIT_TEST_JOBS=N` sets how many suites run at once (`1` runs serially, for debugging; invalid values exit 2). `DEVKIT_TEST_CORES=N` stands in for the detected core count (a test seam). The start order comes from `tests/run-all.weights` (`name seconds` per line, longest first); a suite not listed starts after those, in glob order, so listing a new slow suite is optional and only shortens the wall time.
 
