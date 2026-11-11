@@ -75,7 +75,7 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
   - Idle guard: done means a handoff ending in `## Checklist`. An agent idle (herdr `idle` or `done`; never `blocked` or `unknown`, so no keystroke lands in a dialog) for `DEVKIT_IDLE_WAIT` seconds without one gets one prompt to finish; idle again for as long, the run fails and keeps any draft handoff.
   - Eval: `evals/spawn-interactive.sh` (manual, costs tokens; `--list` shows the cases; runs from a worker too: it uses its own sandbox DEVKIT_DIR and drops the inherited depth and task) spawns a trivial scout per installed CLI and asserts tab created, agent detected, ticked `## Checklist`, tab closed, exit 0. `tests/spawn-eval.test.sh` checks its scoring with fakes.
   - opencode todo panel: needs `experimental.todo` in the global opencode config (install.sh sets it); `--doctor` warns when it is missing.
-- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/briefs/<id>.prompt`, `<task>/run/<id>.{status,timedout,tab,checklist}`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
+- Owns: `<task>/handoffs/<id>.{md,log,last}`, `<task>/briefs/<id>.prompt`, `<task>/run/<id>.{status,timedout,tab,checklist}`, `<task>/run/<id>.claim/`, `<task>/wt/<id>/`, repo-wide `.devkit/run/slot.N/`.
 
 ```mermaid
 sequenceDiagram
@@ -84,6 +84,7 @@ sequenceDiagram
   participant W as Worker CLI
   participant L as Ledger
   M->>S: spawn id cli brief (background)
+  S->>S: claim id (atomic mkdir; a live id exits 2 "already running")
   S->>S: claim slot (atomic mkdir, up to the worker cap)
   S->>S: optional git worktree devkit/task-id
   S->>S: push guard (dead pushurl), build CLI command, status=running
@@ -98,7 +99,7 @@ sequenceDiagram
 
 - States: `done`, `failed` (non-zero exit or no handoff), `timeout`, `violation` (a scout changed HEAD, tracked content or untracked files outside `.devkit/`; checked by content hash, so commits and repeat edits count).
 - Interrupt (INT, TERM, HUP): spawn stops the worker and its children, closes the herdr tab (or records it under `DEVKIT_VIEW_KEEP`), frees the slot, and writes `killed` to the status and the ledger.
-- Failure modes: spawn past the nesting limit (see env table) exits 3; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives. `bin/spawn` re-executes itself from a private copy (`$TMPDIR/dk-spawn.*`, unlinked at start) so editing the script or switching the main checkout's branch mid-run cannot crash a live spawn; the copy reads `bin/defaults` and `bin/ledger` from the original dir. A `kill -9` of spawn runs no cleanup: the slot stays counted while the worker lives (the slot records the worker pid), and the worker is stopped by the timeout guard.
+- Failure modes: spawn past the nesting limit (see env table) exits 3; a second spawn of a live id exits 2 with `already running`; bad knob values, unknown CLI, bad id or unreadable brief exits 2; worktree failure exits 1. Timeout or interrupt signals the worker's whole process group (TERM, then KILL); a descendant that calls setsid or setpgrp to leave the group survives. `bin/spawn` re-executes itself from a private copy (`$TMPDIR/dk-spawn.*`, unlinked at start) so editing the script or switching the main checkout's branch mid-run cannot crash a live spawn; the copy reads `bin/defaults` and `bin/ledger` from the original dir. A `kill -9` of spawn runs no cleanup: the slot and the id claim stay counted while the worker lives (both record the worker pid), so a retry cannot start a second worker; once the worker is gone a dead owner's claim and slot are reclaimed.
 
 Defaults live in `bin/defaults` (an env var of the same name overrides it); `tests/defaults.test.sh` keeps this table equal to them.
 
@@ -210,6 +211,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
     briefs/<wid>.md            worker briefs (main agent, or spawn --prompt)
     handoffs/<wid>.md          worker report (worker; spawn if missing); .log/.last raw output
     run/<wid>.status           running|done|failed|timeout|violation (spawn)
+    run/<wid>.claim/           live spawn of this id: pid, start, wpid (spawn)
     run/<wid>.checklist        n/m closed items of the worker checklist, or missing (spawn)
     runs/NNN.log, wt/<wid>/    command logs (run), worker worktrees (spawn)
 ```

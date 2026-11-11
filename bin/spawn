@@ -318,8 +318,8 @@ slot_lock() { local l=$1 s=$2 own opid ost
   fi
   ln -s "$$ $s" "$l" 2>/dev/null
 }
-claim() { local n d p lock live s pp self st
-  self=$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)
+claim() { local n d p lock live s pp st
+  self=${self:-$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)} # one sample per spawn, shared with claim_id
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
     if mkdir "$d" 2>/dev/null; then
       # a claim and a reclaim are exclusive on a slot, so a reclaimer cannot move a fresh pid aside
@@ -349,6 +349,20 @@ claim() { local n d p lock live s pp self st
     fi
     n=$((n+1)) # pitfall-ok: decimal-arith internal counter
   done; return 1; }
+# one live spawn per id, from before the slot wait through cleanup: mkdir is atomic, so a retry or a
+# double launch cannot both pass. A dead or reused owner is taken under the same owner lock the slots use.
+idclaim=
+claim_id() { local c=$T/run/$id.claim l=$T/run/$id.claim.lock p
+  self=$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null) # one sample per spawn; claim() reuses it
+  slot_lock "$l" "$self" || return 1
+  p=$(cat "$c/pid" 2>/dev/null)
+  if [ -n "$p" ] && slot_live "$c" "$p"; then rm -f "$l"; return 1; fi
+  rm -rf "$c"; mkdir "$c" 2>/dev/null || { rm -f "$l"; return 1; }
+  idclaim=$c # from here cleanup owns it, even if a signal lands before the pid file exists
+  [ -z "$self" ] || echo "$self" > "$c/start" 2>/dev/null
+  echo $$ > "$c/pid" 2>/dev/null
+  if [ "$(cat "$c/pid" 2>/dev/null)" != "$$" ]; then idclaim=; rm -rf "$c"; rm -f "$l"; return 1; fi
+  rm -f "$l"; return 0; }
 # best-effort: a timed-out or failed opencode TUI keeps its session alive after the tab closes, so end it first
 dpid=""; dwd=""
 # the delete is killed and reaped here too: a signal during its wait must not leave it running
@@ -365,7 +379,7 @@ stop_session() { # only the opencode session this spawn created; never changes s
   dpid=""; dwd=""; return 0; }
 # any exit, signals included, must not leave an orphan worker, an open tab or a held slot
 wpid=""; guard=""; vtab=""; vpane=""; vdone=0; idone=0; istarted=0
-cleanup() { local rc=$?
+cleanup() { local rc=$? c
   trap - EXIT
   reap_delete # a signal that landed in stop_session left its delete running
   if [ -n "$wpid" ] && kill -0 "$wpid" 2>/dev/null; then # interrupted while the worker ran
@@ -382,13 +396,21 @@ cleanup() { local rc=$?
     echo "killed $rc $(date +%s)" > "$st"
     stop_session
   fi
-  iso_check # killed and interrupted runs are compared here too
+  declare -F iso_check >/dev/null && iso_check # killed and interrupted runs are compared here too; it exists only once the worktree run begins
   if [ "$view" = 1 ] && [ "$vdone" != 1 ] && [ -n "$vtab" ]; then # the tab is closed or recorded on every path
     if [ -n "${DEVKIT_VIEW_KEEP:-}" ]; then echo "$vtab" > "$T/run/$id.tab"; else herdr tab close "$vtab" >/dev/null 2>&1; fi
   fi
   [ -z "$slot" ] || rm -rf "$slot"
+  # $idclaim covers a signal between mkdir and the pid write; the pid check covers a lost variable
+  c=$T/run/$id.claim; if [ -n "$idclaim" ] || [ "$(cat "$c/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$c"; fi
   exit $rc; }
 trap cleanup EXIT; trap 'reap_delete; exit 143' TERM; trap 'reap_delete; exit 130' INT; trap 'reap_delete; exit 129' HUP
+# before the slot wait: a duplicate must not queue behind the pool and then start a second worker
+if ! claim_id; then
+  cpid=$(cat "$T/run/$id.claim/pid" 2>/dev/null)
+  echo "spawn: $id is already running (pid ${cpid:-?}); pick another id" >&2
+  exit 2
+fi
 waited=0
 until claim; do # a nested spawn must not wait on slots its own parents hold, or the tree deadlocks
   if [ "$depth" -gt 0 ] && [ "$waited" -ge "$DEVKIT_CHILD_WAIT" ]; then echo "spawn: no free worker slot after ${DEVKIT_CHILD_WAIT}s; a nested spawn does not wait longer" >&2; exit 4; fi
@@ -548,6 +570,7 @@ else
 set -m; ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
 wpid=$!; set +m
 [ -z "$slot" ] || echo "$wpid" > "$slot/wpid" 2>/dev/null # lets the slot stay counted if spawn is kill -9ed while the worker runs
+[ -z "$idclaim" ] || echo "$wpid" > "$idclaim/wpid" 2>/dev/null # same for the id: the live worker keeps its id held
 guard=
 if [ "$TMO" -gt 0 ] 2>/dev/null; then
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
