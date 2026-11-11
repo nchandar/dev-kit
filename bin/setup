@@ -33,7 +33,10 @@ f_links=0 # --apply: at least one link install.sh would create
 say() { printf '%s  %s  %s\n' "$1" "$2" "$3"; }
 ok_line() { say ok "$1" "$2"; }
 missing_line() { missing=$((missing+1)); say missing "$1" "$2"; } # pitfall-ok: decimal-arith internal counter
-have() { command -v "$1" >/dev/null 2>&1; }
+have() { # present AND executable: a killed install can leave a name on PATH that cannot run
+  local p; p=$(command -v "$1" 2>/dev/null) || return 1
+  [ -n "$p" ] && [ -x "$p" ]
+}
 cmd_of() { command -v "$1" 2>/dev/null; }
 
 ge() { # have want: dotted numbers, compared one field at a time so "3" is below "3.2"

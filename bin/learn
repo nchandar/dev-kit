@@ -34,14 +34,22 @@ case $cmd in
     base=$("$here/ledger" base); project=$(basename "$(dirname "$base")")
     mkdir -p "$L"; [ -s "$IN" ] || printf 'time\tproject\ttask\tscope\tlesson\tref\tfrom\n' > "$IN"
     cnt=$(mktemp); trap 'rm -f "$cnt" "$S.new"' EXIT
+    # A crash between the inbox append and the rename leaves the box open, so skip rows already queued.
     awk -v ts="$(date -u +%FT%TZ)" -v project="$project" -v task="$task" -v from="$base" -v inbox="$IN" -v cnt="$cnt" '
+      BEGIN { while ((getline row < inbox) > 0) {
+                n = split(row, f, "\t")
+                if (n >= 6) seen[f[2] SUBSEP f[3] SUBSEP f[5] SUBSEP f[6]] = 1 } }
       /^- \[ \] .* \| scope: (general|recipe) \| ref: .+$/ {
         line = $0; sub(/^- \[ \] /, "", line)
         i = index(line, " | scope: "); lesson = substr(line, 1, i - 1); rest = substr(line, i + 10)
         j = index(rest, " | ref: "); scope = substr(rest, 1, j - 1); ref = substr(rest, j + 8)
         gsub(/\t/, " ", lesson); gsub(/\t/, " ", ref)
-        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, project, task, scope, lesson, ref, from >> inbox
-        print "- [~] " line; q++; next }
+        key = project SUBSEP task SUBSEP lesson SUBSEP ref
+        if (!(key in seen)) {
+          printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, project, task, scope, lesson, ref, from >> inbox
+          seen[key] = 1; q++
+        }
+        print "- [~] " line; next }
       { print }
       END { print q + 0 > cnt }' "$S" > "$S.new" && mv "$S.new" "$S"
     echo "queued $(cat "$cnt")";;

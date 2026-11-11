@@ -3,6 +3,7 @@
 spawn-interactive 58
 spawn 49
 verify 23
+verify-gate-property 20
 ledger 12
 reconcile 9
 parallel-sections 6
