@@ -1,0 +1,747 @@
+#!/usr/bin/env bash
+# Check what dev-kit needs, read-only and offline. Usage: bin/setup [--check|--apply]
+# --apply prints the same check, then fixes each finding after one prompt per write.
+set -u
+mode=check
+case ${1:-} in
+  '') ;;
+  --check) ;;
+  --apply) mode=apply;;
+  *) echo "usage: bin/setup [--check|--apply]" >&2; exit 2;;
+esac
+[ $# -le 1 ] || { echo "usage: bin/setup [--check|--apply]" >&2; exit 2; }
+case $0 in
+  */*) d=${0%/*};;
+  *) d=.;;
+esac
+here=$(cd "$d/.." && pwd)
+
+# --apply runs from a private copy, unlinked at once: pulling dev-kit may rewrite this file mid-run.
+if [ "${DEVKIT_SETUP_FROZEN:-}" = "$0" ] && [ -n "${DEVKIT_SETUP_HOME:-}" ]; then
+  here=$DEVKIT_SETUP_HOME
+  case $0 in "${TMPDIR:-/tmp}"/dk-setup.*) rm -f "$0";; esac  # only our own mktemp copy, never a real bin/setup
+  unset DEVKIT_SETUP_FROZEN DEVKIT_SETUP_HOME
+elif [ "$mode" = apply ]; then
+  frozen=$(mktemp "${TMPDIR:-/tmp}/dk-setup.XXXXXX") || { echo "setup: cannot freeze a copy of itself" >&2; exit 2; }
+  cp "$0" "$frozen" || { rm -f "$frozen"; echo "setup: cannot freeze a copy of itself" >&2; exit 2; }
+  DEVKIT_SETUP_FROZEN=$frozen DEVKIT_SETUP_HOME=$here exec "${BASH:-bash}" "$frozen" "$@"
+fi
+{ exec 3<&0; } 2>/dev/null || :  # prompts read fd 3: a repo loop may use stdin for its here-document
+
+missing=0
+f_links=0 # --apply: at least one link install.sh would create
+say() { printf '%s  %s  %s\n' "$1" "$2" "$3"; }
+ok_line() { say ok "$1" "$2"; }
+missing_line() { missing=$((missing+1)); say missing "$1" "$2"; } # pitfall-ok: decimal-arith internal counter
+have() { command -v "$1" >/dev/null 2>&1; }
+cmd_of() { command -v "$1" 2>/dev/null; }
+
+ge() { # have want: dotted numbers, compared one field at a time so "3" is below "3.2"
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    na = split(a, x, "."); nb = split(b, y, ".")
+    for (i = 1; i <= 3; i++) {
+      h = (i <= na ? x[i] : 0) + 0; w = (i <= nb ? y[i] : 0) + 0
+      if (h > w) exit 0
+      if (h < w) exit 1
+    }
+    exit 0
+  }'
+}
+same_version() { ge "$1" "$2" && ge "$2" "$1"; }
+
+resolve_path() { # follow symlinks portably, then make the result absolute
+  p=$1; n=0
+  while [ -L "$p" ] && [ "$n" -lt 10 ]; do
+    t=$(readlink "$p")
+    case $t in /*) p=$t;; *) p=$(dirname "$p")/$t;; esac
+    n=$((n+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  dir=$(dirname "$p")
+  ( cd "$dir" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$p")" )
+}
+
+pkg_version() { # tlachart's version lives in its package.json, not a --version flag
+  p=$(resolve_path "$1") || return 1
+  [ -n "$p" ] || return 1
+  dir=$(dirname "$p"); n=0
+  while [ -n "$dir" ] && [ "$dir" != / ] && [ "$n" -lt 8 ]; do
+    if [ -f "$dir/package.json" ] && grep -q '"name"[[:space:]]*:[[:space:]]*"tlachart"' "$dir/package.json" 2>/dev/null; then
+      sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/package.json" | head -n 1
+      return 0
+    fi
+    dir=$(dirname "$dir"); n=$((n+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  return 1
+}
+
+repo_id() { # the git common dir, so a linked worktree and the main checkout match
+  ( cd "$1" 2>/dev/null || exit 1
+    g=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+    case $g in /*) ;; *) g=./$g;; esac
+    cd "$g" 2>/dev/null && pwd -P )
+}
+same_repo_dir() { # a symlink to a dir in this repo, worktrees included
+  [ -L "$1" ] && [ -d "$1" ] || return 1
+  a=$(repo_id "$1") || return 1
+  b=$(repo_id "$here") || return 1
+  [ -n "$a" ] && [ "$a" = "$b" ]
+}
+
+# --- repo sync: dev-kit itself, skills repos behind the skills links, config repos report-only ---
+path_dir() { if [ -d "$1" ]; then printf '%s\n' "$1"; else dirname "$1"; fi; }
+repo_root_of() { # a dir inside a repo -> its worktree root (physical)
+  ( cd "$1" 2>/dev/null || exit 1
+    r=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+    cd "$r" 2>/dev/null && pwd -P )
+}
+repo_name_of() { # git common dir -> repo name
+  b=${1##*/}
+  if [ "$b" = .git ]; then b=${1%/*}; b=${b##*/}; fi
+  printf '%s\n' "$b"
+}
+SYNC_REPOS="" # kind<TAB>common-dir<TAB>worktree-root
+repo_known() { # common dir
+  want=$1; oldIFS=$IFS; IFS='
+'
+  for l in $SYNC_REPOS; do
+    IFS='	'; set -- $l
+    [ "$2" = "$want" ] && { IFS=$oldIFS; return 0; }
+  done
+  IFS=$oldIFS; return 1
+}
+add_repo() { # kind path (dir or file)
+  p=$2
+  [ -e "$p" ] || return 0
+  p=$(path_dir "$p")
+  root=$(repo_root_of "$p") || return 0
+  id=$(repo_id "$root") || return 0
+  [ -n "$id" ] || return 0
+  repo_known "$id" && return 0
+  SYNC_REPOS="${SYNC_REPOS}$1	$id	$root
+"
+}
+set_repo_kind() { # common-dir kind: config wins over skills, so a repo read both ways is report-only
+  want=$1; kind=$2; oldIFS=$IFS; IFS='
+'
+  out=""
+  for l in $SYNC_REPOS; do
+    IFS='	'; set -- $l
+    if [ "$2" = "$want" ]; then out="${out}${kind}	$2	$3
+"; else out="${out}${l}
+"; fi
+  done
+  SYNC_REPOS=$out; IFS=$oldIFS
+}
+discover_sync() {
+  SYNC_REPOS=""
+  devkit_id=$(repo_id "$here" 2>/dev/null) || devkit_id=
+  [ -z "$devkit_id" ] || add_repo dev-kit "$here"
+  for dir in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.agents/skills"; do
+    [ -d "$dir" ] || continue
+    for p in "$dir"/*; do
+      [ -L "$p" ] || continue
+      tgt=$(resolve_path "$p" 2>/dev/null) || continue
+      [ -n "$tgt" ] || continue
+      id=$(repo_id "$(path_dir "$tgt")" 2>/dev/null) || continue
+      [ -n "$devkit_id" ] && [ "$id" = "$devkit_id" ] && continue
+      add_repo skills "$tgt"
+    done
+  done
+  for p in "$HOME/.claude/settings.json" "$HOME/.agents/AGENTS.md"; do
+    [ -L "$p" ] || continue
+    tgt=$(resolve_path "$p" 2>/dev/null) || continue
+    [ -n "$tgt" ] || continue
+    id=$(repo_id "$(path_dir "$tgt")" 2>/dev/null) || continue
+    [ -n "$devkit_id" ] && [ "$id" = "$devkit_id" ] && continue
+    if repo_known "$id"; then set_repo_kind "$id" config; else add_repo config "$tgt"; fi
+  done
+}
+sync_skip_reason() { # root -> dirty|detached|no upstream, else nothing
+  [ -n "$(GIT_OPTIONAL_LOCKS=0 git -C "$1" status --porcelain 2>/dev/null)" ] && { printf 'dirty\n'; return 0; }
+  git -C "$1" symbolic-ref -q HEAD >/dev/null 2>&1 || { printf 'detached\n'; return 0; }
+  git -C "$1" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || { printf 'no upstream\n'; return 0; }
+  return 1
+}
+sync_ready() { # kind root: 0 when a fetch would be useful (clean, attached, upstream)
+  if [ "$1" = config ]; then
+    git -C "$2" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1
+    return
+  fi
+  [ -z "$(sync_skip_reason "$2")" ]
+}
+sync_check_one() { # name root
+  reason=$(sync_skip_reason "$2") || reason=
+  if [ -n "$reason" ]; then say skipped "sync:$1" "$reason"; return; fi
+  up=$(git -C "$2" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || { say skipped "sync:$1" "no upstream"; return; }
+  n=$(git -C "$2" rev-list --count "HEAD..$up" 2>/dev/null) || { say skipped "sync:$1" "no upstream"; return; }
+  case $n in ''|*[!0-9]*) n=0;; esac
+  if [ "$n" -eq 0 ]; then say ok "sync:$1" "up to date (last fetch)"
+  else say behind "sync:$1" "$n commits (last fetch)"
+  fi
+}
+sync_check_all() {
+  discover_sync
+  [ -n "$SYNC_REPOS" ] || return 0
+  section sync
+  while IFS='	' read -r kind id root; do
+    [ -n "$kind" ] || continue
+    sync_check_one "$(repo_name_of "$id")" "$root"
+  done <<EOF
+$SYNC_REPOS
+EOF
+}
+
+section() { printf '[%s]\n' "$1"; }
+
+# One Stop-gate predicate for --check and --apply: the hook's command ends in /bin/stop-gate.
+stop_gate_configured() { # settings file
+  [ -f "$1" ] || return 1
+  if have python3; then
+    python3 - "$1" <<'PY'
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+    stop = (cfg.get("hooks") or {}).get("Stop") or []
+    for group in stop:
+        for hook in (group.get("hooks") or []) if isinstance(group, dict) else []:
+            if isinstance(hook, dict) and str(hook.get("command", "")).endswith("/bin/stop-gate"):
+                sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PY
+  else
+    grep -q 'bin/stop-gate"' "$1" 2>/dev/null
+  fi
+}
+
+java_ok() { have java && java -version >/dev/null 2>&1; }
+
+run_check() {
+  missing=0; f_links=0
+
+section core
+if have bash; then
+  v=$(bash --version 2>/dev/null | head -n 1 | sed -n 's/.*version[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
+  if [ -z "$v" ]; then missing_line bash "version unknown"
+  elif ge "$v" 3.2; then ok_line bash "$v"
+  else missing_line bash "$v (need 3.2+)"; fi
+else missing_line bash "not found"; fi
+if have git; then
+  v=$(git --version 2>/dev/null | head -n 1 | sed -n 's/.*version[[:space:]]*\([0-9][0-9.]*\).*/\1/p')
+  if [ -z "$v" ]; then missing_line git "version unknown"
+  elif ge "$v" 2.31; then ok_line git "$v"
+  else missing_line git "$v (need 2.31+)"; fi
+else missing_line git "not found"; fi
+if have perl; then ok_line perl present; else missing_line perl "not found"; fi
+agents=""
+for c in claude codex opencode; do have "$c" && agents="$agents $c"; done
+agents=${agents# }
+if [ -n "$agents" ]; then ok_line cli "$agents"; else missing_line cli "none of claude codex opencode"; fi
+
+section tools
+opt() { if have "$1"; then ok_line "$1" found; else say optional "$1" "not found"; fi; }
+opt python3; opt herdr; opt gh; opt rg
+if java_ok; then ok_line java found; else say optional java "not found"; fi
+jar=${TLA2TOOLS:-$HOME/.local/share/tla/tla2tools.jar}
+if [ -f "$jar" ]; then ok_line tla2tools found; else say optional tla2tools "not found"; fi
+if have bun; then ok_line bun found; else say optional bun "not found"; fi
+tl=$(cmd_of tlachart)
+if [ -z "$tl" ] && [ -x "$HOME/.bun/bin/tlachart" ]; then tl=$HOME/.bun/bin/tlachart; fi
+if [ -z "$tl" ]; then
+  say optional tlachart "not found"
+else
+  tv=$(pkg_version "$tl")
+  want=$(awk '$1 == "tlachart" { print $2; exit }' "$here/library/setup.pins" 2>/dev/null)
+  if [ -n "$tv" ] && [ -n "$want" ] && ! same_version "$tv" "$want"; then say outdated tlachart "have $tv want $want"
+  elif [ -n "$tv" ]; then ok_line tlachart "$tv"
+  else ok_line tlachart installed; fi
+fi
+if [ -d "$HOME/.agents/dev-kit-tools/node_modules/pele" ]; then ok_line pele found; else say optional pele "not found"; fi
+
+section claude
+if ! have claude; then
+  say skipped claude "not installed"
+else
+  total=0; linked=0
+  for d in "$here"/skills/dev-*; do
+    [ -d "$d" ] || continue
+    total=$((total+1)) # pitfall-ok: decimal-arith internal counter
+    same_repo_dir "$HOME/.claude/skills/${d##*/}" && linked=$((linked+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  if [ "$total" -gt 0 ] && [ "$linked" -eq "$total" ]; then ok_line skills "$linked linked"
+  else missing_line skills "$linked of $total linked"; f_links=1; fi
+  if same_repo_dir "$HOME/.agents/dev-kit"; then ok_line home linked; else missing_line home "not linked"; f_links=1; fi
+  if stop_gate_configured "$HOME/.claude/settings.json"; then ok_line stop-gate configured
+  else missing_line stop-gate "not configured"; fi
+  rows=0
+  for r in 'Bash(~/.agents/dev-kit/bin/ledger *)' 'Bash(~/.agents/dev-kit/bin/reconcile *)' 'Bash(~/.agents/dev-kit/bin/state *)' 'Bash(~/.agents/dev-kit/bin/run *)' 'Bash(~/.agents/dev-kit/bin/setup --check)'; do
+    alt=${r%' *)'}':*)'
+    if grep -qF -- "$r" "$HOME/.claude/settings.json" 2>/dev/null || grep -qF -- "$alt" "$HOME/.claude/settings.json" 2>/dev/null; then
+      rows=$((rows+1)) # pitfall-ok: decimal-arith internal counter
+    fi
+  done
+  if [ "$rows" -eq 5 ]; then ok_line allow-rows "5 configured"
+  else say optional allow-rows "$rows of 5 (bin/setup --apply)"; fi
+fi
+
+section codex
+if ! have codex; then
+  say skipped codex "not installed"
+else
+  total=0; linked=0
+  for d in "$here"/skills/dev-*; do
+    [ -d "$d" ] || continue
+    total=$((total+1)) # pitfall-ok: decimal-arith internal counter
+    same_repo_dir "$HOME/.agents/skills/${d##*/}" && linked=$((linked+1)) # pitfall-ok: decimal-arith internal counter
+  done
+  if [ "$total" -gt 0 ] && [ "$linked" -eq "$total" ]; then ok_line skills "$linked linked"
+  else missing_line skills "$linked of $total linked"; f_links=1; fi
+fi
+
+section opencode
+if ! have opencode; then
+  say skipped opencode "not installed"
+else
+  total=0; linked=0
+  for d in "$here"/skills/dev-*; do
+    [ -d "$d" ] || continue
+    total=$((total+1)) # pitfall-ok: decimal-arith internal counter
+    n=${d##*/}
+    if same_repo_dir "$HOME/.agents/skills/$n" || same_repo_dir "$HOME/.claude/skills/$n"; then
+      linked=$((linked+1)) # pitfall-ok: decimal-arith internal counter
+    fi
+  done
+  if [ "$total" -gt 0 ] && [ "$linked" -eq "$total" ]; then ok_line skills "$linked linked"
+  else missing_line skills "$linked of $total linked"; f_links=1; fi
+  oc="$HOME/.config/opencode/opencode.jsonc"; [ -e "$oc" ] || oc="$HOME/.config/opencode/opencode.json"
+  if grep -Eq '"todo"[[:space:]]*:[[:space:]]*true' "$oc" 2>/dev/null; then ok_line todo enabled
+  else say optional todo "off (set experimental.todo true, then opencode service restart)"; fi
+  if opencode service status 2>&1 | grep -q '^http'; then ok_line service up
+  else say optional service "down (run opencode service start once)"; fi
+fi
+
+sync_check_all
+}
+
+# --- --apply: one prompt per write, y applies, anything else or EOF skips ---
+pin_of() { awk -v n="$1" '$1 == n { print $2; exit }' "$here/library/setup.pins" 2>/dev/null; }
+pin_sha_of() { awk -v n="$1" '$1 == n { print $3; exit }' "$here/library/setup.pins" 2>/dev/null; }
+sha_of() { if have sha256sum; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+target_of() { # a symlink is written through, so the link itself stays
+  t=$(resolve_path "$1" 2>/dev/null)
+  [ -n "$t" ] || t=$1
+  printf '%s\n' "$t"
+}
+write_file() { # src dest: temp in the same dir then mv, so a kill leaves the original intact
+  wdir=$(dirname "$2")
+  wtmp=$(mktemp "$wdir/.devkit-new.XXXXXX") || return 1
+  [ -e "$2" ] && cp -p "$2" "$wtmp" 2>/dev/null  # seed the temp with the original's mode
+  if cp "$1" "$wtmp" && mv "$wtmp" "$2"; then return 0; fi
+  rm -f "$wtmp"; return 1
+}
+ask() { # one prompt; y applies
+  printf '  apply? [y/N] '
+  answer=
+  IFS= read -u 3 -r answer || answer=
+  [ -t 0 ] || printf '\n'
+  case $answer in y|Y|yes|YES) return 0;; esac
+  printf '  skipped\n'
+  return 1
+}
+fix_head() { printf '[apply] %s\n' "$1"; }
+show_cmd() { printf '  run: %s\n' "$1"; }
+note() { printf '  note: %s\n' "$1"; }
+show_diff() { # before after label: one line of context and stable a/ b/ names, never a mktemp path
+  diff -u -U1 "$1" "$2" 2>/dev/null | sed -e "1s|.*|--- a/$3|" -e "2s|.*|+++ b/$3|"
+}
+
+apply_links() {
+  [ "$f_links" -eq 1 ] || return 0
+  fix_head "links: install.sh is missing links (idempotent, symlinks only)"
+  note "it also enables the opencode todo flag when opencode is present"
+  show_cmd "$here/install.sh"
+  ask || return 0
+  "$here/install.sh" </dev/null || note "install.sh did not finish cleanly"
+}
+
+apply_bun() {
+  have bun && return 0
+  if have brew; then
+    fix_head "bun: not found"
+    show_cmd "brew install bun"
+    ask || return 0
+    brew install bun </dev/null || note "brew install bun failed"
+  else
+    fix_head "bun: not found (no brew)"
+    show_cmd "curl -fsSL -o <file> https://bun.sh/install && bash <file>"
+    ask || return 0
+    case $(uname -s 2>/dev/null) in
+      Linux) note "linux: printed only, run the command above yourself";;
+      *)
+        bfile=$atmp/bun-install.sh
+        if curl -fsSL -o "$bfile" https://bun.sh/install </dev/null; then
+          bash "$bfile" </dev/null || note "the bun installer failed"
+        else
+          rm -f "$bfile"; note "download failed; run the command above yourself"
+        fi;;
+    esac
+  fi
+}
+
+apply_tools() {
+  have bun || { note "tlachart and pele need bun; skipped"; return 0; }
+  tl=$(cmd_of tlachart)
+  if [ -z "$tl" ] && [ -x "$HOME/.bun/bin/tlachart" ]; then tl=$HOME/.bun/bin/tlachart; fi
+  tv=; [ -z "$tl" ] || tv=$(pkg_version "$tl")
+  tw=$(pin_of tlachart)
+  if [ -n "$tw" ]; then
+    if [ -z "$tl" ] || { [ -n "$tv" ] && ! same_version "$tv" "$tw"; }; then
+      fix_head "tlachart: ${tv:-not found}, want $tw"
+      show_cmd "bun add -g tlachart@$tw"
+      ask && { bun add -g "tlachart@$tw" </dev/null || note "bun add tlachart failed"; }
+    fi
+  else
+    note "library/setup.pins has no tlachart pin; skipped"
+  fi
+  pw=$(pin_of pele)
+  if [ -n "$pw" ] && [ ! -d "$HOME/.agents/dev-kit-tools/node_modules/pele" ]; then
+    fix_head "pele: not installed in ~/.agents/dev-kit-tools"
+    show_cmd "cd ~/.agents/dev-kit-tools && bun add pele@$pw"
+    if ask; then
+      mkdir -p "$HOME/.agents/dev-kit-tools" &&
+        ( cd "$HOME/.agents/dev-kit-tools" && bun add "pele@$pw" </dev/null ) || note "bun add pele failed"
+    fi
+  elif [ -z "$pw" ]; then
+    note "library/setup.pins has no pele pin; skipped"
+  fi
+}
+
+apply_java() {
+  java_ok && return 0
+  fix_head "java: not found (optional, needed for TLC)"
+  if have brew; then
+    show_cmd "brew install openjdk"
+    ask || return 0
+    brew install openjdk </dev/null || note "brew install openjdk failed"
+  else
+    show_cmd "install a JDK 11+ from https://adoptium.net/"
+    if ask; then note "printed only; install it with your OS package manager"; fi
+  fi
+}
+
+apply_jar() {
+  jar=${TLA2TOOLS:-$HOME/.local/share/tla/tla2tools.jar}
+  [ -f "$jar" ] && return 0
+  tv=$(pin_of tla2tools); tw=$(pin_sha_of tla2tools)
+  fix_head "tla2tools.jar: not found at $jar"
+  if [ -z "$tv" ] || [ -z "$tw" ]; then note "library/setup.pins has no tla2tools version and sha256; skipped"; return 0; fi
+  url=https://github.com/tlaplus/tlaplus/releases/download/v$tv/tla2tools.jar
+  show_cmd "mkdir -p $(dirname "$jar") && curl -fsSL -o $jar.part $url  # tla2tools $tv, sha256 $tw"
+  ask || return 0
+  jdir=$(dirname "$jar")
+  mkdir -p "$jdir" || { note "could not create $jdir"; return 0; }
+  if ! curl -fsSL -o "$jar.part" "$url" </dev/null; then
+    rm -f "$jar.part"; note "download failed; get it from $url"; return 0
+  fi
+  got=$(sha_of "$jar.part")
+  if [ "$got" != "$tw" ]; then
+    rm -f "$jar.part"; note "checksum mismatch for tla2tools $tv (have $got want $tw); refused"
+    return 0
+  fi
+  mv "$jar.part" "$jar" || note "could not move the jar into place"
+}
+
+apply_todo() {
+  have opencode || return 0
+  have python3 || { note "opencode todo: python3 not found; set \"experimental\": {\"todo\": true} in ~/.config/opencode yourself"; return 0; }
+  oc="$HOME/.config/opencode/opencode.jsonc"
+  [ ! -e "$oc" ] && [ -e "$HOME/.config/opencode/opencode.json" ] && oc="$HOME/.config/opencode/opencode.json"
+  res=$(python3 - "$oc" "$atmp/opencode.json" <<'PY'
+import json, os, sys
+src, out = sys.argv[1], sys.argv[2]
+try:
+    cfg = json.load(open(src)) if os.path.exists(src) else {"$schema": "https://opencode.ai/config.json"}
+except ValueError:
+    print("skip"); sys.exit()
+except OSError:
+    print("skip"); sys.exit()
+if not isinstance(cfg, dict):
+    print("skip"); sys.exit()
+exp = cfg.setdefault("experimental", {})
+if not isinstance(exp, dict):
+    print("skip"); sys.exit()
+if "todo" in exp:
+    print("false" if exp.get("todo") is False else "same"); sys.exit()
+exp["todo"] = True
+with open(out, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False); f.write("\n")
+print("set")
+PY
+)
+  case $res in
+    set)
+      fix_head "opencode: enable experimental.todo in $oc"
+      srcf=$oc; [ -e "$srcf" ] || srcf=/dev/null
+      show_diff "$srcf" "$atmp/opencode.json" "$(basename "$oc")"
+      if ask; then
+        tgt=$(target_of "$oc")
+        mkdir -p "$(dirname "$tgt")" || { note "could not create $(dirname "$tgt")"; return 0; }
+        if [ -e "$tgt" ]; then
+          ts=$(date -u +%Y%m%dT%H%M%SZ)
+          cp -p "$tgt" "$tgt.devkit-bak-$ts" || { note "backup failed; left $tgt untouched"; return 0; }
+        fi
+        write_file "$atmp/opencode.json" "$tgt" || note "could not write $tgt"
+        note "apply it with: opencode service restart"
+      fi;;
+    false) note "opencode: experimental.todo is explicitly false; left as is";;
+    skip) note "opencode: $oc has comments or is not plain JSON, left untouched; set \"experimental\": {\"todo\": true} yourself";;
+  esac
+}
+
+apply_settings() {
+  have claude || return 0
+  have python3 || { note "claude settings: python3 not found; merge the Stop-gate hook and the dev-kit allow rows yourself"; return 0; }
+  scfg="$HOME/.claude/settings.json"
+  res=$(python3 - "$scfg" "$atmp/settings.json" "$HOME/.agents/dev-kit/bin/stop-gate" <<'PY'
+import json, os, sys
+src, out, gate = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = [
+    "Bash(~/.agents/dev-kit/bin/ledger *)",
+    "Bash(~/.agents/dev-kit/bin/reconcile *)",
+    "Bash(~/.agents/dev-kit/bin/state *)",
+    "Bash(~/.agents/dev-kit/bin/run *)",
+    "Bash(~/.agents/dev-kit/bin/setup --check)",
+]
+for r in rows:
+    if any(b in r for b in ("Bash(*)", "--dangerously", "/spawn", "/verify", "/push")):
+        print("refused"); sys.exit()
+try:
+    cfg = json.load(open(src)) if os.path.exists(src) else {}
+except (ValueError, OSError):
+    print("skip"); sys.exit()
+if not isinstance(cfg, dict):
+    print("skip"); sys.exit()
+perms = cfg.setdefault("permissions", {})
+hooks = cfg.setdefault("hooks", {})
+if not isinstance(perms, dict) or not isinstance(hooks, dict):
+    print("skip"); sys.exit()
+allow = perms.setdefault("allow", [])
+if not isinstance(allow, list):
+    print("skip"); sys.exit()
+changed = False
+for r in rows:
+    # a colon form of the same wildcard row is already covered
+    covered = r in allow or (r.endswith(" *)") and (r[:-3] + ":*)") in allow)
+    if not covered:
+        allow.append(r); changed = True
+stop = hooks.setdefault("Stop", [])
+if not isinstance(stop, list):
+    print("skip"); sys.exit()
+found = False
+for group in stop:
+    if isinstance(group, dict) and isinstance(group.get("hooks"), list):
+        for hook in group["hooks"]:
+            if isinstance(hook, dict) and str(hook.get("command", "")).endswith("/bin/stop-gate"):
+                found = True
+if not found:
+    stop.append({"hooks": [{"type": "command", "command": gate, "timeout": 10}]})
+    changed = True
+if not changed:
+    print("same"); sys.exit()
+with open(out, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False); f.write("\n")
+print("set")
+PY
+)
+  case $res in
+    set)
+      fix_head "claude: add the Stop-gate hook and the five dev-kit allow rows"
+      srcf=$scfg; [ -e "$srcf" ] || srcf=/dev/null
+      show_diff "$srcf" "$atmp/settings.json" "$(basename "$scfg")"
+      ask || return 0
+      tgt=$(target_of "$scfg")
+      mkdir -p "$(dirname "$tgt")" || { note "could not create $(dirname "$tgt")"; return 0; }
+      if [ -e "$tgt" ]; then
+        ts=$(date -u +%Y%m%dT%H%M%SZ)
+        cp -p "$tgt" "$scfg.devkit-bak-$ts" || { note "backup failed; left $tgt untouched"; return 0; }
+      fi
+      write_file "$atmp/settings.json" "$tgt" || note "could not write $tgt";;
+    skip) note "claude settings: $scfg has comments or is not plain JSON, left untouched; merge the Stop-gate hook and the allow rows yourself";;
+    refused) note "claude settings: refused to write a broad allow row";;
+  esac
+}
+
+ask_run() {
+  printf '  run? [y/N] '
+  answer=
+  IFS= read -u 3 -r answer || answer=
+  [ -t 0 ] || printf '\n'
+  case $answer in y|Y|yes|YES) return 0;; esac
+  printf '  skipped\n'
+  return 1
+}
+
+fetch_bounded() { # root out seconds: fetch in the background, wait on a read timeout so a hung remote cannot stall
+  ( cd "$1" && GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' exec git fetch ) </dev/null > "$2" 2>&1 &
+  fp=$!
+  n=0
+  while kill -0 "$fp" 2>/dev/null; do
+    if [ "$n" -ge "$3" ]; then
+      kill "$fp" 2>/dev/null
+      wait "$fp" 2>/dev/null
+      return 1
+    fi
+    if [ -n "$fetch_fd" ]; then read -t 1 -u "$fetch_fd" -r fetch_tick 2>/dev/null || :
+    else sleep 1; fi # sleep-ok: fallback timeout tick when mkfifo is unavailable
+    n=$((n+1)) # pitfall-ok: decimal-arith bounded timeout ticks
+  done
+  wait "$fp"
+}
+
+install_after_pull() { # name root
+  mf=$2/Makefile; did=0; offered=0
+  for c in claude codex opencode; do
+    have "$c" || continue
+    [ -f "$mf" ] || continue
+    grep -Eq "^[[:space:]]*install-$c[[:space:]]*:" "$mf" || continue
+    offered=1
+  done
+  [ -x "$2/install.sh" ] && offered=1
+  [ "$offered" -eq 0 ] || note "this runs code from the pulled commits"
+  for c in claude codex opencode; do
+    have "$c" || continue
+    [ -f "$mf" ] || continue
+    grep -Eq "^[[:space:]]*install-$c[[:space:]]*:" "$mf" || continue
+    show_cmd "make -C $2 install-$c"
+    did=1  # offered once: an N here must not fall through to install.sh for the same repo
+    ask_run || continue
+    make -C "$2" "install-$c" </dev/null || note "make install-$c failed"
+  done
+  if [ "$did" -eq 0 ] && [ -x "$2/install.sh" ]; then
+    show_cmd "$2/install.sh"
+    ask_run || return 0
+    ( cd "$2" && ./install.sh ) </dev/null || note "install.sh failed"
+  fi
+}
+
+sync_apply_one() { # kind name root
+  kind=$1; name=$2; root=$3
+  if [ "$fetch_ok" -eq 0 ]; then sync_check_one "$name" "$root"; return; fi
+  if [ "$kind" = config ]; then
+    git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || { say skipped "sync:$name" "no upstream"; return; }
+  else
+    reason=$(sync_skip_reason "$root") || reason=
+    if [ -n "$reason" ]; then say skipped "sync:$name" "$reason"; return; fi
+  fi
+  fetch_n=$((fetch_n+1)) # pitfall-ok: decimal-arith counter
+  fout=$atmp/fetch.$fetch_n
+  if ! fetch_bounded "$root" "$fout" 30; then
+    say skipped "sync:$name" "fetch failed"
+    sed -n '1,3p' "$fout" 2>/dev/null | sed 's/^/    /'
+    return
+  fi
+  up=$(git -C "$root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || { say skipped "sync:$name" "no upstream"; return; }
+  behind=$(git -C "$root" rev-list --count "HEAD..$up" 2>/dev/null) || behind=0
+  ahead=$(git -C "$root" rev-list --count "$up..HEAD" 2>/dev/null) || ahead=0
+  case $behind in ''|*[!0-9]*) behind=0;; esac
+  case $ahead in ''|*[!0-9]*) ahead=0;; esac
+  if [ "$kind" = config ]; then
+    if [ "$behind" -eq 0 ]; then say ok "sync:$name" "up to date (fetched)"
+    else say behind "sync:$name" "$behind commits (config, not pulled)"; fi
+    return
+  fi
+  if [ "$ahead" -gt 0 ] && [ "$behind" -gt 0 ]; then say skipped "sync:$name" "diverged (ff impossible)"; return; fi
+  if [ "$behind" -eq 0 ]; then say ok "sync:$name" "up to date (fetched)"; return; fi
+  printf '[sync] %s  %s new commits\n' "$name" "$behind"
+  git -C "$root" log --oneline "HEAD..$up" | head -n 15
+  printf '  Pull %s commits into %s? [y/N] ' "$behind" "$name"
+  answer=
+  IFS= read -u 3 -r answer || answer=
+  [ -t 0 ] || printf '\n'
+  case $answer in y|Y|yes|YES) ;;
+    *) printf '  skipped\n'; return;;
+  esac
+  if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' git -C "$root" pull --ff-only </dev/null; then
+    case $kind in
+      dev-kit) pulled_self=1;;
+      skills) install_after_pull "$name" "$root";;
+    esac
+  else
+    note "pull failed; continuing"
+  fi
+}
+
+install_devkit() { # a pull may add skills/dev-*; link them now, once, before apply_links runs
+  [ "$pulled_self" -eq 1 ] || return 0
+  [ -x "$here/install.sh" ] || { note "dev-kit was pulled; no install.sh to relink skills"; return 0; }
+  fix_head "dev-kit: pulled; relink skills so a new skills/dev-* is live"
+  show_cmd "$here/install.sh"
+  note "this runs code from the pulled commits"
+  ask_run || return 0
+  if ( cd "$here" && ./install.sh ) </dev/null; then f_links=0
+  else note "install.sh failed"; fi
+}
+
+sync_apply_all() {
+  discover_sync
+  [ -n "$SYNC_REPOS" ] || return 0
+  fix_head "sync: repositories"
+  count=0
+  while IFS='	' read -r kind id root; do
+    [ -n "$kind" ] || continue
+    sync_ready "$kind" "$root" && count=$((count+1)) # pitfall-ok: decimal-arith counter
+  done <<EOF
+$SYNC_REPOS
+EOF
+  fetch_ok=0
+  if [ "$count" -gt 0 ]; then
+    printf '  Contact remotes of %s repos to check for new commits? [y/N] ' "$count"
+    answer=
+    IFS= read -u 3 -r answer || answer=
+    [ -t 0 ] || printf '\n'
+    case $answer in
+      y|Y|yes|YES) fetch_ok=1;;
+      *) printf '  skipped\n';;
+    esac
+  fi
+  while IFS='	' read -r kind id root; do
+    [ -n "$kind" ] || continue
+    sync_apply_one "$kind" "$(repo_name_of "$id")" "$root"
+  done <<EOF
+$SYNC_REPOS
+EOF
+  install_devkit
+  [ "$pulled_self" -eq 0 ] || note "dev-kit was pulled; this run used a frozen copy, the new bin/setup runs on the next run"
+}
+
+apply_all() {
+  atmp=$(mktemp -d) || { note "mktemp failed; nothing applied"; return 0; }
+  trap 'rm -rf "$atmp"' EXIT
+  fetch_n=0; pulled_self=0; fetch_fd=; fetch_ok=0
+  fetch_fifo=$atmp/fetch.fifo
+  if mkfifo "$fetch_fifo" 2>/dev/null; then exec 9<>"$fetch_fifo"; fetch_fd=9; fi
+  sync_apply_all
+  apply_links
+  apply_bun
+  apply_tools
+  apply_java
+  apply_jar
+  apply_todo
+  apply_settings
+}
+
+print_verdict() {
+  if [ "$missing" -eq 0 ]; then printf 'verdict: ready\n'; else printf 'verdict: %s missing\n' "$missing"; fi
+}
+
+run_check
+print_verdict
+if [ "$mode" = apply ]; then
+  apply_all
+  run_check
+  print_verdict
+fi
+
+[ "$missing" -eq 0 ] && exit 0
+exit 1

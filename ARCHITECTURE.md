@@ -24,7 +24,7 @@ One line: skills, small bash tools and a shared library that make any agent CLI 
 | Entry rules | `AGENTS.md` (routes and always-rules, max 6144 B), `CLAUDE.md` | Main agent, every session |
 | Skills | `skills/dev-*/SKILL.md`: twelve skills: an entry point (dev-mode), eight routes, each a checklist, and three formal-verification support skills (dev-formal-verification-skill, dev-create-formal-verification-skill, dev-maintain-formal-verification-skill; explicit-only, not routes) | Main agent, one per task |
 | Library | `library/`: principles, core, deep, recipes | Main agent or workers, on demand |
-| Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, lint-budget | Agents run them; people can too |
+| Tools | `bin/`: ledger, state, reconcile, spawn, run, learn, setup, chart-svg, lint-budget | Agents run them; people can too |
 | Per-task files | `.devkit/tasks/<id>/` in the project repo, git-ignored | Agents resuming or reviewing a task |
 | Learning inbox | `~/.agents/learnings/` (local, outside any repo) | `learn`, then the dev-learn skill |
 | Install links | `install.sh` symlinks into each CLI's skills folder | The CLIs |
@@ -186,6 +186,15 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Before the run, snapshot the main checkout's branch, HEAD, `status --short` and a `diff HEAD` checksum (`.devkit` excluded; a re-edit of an already dirty file shows only in the checksum).
 - After the run, a changed snapshot warns on stderr, logs an `isolation-violation` spawn row in the task ledger and appends the warning to the worker handoff; state and exit code stay unchanged.
 - When a worker is done, an opencode worker's session is deleted too (best effort), so a finished agent keeps acting nowhere.
+
+### 3.13 setup (`bin/setup`) and chart (`bin/chart-svg`)
+- Purpose: check and fix everything the skills need: core tools, agent CLIs, skill links, settings, pinned tools, and repository sync.
+- `bin/setup` (environment, links, settings) and `spawn --doctor` (adapter flags) are the two checks; neither replaces the other.
+- `--check` (default) is read-only and offline: one `ok|missing|optional|outdated|behind|skipped  name  detail` line per item, then `verdict: ready` or `verdict: N missing`.
+- `--apply` prints the check, then makes each fix after one prompt per write: links, bun/tlachart/pele/java/jar, the opencode todo flag, the Claude Stop-gate hook and five allow rows (backup first), and repo pulls with `git pull --ff-only` after one up-front prompt to contact the remotes. A dirty, detached, diverged or no-upstream repo is skipped with a reason; a config repo is report-only, even when it also holds skills.
+- `tla2tools.jar` comes from the release pinned in `library/setup.pins` and is checked against that pin's sha256 before it is moved into place.
+- A dev-kit pull runs `install.sh` once, so a new `skills/dev-*` is linked in the same run. The run uses a frozen copy of `bin/setup`, so a pull that rewrites it cannot break the run; the new code runs next time.
+- `chart-svg SRC.mmd OUT.svg` renders with pele when bun and `~/.agents/dev-kit-tools/node_modules/pele` exist; a missing tool names `bin/setup --apply`, a render error prints plain text, and a failure writes no file.
 
 ## 4. Data model
 

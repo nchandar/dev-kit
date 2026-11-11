@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Render a Mermaid file to SVG with pele. Usage: bin/chart-svg SRC.mmd OUT.svg
+set -u
+usage() { echo "usage: bin/chart-svg SRC.mmd OUT.svg" >&2; exit 2; }
+[ $# -eq 2 ] || usage
+src=$1; out=$2
+[ -f "$src" ] || { echo "chart-svg: no such source: $src" >&2; exit 1; }
+[ -d "$out" ] && { echo "chart-svg: output is a directory: $out" >&2; exit 1; }
+command -v bun >/dev/null 2>&1 || { echo "chart-svg: bun not found; run bin/setup --apply" >&2; exit 1; }
+tools=${DEVKIT_TOOLS_DIR:-$HOME/.agents/dev-kit-tools}
+[ -d "$tools/node_modules/pele" ] || { echo "chart-svg: pele not found in $tools; run bin/setup --apply" >&2; exit 1; }
+case $0 in */*) d=${0%/*};; *) d=.;; esac
+here=$(cd "$d" && pwd)
+outdir=$(dirname "$out")
+[ -d "$outdir" ] || { echo "chart-svg: no such directory: $outdir" >&2; exit 1; }
+# temp in the output dir then mv, so a failed render never leaves a partial SVG
+tmp=$(mktemp "$outdir/.chart-svg.XXXXXX") || { echo "chart-svg: cannot write in $outdir" >&2; exit 1; }
+um=$(umask); chmod "$(printf '%04o' "$((0666 & ~8#$um))")" "$tmp" || { rm -f "$tmp"; echo "chart-svg: cannot write in $outdir" >&2; exit 1; } # pitfall-ok: decimal-arith umask is octal, 8# forces it
+err=$(mktemp "$outdir/.chart-svg-err.XXXXXX") || { rm -f "$tmp"; echo "chart-svg: cannot write in $outdir" >&2; exit 1; }
+trap 'rm -f "$tmp" "$err"' EXIT
+if bun "$here/chart-svg.mjs" "$src" "$tmp" "$tools" 2>"$err"; then
+  if mv "$tmp" "$out"; then trap - EXIT; rm -f "$err"
+  else echo "chart-svg: cannot write $out" >&2; exit 1; fi
+else
+  # one line: the module's plain-text render error, else a fallback that names the fix
+  if [ -s "$err" ]; then cat "$err" >&2
+  else echo "chart-svg: render failed; run bin/setup --apply" >&2; fi
+  exit 1
+fi

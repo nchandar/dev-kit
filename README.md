@@ -8,9 +8,10 @@ Skills and small bash tools that make **Claude Code, Codex and OpenCode** work t
 ```sh
 git clone https://github.com/nchandar/dev-kit ~/dev-kit
 ~/dev-kit/install.sh
-~/.agents/dev-kit/bin/spawn --doctor      # checks your CLIs
+~/.agents/dev-kit/bin/setup              # check first, read-only
+~/.agents/dev-kit/bin/setup --apply      # then fix
 ```
-Needs bash 3.2+, git 2.31+ and one agent CLI. OpenCode v2: run `opencode service start` once. It gets a `/dev-mode` command, which routes through dev-mode. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically.
+Needs bash 3.2+, git 2.31+, perl and one agent CLI. OpenCode v2: run `opencode service start` once. It gets a `/dev-mode` command, which routes through dev-mode. Optional: copy the Routes lines from `AGENTS.md` into your global agent instructions so every project routes automatically. `bin/setup` checks the environment; `spawn --doctor` checks adapter flags.
 
 ## Skills
 Ask in plain words and run `/dev-mode`, which picks the playbook. Name one to skip triage (`/dev-feature` in Claude Code, or "use dev-debug" in Codex and OpenCode).
@@ -58,7 +59,8 @@ Tools live in `~/.agents/dev-kit/bin/`.
 | wait for my workers before ending a turn | `reconcile --wait` (the Stop hook `stop-gate` blocks until each is accepted; see ARCHITECTURE.md 3.9) |
 | run tests without the noise | `run <cmd>` |
 | hand a task to another agent | `spawn --prompt "..." <id> codex` |
-| check my setup | `spawn --doctor` |
+| check and fix my setup | `setup`, then `setup --apply` |
+| render a Mermaid chart | `chart-svg SRC.mmd OUT.svg` |
 
 ## Settings
 Workers skip permission prompts but can never push.
