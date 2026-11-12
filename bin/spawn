@@ -266,37 +266,8 @@ mkdir -p "$T/handoffs" "$T/run" "$T/briefs"
 if [ -f "$st" ]; then read -r sst spid _ < "$st" 2>/dev/null || true; else sst= spid=; fi
 if [ "${sst:-}" = running ] && [ -n "${spid:-}" ] && kill -0 "$spid" 2>/dev/null; then echo "spawn: $id is already running (pid $spid); pick another id" >&2; exit 2; fi
 [ -z "$inline" ] || printf '%s\n' "$inline" > "$T/briefs/$id.md"
-# leads run for hours and each owns a worktree: bound them repo-wide (a live lead = a detached marker with a running status whose pid answers)
-# note: two leads spawned in the same instant can both pass this check
-if [ "$lead" -eq 1 ]; then
-  nlead=0
-  for df in "$H"/tasks/*/run/*.detached; do [ -f "$df" ] || continue
-    lst= lpid=; read -r lst lpid _ < "${df%.detached}.status" 2>/dev/null || true
-    [ "$df" != "$T/run/$id.detached" ] || continue
-    [ "${lst:-}" = running ] && [ -n "${lpid:-}" ] && kill -0 "$lpid" 2>/dev/null && nlead=$((nlead+1)) # pitfall-ok: decimal-arith internal counter
-  done
-  if [ "$nlead" -ge "$DEVKIT_MAX_LEADS" ]; then echo "spawn: $nlead live lead(s) already, at the limit DEVKIT_MAX_LEADS=$DEVKIT_MAX_LEADS; wait for one to finish or raise it" >&2; exit 4; fi
-fi
-
-# owned paths: a column-0 `owns: a b` line (outside code fences) is recorded; an overlap with a live lead is a WARN, never a refusal
-owns=$(brieftext | awk '/^```/{f=!f; next} !f && /^owns:/{sub(/^owns:[[:space:]]*/,""); print}' | tr -s ' \t\n' ' ' | sed 's/^ //; s/ $//')
-norm=; for o in $owns; do while [ "${o%/}" != "$o" ]; do o=${o%/}; done; norm="$norm $o"; done; owns=${norm# } # trailing slashes would hide a prefix match
-rm -f "$T/run/$id.owns"
-if [ -n "$owns" ]; then
-  for of in "$H"/tasks/*/run/*.owns; do [ -f "$of" ] || continue
-    oid=${of##*/}; oid=${oid%.owns}; ob=${of%.owns}
-    [ -f "$ob.detached" ] && [ "$of" != "$T/run/$id.owns" ] || continue
-    ost= opid=; read -r ost opid _ < "$ob.status" 2>/dev/null || true
-    [ "${ost:-}" = running ] && [ -n "${opid:-}" ] && kill -0 "$opid" 2>/dev/null || continue
-    for a in $owns; do for b in $(cat "$of"); do
-      case "$a/" in "$b"/*) hit=$b;; *) case "$b/" in "$a"/*) hit=$a;; *) hit=;; esac;; esac
-      [ -z "$hit" ] || { echo "spawn: WARN $id owns '$a' which overlaps '$b' owned by live lead $oid; coordinate or expect merge conflicts" >&2
-        "$here/ledger" -t "$task" spawn "$id owns-overlap" "'$a' overlaps '$b' of lead $oid" "$of" warning 2>/dev/null || true; }
-    done; done
-  done
-  echo "$owns" > "$T/run/$id.owns"
-fi
-# concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead/reused pid, no pid after 1s) are reclaimed under a per-slot lock
+# worker and lead places share one owner-lock rule: the lock names its owner (pid + start) and is
+# stolen only from a dead or reused owner, so a crash frees it and a live owner keeps it.
 slot=
 slot_live() { # $1=slot dir $2=pid: live if the spawner answers with a matching start time, or (kill -9 of spawn) its worker still runs
   local wp
@@ -318,6 +289,61 @@ slot_lock() { local l=$1 s=$2 own opid ost
   fi
   ln -s "$$ $s" "$l" 2>/dev/null
 }
+# leads run for hours and each owns a worktree: bound them repo-wide. A lead claims its place
+# (run/<id>.lead) before the count under one repo-wide lock, so two leads spawned in the same
+# instant cannot both pass; the claim lives until cleanup, and a dead or reused owner is
+# reclaimed here with the slot rule. A refused lead starts nothing.
+leadclaim=
+claim_lead() { local c=$T/run/$id.lead l=$H/run/leads.lock tries=0 p d
+  self=${self:-$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)} # one sample per spawn, shared with claim_id
+  until slot_lock "$l" "$self"; do # a live owner holds it for a few file ops
+    tries=$((tries+1)); [ "$tries" -lt 100 ] || return 1 # pitfall-ok: decimal-arith internal counter
+    sleep 0.01 # sleep-ok: bounded lock retry, 1s total
+  done
+  p=$(cat "$c/pid" 2>/dev/null)
+  if [ -n "$p" ] && slot_live "$c" "$p"; then rm -f "$l"; return 3; fi # the same id is live: claim_id refuses it with its own message
+  rm -rf "$c"; mkdir "$c" 2>/dev/null || { rm -f "$l"; return 1; }
+  leadclaim=$c # from here cleanup owns it, even if a signal lands before the pid file exists
+  [ -z "$self" ] || echo "$self" > "$c/start" 2>/dev/null
+  echo $$ > "$c/pid" 2>/dev/null
+  nlead=0
+  for d in "$H"/tasks/*/run/*.lead; do [ -d "$d" ] || continue; [ "$d" = "$c" ] && continue
+    p=$(cat "$d/pid" 2>/dev/null)
+    if [ -n "$p" ] && slot_live "$d" "$p"; then nlead=$((nlead+1)); else rm -rf "$d"; fi # pitfall-ok: decimal-arith internal counter
+  done
+  if [ "$(cat "$c/pid" 2>/dev/null)" != "$$" ]; then leadclaim=; rm -rf "$c"; rm -f "$l"; return 1; fi
+  rm -f "$l"
+  [ "$nlead" -lt "$DEVKIT_MAX_LEADS" ] || return 2
+  return 0; }
+if [ "$lead" -eq 1 ]; then
+  claim_lead; leadrc=$?
+  case $leadrc in
+    0) ;;
+    2) rm -rf "$T/run/$id.lead"; echo "spawn: $nlead live lead(s) already, at the limit DEVKIT_MAX_LEADS=$DEVKIT_MAX_LEADS; wait for one to finish or raise it" >&2; exit 4;; # the EXIT trap is not installed this early
+    3) cpid=$(cat "$T/run/$id.lead/pid" 2>/dev/null); echo "spawn: $id is already running (pid ${cpid:-?}); pick another id" >&2; exit 2;; # a live claim of this id; keep the existing duplicate-id message
+    *) echo "spawn: could not claim a lead place (lock $H/run/leads.lock held); try again" >&2; exit 4;;
+  esac
+fi
+
+# owned paths: a column-0 `owns: a b` line (outside code fences) is recorded; an overlap with a live lead is a WARN, never a refusal
+owns=$(brieftext | awk '/^```/{f=!f; next} !f && /^owns:/{sub(/^owns:[[:space:]]*/,""); print}' | tr -s ' \t\n' ' ' | sed 's/^ //; s/ $//')
+norm=; for o in $owns; do while [ "${o%/}" != "$o" ]; do o=${o%/}; done; norm="$norm $o"; done; owns=${norm# } # trailing slashes would hide a prefix match
+rm -f "$T/run/$id.owns"
+if [ -n "$owns" ]; then
+  for of in "$H"/tasks/*/run/*.owns; do [ -f "$of" ] || continue
+    oid=${of##*/}; oid=${oid%.owns}; ob=${of%.owns}
+    [ -f "$ob.detached" ] && [ "$of" != "$T/run/$id.owns" ] || continue
+    ost= opid=; read -r ost opid _ < "$ob.status" 2>/dev/null || true
+    [ "${ost:-}" = running ] && [ -n "${opid:-}" ] && kill -0 "$opid" 2>/dev/null || continue
+    for a in $owns; do for b in $(cat "$of"); do
+      case "$a/" in "$b"/*) hit=$b;; *) case "$b/" in "$a"/*) hit=$a;; *) hit=;; esac;; esac
+      [ -z "$hit" ] || { echo "spawn: WARN $id owns '$a' which overlaps '$b' owned by live lead $oid; coordinate or expect merge conflicts" >&2
+        "$here/ledger" -t "$task" spawn "$id owns-overlap" "'$a' overlaps '$b' of lead $oid" "$of" warning 2>/dev/null || true; }
+    done; done
+  done
+  echo "$owns" > "$T/run/$id.owns"
+fi
+# concurrency: N slot dirs claimed with atomic mkdir; stale slots (dead/reused pid, no pid after 1s) are reclaimed under a per-slot lock
 claim() { local n d p lock live s pp st
   self=${self:-$(LC_ALL=C TZ=UTC ps -o lstart= -p $$ 2>/dev/null)} # one sample per spawn, shared with claim_id
   n=1; while [ "$n" -le "$CAP" ]; do d=$H/run/slot.$n; lock=$d.lock
@@ -405,6 +431,8 @@ cleanup() { local rc=$? c
   [ -z "$slot" ] || rm -rf "$slot"
   # $idclaim covers a signal between mkdir and the pid write; the pid check covers a lost variable
   c=$T/run/$id.claim; if [ -n "$idclaim" ] || [ "$(cat "$c/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$c"; fi
+  # the lead place is held for the whole run; never remove one owned by another pid
+  c=$T/run/$id.lead; if [ -n "$leadclaim" ] || [ "$(cat "$c/pid" 2>/dev/null)" = "$$" ]; then rm -rf "$c"; fi
   exit $rc; }
 trap cleanup EXIT; trap 'reap_delete; exit 143' TERM; trap 'reap_delete; exit 130' INT; trap 'reap_delete; exit 129' HUP
 # before the slot wait: a duplicate must not queue behind the pool and then start a second worker
@@ -573,6 +601,7 @@ set -m; ( cd "$wd" && exec "${cmd[@]}" </dev/null ) > "$log" 2>&1 &
 wpid=$!; set +m
 [ -z "$slot" ] || echo "$wpid" > "$slot/wpid" 2>/dev/null # lets the slot stay counted if spawn is kill -9ed while the worker runs
 [ -z "$idclaim" ] || echo "$wpid" > "$idclaim/wpid" 2>/dev/null # same for the id: the live worker keeps its id held
+[ -z "$leadclaim" ] || echo "$wpid" > "$leadclaim/wpid" 2>/dev/null # and the lead place
 guard=
 if [ "$TMO" -gt 0 ] 2>/dev/null; then
   ( sleep "$TMO"; kill -0 "$wpid" 2>/dev/null || exit 0; : > "$T/run/$id.timedout"; kill -TERM -- "-$wpid" 2>/dev/null; kill -TERM "$wpid" 2>/dev/null; sleep 5; kill -KILL -- "-$wpid" 2>/dev/null; kill -KILL "$wpid" 2>/dev/null ) >/dev/null 2>&1 &
