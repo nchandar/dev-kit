@@ -341,7 +341,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 
 **Delegate**
 1. The main agent writes a brief and runs `bin/spawn` (own background command per worker, up to the worker cap).
-2. The worker runs (interactive in a herdr tab, headless as the fallback) in its own worktree with pushes blocked.
+2. The worker runs (interactive in a herdr tab, headless as the fallback) in its own worktree with push URLs disabled (a guardrail against accidents, not a sandbox).
 3. It writes a handoff; spawn records the status and a ledger row.
 4. The main agent reads only the handoff, verifies a claim, and merges any branch itself.
 
