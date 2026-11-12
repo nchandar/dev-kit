@@ -83,7 +83,8 @@ sec_escape() {
 
 sec_gate() {
   # --- gate-edit
-  for g in bin/verify bin/verify-scan bin/verify.budget tests/verify.test.sh tests/fixtures/verify/x.txt; do
+  for g in bin/verify bin/verify-scan bin/verify.budget bin/ledger bin/run bin/defaults \
+           tests/run-all.sh tests/verify.test.sh tests/fixtures/verify/x.txt; do
     fresh; printf 'edited\n' >> "$g"; scanned
     ok "bad: edit of $g is gate-edit" 'only gate-edit && printf "%s\n" "$out" | grep -qF "gate-edit $g needs user approval"'
   done
@@ -91,8 +92,11 @@ sec_gate() {
   ok "bad: new file under fixtures/verify is gate-edit" 'only gate-edit'
   fresh; printf 'if verify-gate fails; then exit 4; fi\n' >> bin/ledger; scanned
   ok "bad: edit of the done gate in bin/ledger is gate-edit" 'only gate-edit && printf "%s\n" "$out" | grep -qF "gate-edit bin/ledger"'
-  fresh; printf 'echo more\n' >> bin/ledger; printf 'echo more\n' >> bin/other; scanned
-  ok "good: unrelated bin/ledger and bin edits pass" 'clean'
+  # the whole file is guarded: a line with none of the gate words still edits the done gate
+  fresh; printf 'echo more\n' >> bin/ledger; scanned
+  ok "bad: a bin/ledger edit with no gate word is gate-edit" 'only gate-edit && printf "%s\n" "$out" | grep -qF "gate-edit bin/ledger"'
+  fresh; printf 'echo more\n' >> bin/other; scanned
+  ok "good: an unrelated bin file passes" 'clean'
 }
 
 sec_clean() {

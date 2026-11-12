@@ -3,7 +3,6 @@
 # Usage: bin/verify-scan [BASE]   BASE defaults to the merge-base of HEAD with origin/main, else main.
 # One finding per line: weakened | test-escape | gate-edit. Exit 0 clean, 1 findings, 2 could not run.
 set -u
-LEDGER_GATE_RE='verify-gate|waive|bin/verify|VERIFY_'
 ESCAPE_RE='[|][|] *true|(^|[;&[:space:]])exit 0([^0-9]|$)|(^|[^A-Za-z_])(SKIP|skip)([_[:space:]:=]|$)'
 OK_RE='^[[:space:]]*ok[[:space:]]'
 
@@ -21,7 +20,9 @@ export GIT_INDEX_FILE="$tmp/index"
 git read-tree "$base" && git add -A || die "could not build a temp index"
 git diff --cached -M --no-color --name-status "$base" > "$tmp/changes" || die "git diff failed"
 
-is_gate() { case $1 in bin/verify|bin/verify-scan|bin/verify.budget|tests/verify*.test.sh|tests/fixtures/verify/*) return 0;; esac; return 1; }
+# every file the close gate depends on: bin/ledger holds the whole done gate, bin/run writes the
+# gate's evidence log, tests/run-all.sh is the suite the pass stands on, bin/defaults sets the knobs
+is_gate() { case $1 in bin/verify|bin/verify-scan|bin/verify.budget|bin/ledger|bin/run|bin/defaults|tests/run-all.sh|tests/verify*.test.sh|tests/fixtures/verify/*) return 0;; esac; return 1; }
 names() { sed -E 's/^[[:space:]]*ok[[:space:]]+("[^"]*"|[^[:space:]]+).*/\1/' | sort; }
 test_files() { git ls-files "$1" 2>/dev/null | grep -E '^tests/[^/]*\.test\.sh$'; }
 
@@ -30,10 +31,6 @@ scan_gate() {
   while IFS=$'\t' read -r st p1 p2; do
     for p in "$p1" "$p2"; do [ -n "$p" ] && is_gate "$p" && echo "gate-edit $p needs user approval"; done
   done < "$tmp/changes"
-  # only the done gate counts in bin/ledger, so other ledger edits stay free
-  if git diff --cached --no-color -U0 "$base" -- bin/ledger | grep -E '^[+-]' | grep -v -E '^(\+\+\+|---)' | grep -Eq "$LEDGER_GATE_RE"; then
-    echo "gate-edit bin/ledger needs user approval"
-  fi
 }
 
 scan_escape() {

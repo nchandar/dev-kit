@@ -43,6 +43,9 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
   - `DEVKIT_LEDGER_MIRROR="<cmd>"` runs with the row text as `$1`; `DEVKIT_DIR` overrides the `.devkit` location.
   - `start` refuses inside a worker (`DEVKIT_DEPTH` nonzero); workers log to their own `DEVKIT_TASK`. The refusal status is 3.
   - Inside a git worktree the base resolves to the main repo, so workers share one `.devkit`.
+  - The close gate `gate()`: `done` exits 4 unless the tree equals the base or the newest `verify-gate` row passed for that exact tree with a non-empty log under `<task>/runs/`; `--waive "<20+ chars>"` records the reason, and every waive prints at close.
+  - `gate-row`, the only writer of the reserved `verify-gate` phase, needs the per-run token `bin/verify` exports (`DEVKIT_GATE_TOKEN` and `DEVKIT_GATE_TOKEN_FILE`, a 0600 file in its mktemp dir); otherwise it exits 3. This stops accidental and injected plain calls, not an agent that reads `bin/verify` and replays the token; a hard guarantee needs a signer outside the agent. A matching `run` row was rejected as a second check: any caller can append one, so it proves nothing.
+  - `bin/verify-scan` flags any change to `bin/verify`, `bin/verify-scan`, `bin/verify.budget`, `bin/ledger`, `bin/run`, `bin/defaults`, `tests/run-all.sh` and the verify tests as `gate-edit ... needs user approval`. `bin/verify` runs the scanner from the base commit, so the rule protects once it is on the base; it cannot stop a working copy from fooling itself.
 
 ### 3.2 state (`bin/state`)
 - Purpose: lint a task's `state.md` and the project's `.devkit/memory.md` against the no-redundancy rules.

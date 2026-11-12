@@ -6,9 +6,11 @@ unset CLAUDE_CODE_SESSION_ID  # a developer's real session pointer must not leak
 here=$(cd "$(dirname "$0")/.." && pwd); rec="$here/bin/reconcile"; ledger="$here/bin/ledger"; verify="$here/bin/verify"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
-# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
-gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
-  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate);
+# bin/verify hands gate-row a per-run token, so the fixture plays verify's part with the same contract
+gate_pass() { local d f; d=$("$ledger" -t "$1" path) && f=$(mktemp) && printf 'test-token\n' > "$f" \
+  && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && DEVKIT_GATE_TOKEN_FILE="$f" DEVKIT_GATE_TOKEN=test-token "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i
 unset DEVKIT_DIR DEVKIT_TASK
