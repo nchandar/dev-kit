@@ -12,7 +12,7 @@
 #   `opencode -s <id>` instead of tailing the log; other CLIs, or an attach that never finds the session, tail the log.
 # Interactive (DEVKIT_MODE=auto|interactive|headless): with herdr up, claude runs as its normal TUI in a herdr tab (visible todo panel), started with `herdr agent start`.
 #   The brief goes in <task>/briefs/<id>.prompt and the agent gets one line pointing at it; the handoff file is the only DONE signal. Headless stays the fallback.
-# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes) but can never push. Env knobs (defaults in bin/defaults, table in ARCHITECTURE.md): DEVKIT_MAX_WORKERS (repo-wide), DEVKIT_MAX_DEPTH (nesting), DEVKIT_CHILD_WAIT (nested spawns only), DEVKIT_TIMEOUT (zero turns it off), plus DEVKIT_MODEL, DEVKIT_DRYRUN (print the command only), DEVKIT_DIR
+# Workers skip permissions (DEVKIT_SAFE=1 for restricted modes). The push guard is a guardrail, not a sandbox: it stops an accidental push to a named remote, and a worker can still reach one with an explicit URL or without the git config env. Env knobs (defaults in bin/defaults, table in ARCHITECTURE.md): DEVKIT_MAX_WORKERS (repo-wide), DEVKIT_MAX_DEPTH (nesting), DEVKIT_CHILD_WAIT (nested spawns only), DEVKIT_TIMEOUT (zero turns it off), plus DEVKIT_MODEL, DEVKIT_DRYRUN (print the command only), DEVKIT_DIR
 set -u
 # bash reads a script as it runs, so editing this file (or checking out another branch under it) mid-run crashes a live spawn:
 # run from a private copy, unlinked at once (the open file stays readable); the env pair is consumed here so nested spawns freeze afresh
@@ -213,6 +213,7 @@ set_guard() { local gn r # $1=workdir
   for r in $(git -C "$1" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done # pitfall-ok: decimal-arith gn forced through 10# above
   [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn; }
 qesc() { local v=${1//\\/\\\\}; printf '%s' "${v//\"/\\\"}"; } # backslash and quote escaping for JSON and TOML strings
+strip_ctl() { tr -d '\000-\010\013-\037\177'; } # worker output is data: drop terminal control bytes, keep tab and newline
 # the pane's shell belongs to herdr, so spawn's own exports never reach the worker: pass them through tab create --env
 build_ienv() { local k i n; ienv=(--env "DEVKIT_TASK=$task" --env "DEVKIT_DEPTH=$DEVKIT_DEPTH" --env "DEVKIT_DIR=$H")
   for k in DEVKIT_MAX_WORKERS DEVKIT_MAX_LEADS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_MODE DEVKIT_SAFE DEVKIT_MODEL; do [ -z "${!k:-}" ] || ienv+=(--env "$k=${!k}"); done
@@ -253,6 +254,13 @@ else case "$DEVKIT_VIEW" in off|0|false|no) ;; *) herdr tab list >/dev/null 2>&1
 if [ "$DEVKIT_MODE" != headless ]; then
   case "$ilist" in *" $cli "*) [ $view = 0 ] || imode=1;; esac
   if [ $imode = 0 ] && [ "$DEVKIT_MODE" = interactive ]; then echo "spawn: DEVKIT_MODE=interactive needs a running herdr (DEVKIT_VIEW not off) and one of:$ilist" >&2; exit 2; fi
+fi
+# herdr runs the pane command in its own shell and the log path sits inside single quotes there: a quote
+# or control byte in the repo or DEVKIT_DIR path would inject a command, so refuse before any side effect
+if [ $view = 1 ] && [ $imode != 1 ]; then
+  case $log in *\'*|*[[:cntrl:]]*)
+    echo "spawn: the worker log path contains a single quote or control character; the herdr pane command cannot quote it safely. Move the repo (or DEVKIT_DIR) to a plain path, or run with DEVKIT_VIEW=off" >&2
+    exit 2;; esac
 fi
 
 if [ -n "${DEVKIT_DRYRUN:-}" ]; then
@@ -329,7 +337,9 @@ fi
 
 # owned paths: a column-0 `owns: a b` line (outside code fences) is recorded; an overlap with a live lead is a WARN, never a refusal
 owns=$(brieftext | awk '/^```/{f=!f; next} !f && /^owns:/{sub(/^owns:[[:space:]]*/,""); print}' | tr -s ' \t\n' ' ' | sed 's/^ //; s/ $//')
+set -f # owns is brief text: `*` stays a literal path, never a glob against the cwd
 norm=; for o in $owns; do while [ "${o%/}" != "$o" ]; do o=${o%/}; done; norm="$norm $o"; done; owns=${norm# } # trailing slashes would hide a prefix match
+set +f
 rm -f "$T/run/$id.owns"
 if [ -n "$owns" ]; then
   for of in "$H"/tasks/*/run/*.owns; do [ -f "$of" ] || continue
@@ -337,11 +347,13 @@ if [ -n "$owns" ]; then
     [ -f "$ob.detached" ] && [ "$of" != "$T/run/$id.owns" ] || continue
     ost= opid=; read -r ost opid _ < "$ob.status" 2>/dev/null || true
     [ "${ost:-}" = running ] && [ -n "${opid:-}" ] && kill -0 "$opid" 2>/dev/null || continue
+    set -f # both sides are data from a brief: a `*` must not expand to the cwd
     for a in $owns; do for b in $(cat "$of"); do
       case "$a/" in "$b"/*) hit=$b;; *) case "$b/" in "$a"/*) hit=$a;; *) hit=;; esac;; esac
       [ -z "$hit" ] || { echo "spawn: WARN $id owns '$a' which overlaps '$b' owned by live lead $oid; coordinate or expect merge conflicts" >&2
         "$here/ledger" -t "$task" spawn "$id owns-overlap" "'$a' overlaps '$b' of lead $oid" "$of" warning 2>/dev/null || true; }
     done; done
+    set +f
   done
   echo "$owns" > "$T/run/$id.owns"
 fi
@@ -420,7 +432,7 @@ cleanup() { local rc=$? c
     echo "killed $rc $(date +%s)" > "$st"
   fi
   if [ "$imode" = 1 ] && [ "$istarted" = 1 ] && [ "$idone" != 1 ]; then # before the tab exists an early exit keeps its real status
-    if [ -n "$vpane" ] && [ ! -s "$hf" ]; then { echo "# $id (auto-generated)"; echo "status: killed (exit $rc), no handoff written. Last output:"; herdr pane read --lines 20 "$vpane" 2>/dev/null; } > "$hf"; fi
+    if [ -n "$vpane" ] && [ ! -s "$hf" ]; then { echo "# $id (auto-generated)"; echo "status: killed (exit $rc), no handoff written. Last output:"; herdr pane read --lines 20 "$vpane" 2>/dev/null | strip_ctl; } > "$hf"; fi
     herdr notification show "$id killed" --body "$cli $shape: $hf" --sound request >/dev/null 2>&1
     "$here/ledger" -t "$task" spawn "$id killed" "interrupted (exit $rc)" "$hf" killed 2>/dev/null || true
     echo "killed $rc $(date +%s)" > "$st"
@@ -594,7 +606,7 @@ if [ $imode = 1 ]; then
     fi
     sleep "$DEVKIT_POLL"
   done
-  [ "$istate" = done ] || [ -s "$hf" ] || { herdr pane read --lines 20 "$vpane" 2>/dev/null; echo "$ireason"; } > "$log" # reason last: the handoff keeps only the log tail
+  [ "$istate" = done ] || [ -s "$hf" ] || { herdr pane read --lines 20 "$vpane" 2>/dev/null | strip_ctl; echo "$ireason"; } > "$log" # reason last: the handoff keeps only the log tail
   [ "$istate" = done ] || [ ! -s "$hf" ] || [ -z "$ireason" ] || echo "$ireason" >> "$log" # a kept draft still gets the reason on record
   [ "$istate" = done ] || rc=1
 else
@@ -619,7 +631,7 @@ if [ ! -s "$hf" ]; then
   [ $state = done ] && state=failed
   { echo "# $id (auto-generated)"
     if [ $state = timeout ]; then echo "status: timed out after ${TMO}s (no handoff written). Last output:"; else echo "status: no handoff written (exit $rc). Last output:"; fi
-    tail -n 20 "$log"; } > "$hf"
+    tail -n 20 "$log" | strip_ctl; } > "$hf"
 fi
 after=$(snap)
 iso_check
@@ -643,7 +655,7 @@ if ! "$here/ledger" -t "$task" spawn "$id $state" "cli=$cli shape=$shape" "$hf" 
   echo "spawn: cannot record the exit row for $id; not reporting done" >&2; state=failed
 fi
 echo "$state $rc $(date +%s)" > "$st"
-[ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" >&2; }
+[ $state = done ] || { echo "spawn: $id $state (exit $rc); handoff $hf" >&2; tail -n 5 "$log" | strip_ctl >&2; }
 if [ $imode = 1 ]; then
   idone=1
   if [ $state = done ]; then
