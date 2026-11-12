@@ -79,8 +79,10 @@ export CLAUDE_CODE_SESSION_ID=sess-f1
 start_held w3; waitfor w3 running; rm -f "$t/hold.w3"; waitfile "$t/m.f1"
 ok "F1: the terminal status is not published before the exit row" '[ "$(status w3)" = running ]'
 gate; ok "F1: the exit window is not accepted on the old run" '[ "$grc" -eq 1 ]'
-hook=$(printf '{"session_id":"sess-f1"}' | "$BIN/stop-gate" 2>&1); hrc=$?
-ok "F1: the stop hook blocks in the exit window" '[ "$hrc" -eq 2 ]'
+hout=$(printf '{"session_id":"sess-f1"}' | "$BIN/stop-gate" 2>"$t/hook.err"); hrc=$?
+ok "F1: the stop hook holds the turn in the exit window" '[ "$hrc" -eq 0 ] && [ ! -s "$t/hook.err" ] && printf "%s" "$hout" | grep -q "w3: working"'
+hout=$(printf '{"session_id":"sess-f1"}' | DEVKIT_STOP_GATE_FORMAT=exit2 "$BIN/stop-gate" 2>&1); hrc=$?
+ok "F1: the exit2 hatch still blocks for older harnesses" '[ "$hrc" -eq 2 ] && printf "%s" "$hout" | grep -q "w3: working"'
 unset CLAUDE_CODE_SESSION_ID
 unblock f1; wait "$sp" 2>/dev/null; sp=
 gate; ok "F1: after the exit row the respawn still needs an accept" '[ "$grc" -eq 1 ] && echo "$out" | grep -q "w3 done, unaccepted"'
