@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local learning inbox: move reusable lessons from a task's state.md toward the shared library, with your approval.
-#   learn queue [-t id]               move open "general" and "recipe" learnings to the inbox (box becomes [~])
+#   learn queue [-t id]               move open "general" and "recipe" learnings to the inbox (box becomes [~]); refused inside a worker (exit 3)
 #   learn list                        queued learnings not yet promoted or dropped, with ids
 #   learn count                       how many are waiting
 #   learn done <id> promoted|dropped  record the outcome and flip the box in the task's state.md ([x] or [-])
@@ -21,6 +21,9 @@ case $cmd in
     p=$(pending); [ -n "$p" ] || { echo "no learnings queued"; exit 0; }
     printf '%s\n' "$p" | awk -F'\t' '{ printf "%s  %-7s %s (%s) [%s]\n", $1, $5, $6, $7, $3 }';;
   queue)
+    depth=${DEVKIT_DEPTH:-0}
+    case $depth in ''|*[!0-9]*) echo "learn: a worker (DEVKIT_DEPTH=${DEVKIT_DEPTH:-unset}) must not queue to the shared inbox; the parent queues at closeout" >&2; exit 3;; esac
+    [ "$((10#$depth))" -eq 0 ] || { echo "learn: a worker (DEVKIT_DEPTH=$depth) must not queue to the shared inbox; the parent queues at closeout" >&2; exit 3; }
     task=${DEVKIT_TASK:-}
     if [ "${1:-}" = -t ]; then task=${2:-}
     elif [ -z "$task" ]; then task=$("$here/ledger" current 2>/dev/null) || task=; fi

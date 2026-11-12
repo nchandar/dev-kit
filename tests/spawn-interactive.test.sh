@@ -80,7 +80,7 @@ STUB_DROP=0 irun "$spawn" c1 claude "$t/brief.md"; rc=$?
 ok "claude: interactive run succeeds and writes the handoff" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/c1.status && [ -s $TD/handoffs/c1.md ]'
 tc=$(grep '^tab create' "$HERDR_LOG")
 ok "claude: tab create has cwd, label and no focus steal" 'echo "$tc" | grep -q -- "--cwd $tp" && echo "$tc" | grep -q -- "--label c1 · claude · ship" && echo "$tc" | grep -q -- "--no-focus"'
-ok "claude: tab create carries DEVKIT_DEPTH, TASK and DIR" 'echo "$tc" | grep -q -- "--env DEVKIT_DEPTH=1" && echo "$tc" | grep -q -- "--env DEVKIT_TASK=$TA" && echo "$tc" | grep -q -- "--env DEVKIT_DIR=$DEVKIT_DIR"'
+ok "claude: tab create carries DEVKIT_DEPTH, TASK, DIR and WORKER" 'echo "$tc" | grep -q -- "--env DEVKIT_DEPTH=1" && echo "$tc" | grep -q -- "--env DEVKIT_TASK=$TA" && echo "$tc" | grep -q -- "--env DEVKIT_DIR=$DEVKIT_DIR" && echo "$tc" | grep -q -- "--env DEVKIT_WORKER=c1"'
 ok "claude: tab create turns on the task tools so the checklist panel exists"  'echo "$tc" | grep -q -- "--env CLAUDE_CODE_ENABLE_TODO_TOOLS=1"'
 ok "claude: tab create carries the push-guard pair" 'echo "$tc" | grep -q -- "--env GIT_CONFIG_KEY_0=remote.origin.pushurl" && echo "$tc" | grep -q -- "--env GIT_CONFIG_VALUE_0=/dev/null/push-blocked-by-dev-kit" && echo "$tc" | grep -q -- "--env GIT_CONFIG_COUNT=1"'
 ok "claude: agent start names the kind and pane" 'grep -q "^agent start c1 --kind claude --pane X:p9 " "$HERDR_LOG"'

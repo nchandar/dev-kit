@@ -208,13 +208,13 @@ rt_route=$(worker_route "$(brieftext)")
 # workers run with permissions skipped, so pushing is blocked here for every CLI: dead push URL on each existing remote.
 # NOTE: only remote.<name>.pushurl is rewritten, so `git push <url>` with an explicit URL bypasses this; it is a guardrail, not a sandbox.
 set_guard() { local gn r # $1=workdir
-  export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task # pitfall-ok: decimal-arith depth validated above
+  export DEVKIT_DEPTH=$((depth+1)) DEVKIT_DIR=$H DEVKIT_TASK=$task DEVKIT_WORKER=$id # pitfall-ok: decimal-arith depth validated above
   gn=$((10#${GIT_CONFIG_COUNT:-0})) # 08 is decimal 8, not an octal error
   for r in $(git -C "$1" remote 2>/dev/null); do export "GIT_CONFIG_KEY_$gn=remote.$r.pushurl" "GIT_CONFIG_VALUE_$gn=/dev/null/push-blocked-by-dev-kit"; gn=$((gn+1)); done # pitfall-ok: decimal-arith gn forced through 10# above
   [ "$gn" -eq 0 ] || export GIT_CONFIG_COUNT=$gn; }
 qesc() { local v=${1//\\/\\\\}; printf '%s' "${v//\"/\\\"}"; } # backslash and quote escaping for JSON and TOML strings
 # the pane's shell belongs to herdr, so spawn's own exports never reach the worker: pass them through tab create --env
-build_ienv() { local k i n; ienv=(--env "DEVKIT_TASK=$task" --env "DEVKIT_DEPTH=$DEVKIT_DEPTH" --env "DEVKIT_DIR=$H")
+build_ienv() { local k i n; ienv=(--env "DEVKIT_TASK=$task" --env "DEVKIT_DEPTH=$DEVKIT_DEPTH" --env "DEVKIT_DIR=$H" --env "DEVKIT_WORKER=$id")
   for k in DEVKIT_MAX_WORKERS DEVKIT_MAX_LEADS DEVKIT_MAX_DEPTH DEVKIT_CHILD_WAIT DEVKIT_TIMEOUT DEVKIT_MODE DEVKIT_SAFE DEVKIT_MODEL; do [ -z "${!k:-}" ] || ienv+=(--env "$k=${!k}"); done
   [ "$cli" != claude ] || ienv+=(--env "CLAUDE_CODE_ENABLE_TODO_TOOLS=1") # without it a worker claude has no TaskCreate/TodoWrite, so no checklist panel
   [ "$cli" != opencode ] || [ -z "$model" ] || ienv+=(--env "OPENCODE_CONFIG_CONTENT={\"model\":\"$(qesc "$model")\"}")
@@ -458,8 +458,10 @@ if [ $wt = 1 ]; then
     [ "$lead" -eq 0 ] || git -C "$wd" rev-parse HEAD > "$T/run/$id.base" 2>/dev/null || true
   fi
 fi
+# who spawned this id: the accept guard's parent record (main has no DEVKIT_WORKER)
+echo "${DEVKIT_WORKER:-main}" > "$T/run/$id.parent" || echo "spawn: cannot write $T/run/$id.parent; no worker can accept $id" >&2
 # a start row outdates any earlier accept: a respawn is unreviewed even if it dies without its exit row
-if ! "$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape" "${brief:-$T/briefs/$id.md}" running 2>/dev/null; then
+if ! "$here/ledger" -t "$task" spawn "$id running" "cli=$cli shape=$shape parent=${DEVKIT_WORKER:-main}" "${brief:-$T/briefs/$id.md}" running 2>/dev/null; then
   echo "spawn: cannot record the start row for $id; not starting it" >&2; exit 2
 fi
 rm -f "$hf" "$T/run/$id.timedout"; echo "running $$ $(date +%s)" > "$st"

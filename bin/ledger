@@ -3,7 +3,7 @@
 #   ledger start <slug> [note]                          create a task (ledger + state.md), keep .devkit out of git, print its id; refused inside a worker (exit 3)
 #   ledger current                                      print this session's open task, else exit 1 (uses $CLAUDE_CODE_SESSION_ID)
 #   ledger [-t id] <phase> <decision> <reason> [evidence] [result]   (phases path, done, base, start, current, verify-gate are reserved)
-#   ledger [-t id] accept "<id> accepted" <reason>      for a --lead worker, refused (exit 5) when its branch is not built on the default branch tip; "<id> rejected" is always allowed
+#   ledger [-t id] accept "<id> accepted" <reason>      for a --lead worker, refused (exit 5) when its branch is not built on the default branch tip, a rejection skips that check; a worker may accept only an id it spawned (run/<id>.parent written by spawn); its own id, a sibling or its parent exits 3
 #   ledger [-t id] done [--waive "<reason>"] [summary]  mark the task finished; needs a passing verify-gate row for the current tree, or a waive reason of 20+ chars; refused inside a worker (exit 3)
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
 #   ledger [-t id] gate-row <tier> <reason> <evidence> <result>   append the verify-gate row (bin/verify only)
@@ -17,7 +17,7 @@ base() { local d
   if [ -n "${DEVKIT_DIR:-}" ]; then echo "$DEVKIT_DIR"; return; fi
   if d=$(git rev-parse --git-common-dir 2>/dev/null) && d=$(cd "$d" && pwd) && [ "$(basename "$d")" = .git ]; then echo "$(dirname "$d")/.devkit"
   else echo "$PWD/.devkit"; fi; }
-clean() { printf '%s' "$1" | tr '\n\t' '  ' | cut -c1-400; }
+clean() { printf '%s' "$1" | tr '\n\t' '  ' | tr -d '\000-\010\013-\037\177' | cut -c1-400; }
 exclude_local() { # keep .devkit out of git without touching any tracked file (common dir covers worktrees)
   local cd root ex rel
   cd=$(git rev-parse --git-common-dir 2>/dev/null) && cd=$(cd "$cd" && pwd) || return 0
@@ -168,10 +168,27 @@ lead_base_check() { local id=$1 br=devkit/$task-$1 def tip n d c
   tip=$(git rev-parse "$def"); git merge-base --is-ancestor "$tip" "refs/heads/$br" 2>/dev/null && return 0
   n=$(git rev-list --count "refs/heads/$br..$tip" 2>/dev/null) || n=?
   d=${def#refs/heads/}; d=${d#refs/remotes/}
-  echo "ledger: lead $id is not built on the current $d: $br is $n commit(s) behind it. Rebase it (git -C $D/wt/$id rebase $d), rerun the checks, then accept again. A rejection is always allowed." >&2
+  echo "ledger: lead $id is not built on the current $d: $br is $n commit(s) behind it. Rebase it (git -C $D/wt/$id rebase $d), rerun the checks, then accept again. A rejection skips this check." >&2
   return 1; }
 if [ "${1:-}" = accept ]; then
   read -r aid averdict _ <<< "${2:-}"
+  # a worker signs off its children, never its own work or a peer's: the stop gate must stay a parent decision
+  if ! is_main; then
+    if [ -z "${DEVKIT_WORKER:-}" ]; then
+      echo "ledger: a worker with no DEVKIT_WORKER must not accept; its parent reviews the id" >&2
+      exit 3
+    fi
+    if [ "${aid:-}" = "$DEVKIT_WORKER" ]; then
+      echo "ledger: a worker ($DEVKIT_WORKER) must not accept its own id; its parent reviews it" >&2
+      exit 3
+    fi
+    # the id must be one this worker spawned (run/<id>.parent, written by spawn); a sibling, a parent or an unknown id is refused
+    pfile=; case ${aid:-} in ''|.|..|*/*) ;; *) pfile=$D/run/$aid.parent;; esac
+    if [ -z "$pfile" ] || [ "$(cat "$pfile" 2>/dev/null)" != "$DEVKIT_WORKER" ]; then
+      echo "ledger: worker $DEVKIT_WORKER may accept only an id it spawned; '${aid:-}' is not its child; its parent reviews it" >&2
+      exit 3
+    fi
+  fi
   if [ "${averdict:-}" = accepted ]; then lead_base_check "$aid" || exit 5; fi
 fi
 [ $# -ge 3 ] || die "usage: ledger [-t id] phase decision reason [evidence] [result] (phases path, done, base, start, current, verify-gate are reserved)"

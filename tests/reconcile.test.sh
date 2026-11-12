@@ -38,6 +38,16 @@ ok "detail: dead pid reported killed"      'echo "$out" | grep "dead" | grep -q 
 ok "detail: live pid reported running"     'echo "$out" | grep "live" | grep -q running'
 ok "detail: finished worker shows handoff" 'echo "$out" | grep "fin" | grep -q done'
 ok "list line counts running/killed"       '"$rec" | grep "$A" | grep -q "1 running" && "$rec" | grep "$A" | grep -q "1 killed"'
+# --- resume and note text are untrusted data: one line, no terminal control characters
+"$ledger" -t "$A" note $'ok\e]0;pwn\a\e[2J' "esc"
+printf '2026-01-01T00:00:00Z\tnext\tEVIL\r\vTEXT \033[2K\033[1A data\tx\t-\n' >> "$("$ledger" -t "$A" path)/ledger.tsv"
+out=$("$rec" "$A")
+rline=$(printf '%s\n' "$out" | grep '^resume')
+rctl=$(printf '%s' "$rline" | LC_ALL=C grep -c '[[:cntrl:]]')
+notectl=$(printf '%s\n' "$out" | grep 'note:' | LC_ALL=C grep -c '[[:cntrl:]]')
+ok "resume is labelled untrusted data"      'printf "%s" "$rline" | grep -q "untrusted data"'
+ok "resume keeps one line and drops control chars" '[ "$(printf "%s\n" "$out" | grep -c "^resume")" -eq 1 ] && [ "$rctl" -eq 0 ] && printf "%s" "$rline" | grep -q "EVIL"'
+ok "recent note text drops control chars"   '[ "$notectl" -eq 0 ] && printf "%s\n" "$out" | grep -q "note:"'
 "$rec" nosuch >/dev/null 2>&1; rc=$?
 ok "unknown task exits 2"                  '[ $rc -eq 2 ]'
 # --- state.md and the learning inbox are visible from reconcile
