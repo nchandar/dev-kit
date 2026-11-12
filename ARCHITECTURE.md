@@ -160,7 +160,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 
 ### 3.8 install (`install.sh`)
 - Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.
-- With opencode installed or configured, also symlinks `opencode/commands/dev-mode.md` into `~/.config/opencode/commands/dev-mode.md`, so its picker shows one `/dev-mode` command that routes through dev-mode. A leftover `/dev` symlink pointing at this repo is removed on install; real files and other links stay.
+- With opencode installed or configured, also symlinks `opencode/commands/dev-mode.md` into `~/.config/opencode/commands/dev-mode.md`, so its picker shows one `/dev-mode` command that routes through dev-mode. A leftover `/dev` symlink pointing at this repo is removed on install; real files and other links stay. When the config is a symlink, the `experimental.todo` write goes through the resolved target and keeps its mode (a 0600 config stays 0600); the link is never replaced by a copy.
 
 ### 3.9 Parent Stop gate (`bin/stop-gate`)
 - Blocks: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row.
@@ -191,9 +191,10 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 ### 3.13 setup (`bin/setup`) and chart (`bin/chart-svg`)
 - Purpose: check and fix everything the skills need: core tools, agent CLIs, skill links, settings, pinned tools, and repository sync.
 - `bin/setup` (environment, links, settings) and `spawn --doctor` (adapter flags) are the two checks; neither replaces the other.
-- `--check` (default) is read-only and offline: one `ok|missing|optional|outdated|behind|skipped  name  detail` line per item, then `verdict: ready` or `verdict: N missing`.
-- `--apply` prints the check, then makes each fix after one prompt per write: links, bun/tlachart/pele/java/jar, the opencode todo flag, the Claude Stop-gate hook and five allow rows (backup first), and repo pulls with `git pull --ff-only` after one up-front prompt to contact the remotes. A dirty, detached, diverged or no-upstream repo is skipped with a reason; a config repo is report-only, even when it also holds skills.
+- `--check` (default) is read-only and offline: one `ok|missing|optional|outdated|behind|skipped|warn  name  detail` line per item, then `verdict: ready` or `verdict: N missing`. `warn` reports a security-relevant setting that `--apply` never changes; today that is only a legacy `bin/run` allow row.
+- `--apply` prints the check, then makes each fix after one prompt per write: links, bun/tlachart/pele/java/jar, the opencode todo flag, the Claude Stop-gate hook and four allow rows (ledger, reconcile, state, `setup --check`; backup first), and repo pulls with `git pull --ff-only` after one up-front prompt to contact the remotes. `bin/run` runs any argv, so it gets no allow row; an existing row is left alone and `--check` warns. A dirty, detached, diverged or no-upstream repo is skipped with a reason; a config repo is report-only, even when it also holds skills.
 - `tla2tools.jar` comes from the release pinned in `library/setup.pins` and is checked against that pin's sha256 before it is moved into place.
+- The no-brew bun path downloads `https://bun.sh/install` and runs it as a file; no hash is pinned, so it trusts bun.sh (the command is shown before the one prompt).
 - A dev-kit pull runs `install.sh` once, so a new `skills/dev-*` is linked in the same run. The run uses a frozen copy of `bin/setup`, so a pull that rewrites it cannot break the run; the new code runs next time.
 - `chart-svg SRC.mmd OUT.svg` renders with pele when bun and `~/.agents/dev-kit-tools/node_modules/pele` exist; a missing tool names `bin/setup --apply`, a render error prints plain text, and a failure writes no file.
 

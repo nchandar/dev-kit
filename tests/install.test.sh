@@ -27,6 +27,7 @@ ok "a stale symlink is re-pointed"              '[ "$(readlink "$t/.codex/skills
 oc() { echo "$t/oc/$1/.config/opencode/opencode.jsonc"; }
 mk() { mkdir -p "$t/oc/$1/.config/opencode"; }
 todo() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("experimental",{}).get("todo"))' "$1" 2>/dev/null; }
+mode_of() { if stat -f %Lp "$1" >/dev/null 2>&1; then stat -f %Lp "$1"; else stat -c %a "$1"; fi; }
 mk fresh; HOME="$t/oc/fresh" "$inst" >"$t/o1.out" 2>&1
 ok "opencode dir without a config: todo is enabled"   '[ "$(todo "$(oc fresh)")" = True ]'
 ok "installer tells the user to restart the service"  'grep -q "opencode service restart" "$t/o1.out"'
@@ -38,6 +39,15 @@ mk cm; printf '{\n  // mine\n  "plugin": []\n}\n' > "$(oc cm)"; cp "$(oc cm)" "$
 ok "a commented config is left untouched and the user is told how"  'cmp -s "$(oc cm)" "$t/cm.before" && grep -q "experimental" "$t/o2.out"'
 HOME="$t/oc/keep" "$inst" >/dev/null 2>&1; cp "$(oc keep)" "$t/keep.1"; HOME="$t/oc/keep" "$inst" >/dev/null 2>&1
 ok "rerun leaves the config unchanged"  'cmp -s "$(oc keep)" "$t/keep.1"'
+# a symlinked config keeps its link and its 0600 mode: the write goes through to the target
+mk link; mkdir -p "$t/oc/link/dotfiles"
+printf '{"plugin":["x"]}\n' > "$t/oc/link/dotfiles/opencode.json"; chmod 600 "$t/oc/link/dotfiles/opencode.json"
+ln -s ../../dotfiles/opencode.json "$t/oc/link/.config/opencode/opencode.json"
+HOME="$t/oc/link" "$inst" >/dev/null 2>&1
+ok "symlinked config: the link is kept"  '[ -L "$t/oc/link/.config/opencode/opencode.json" ] && [ "$(readlink "$t/oc/link/.config/opencode/opencode.json")" = ../../dotfiles/opencode.json ]'
+ok "symlinked config: the target got todo"  '[ "$(todo "$t/oc/link/dotfiles/opencode.json")" = True ]'
+ok "symlinked config: the 0600 mode is kept"  '[ "$(mode_of "$t/oc/link/dotfiles/opencode.json")" = 600 ]'
+ok "symlinked config: no temp file is left"  '[ ! -e "$t/oc/link/dotfiles/opencode.json.tmp" ]'
 # opencode command: one /dev-mode entry in the picker, linked to the repo's command file
 cmd() { echo "$t/oc/$1/.config/opencode/commands/dev-mode.md"; }
 old() { echo "$t/oc/$1/.config/opencode/commands/dev.md"; }

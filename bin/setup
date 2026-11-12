@@ -278,14 +278,19 @@ else
   if stop_gate_configured "$HOME/.claude/settings.json"; then ok_line stop-gate configured
   else missing_line stop-gate "not configured"; fi
   rows=0
-  for r in 'Bash(~/.agents/dev-kit/bin/ledger *)' 'Bash(~/.agents/dev-kit/bin/reconcile *)' 'Bash(~/.agents/dev-kit/bin/state *)' 'Bash(~/.agents/dev-kit/bin/run *)' 'Bash(~/.agents/dev-kit/bin/setup --check)'; do
+  for r in 'Bash(~/.agents/dev-kit/bin/ledger *)' 'Bash(~/.agents/dev-kit/bin/reconcile *)' 'Bash(~/.agents/dev-kit/bin/state *)' 'Bash(~/.agents/dev-kit/bin/setup --check)'; do
     alt=${r%' *)'}':*)'
     if grep -qF -- "$r" "$HOME/.claude/settings.json" 2>/dev/null || grep -qF -- "$alt" "$HOME/.claude/settings.json" 2>/dev/null; then
       rows=$((rows+1)) # pitfall-ok: decimal-arith internal counter
     fi
   done
-  if [ "$rows" -eq 5 ]; then ok_line allow-rows "5 configured"
-  else say optional allow-rows "$rows of 5 (bin/setup --apply)"; fi
+  if [ "$rows" -eq 4 ]; then ok_line allow-rows "4 configured (bin/run is not auto-allowed)"
+  else say optional allow-rows "$rows of 4 (bin/setup --apply; bin/run is not auto-allowed)"; fi
+  # bin/run runs any argv, so its allow row is a blanket allow: never added, warned about when already present
+  if grep -qF -- 'Bash(~/.agents/dev-kit/bin/run *)' "$HOME/.claude/settings.json" 2>/dev/null ||
+     grep -qF -- 'Bash(~/.agents/dev-kit/bin/run:*)' "$HOME/.claude/settings.json" 2>/dev/null; then
+    say warn allow-rows "bin/run row present; bin/run is not auto-allowed, remove it"
+  fi
 fi
 
 section codex
@@ -513,12 +518,8 @@ rows = [
     "Bash(~/.agents/dev-kit/bin/ledger *)",
     "Bash(~/.agents/dev-kit/bin/reconcile *)",
     "Bash(~/.agents/dev-kit/bin/state *)",
-    "Bash(~/.agents/dev-kit/bin/run *)",
     "Bash(~/.agents/dev-kit/bin/setup --check)",
 ]
-for r in rows:
-    if any(b in r for b in ("Bash(*)", "--dangerously", "/spawn", "/verify", "/push")):
-        print("refused"); sys.exit()
 try:
     cfg = json.load(open(src)) if os.path.exists(src) else {}
 except (ValueError, OSError):
@@ -533,11 +534,19 @@ allow = perms.setdefault("allow", [])
 if not isinstance(allow, list):
     print("skip"); sys.exit()
 changed = False
+add = []
 for r in rows:
     # a colon form of the same wildcard row is already covered
     covered = r in allow or (r.endswith(" *)") and (r[:-3] + ":*)") in allow)
     if not covered:
-        allow.append(r); changed = True
+        add.append(r); changed = True
+merged = allow + add
+# Judge the merged allow list. Only rows dev-kit adds are checked: a pre-existing broad
+# row is the user's (--check warns about it, --apply never removes it).
+for r in merged[len(allow):]:
+    if any(b in r for b in ("Bash(*)", "--dangerously", "/spawn", "/verify", "/push", "/run")):
+        print("refused"); sys.exit()
+allow.extend(add)
 stop = hooks.setdefault("Stop", [])
 if not isinstance(stop, list):
     print("skip"); sys.exit()
@@ -559,7 +568,7 @@ PY
 )
   case $res in
     set)
-      fix_head "claude: add the Stop-gate hook and the five dev-kit allow rows"
+      fix_head "claude: add the Stop-gate hook and the four dev-kit allow rows (bin/run is not auto-allowed: it runs any argv)"
       srcf=$scfg; [ -e "$srcf" ] || srcf=/dev/null
       show_diff "$srcf" "$atmp/settings.json" "$(basename "$scfg")"
       ask || return 0
