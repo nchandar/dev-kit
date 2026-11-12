@@ -348,7 +348,7 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 | TSV ledger, append-only | Greppable, diffable, safe under crashes; history is never rewritten | JSON or a database: harder to append and read by hand |
 | Per-task folders | Parallel sessions and repos never collide; resume by id | One shared ledger and state file |
 | Headless workers | Same bash command on every CLI; no terminal to babysit | Interactive windows or an in-process sub-agent API |
-| Push guard on every remote | Workers skip permissions, so a dead push URL makes pushing impossible | Trusting the prompt not to push |
+| Push guard on every remote | Stops an accidental push to a named remote; it is a guardrail, not a sandbox | Trusting the prompt not to push; for a real block, a sandbox or withheld credentials |
 | Handoff files only | Workers never talk to each other; the main agent holds the picture | Peer messaging, shared scratch files |
 | Many live workers, bounded nesting depth | Reading and review scale in parallel; the depth limit stops runaway recursion; nested spawns fail fast instead of deadlocking on slots their parents hold | Unbounded or unlimited recursive spawning; the old cap of 2 |
 | Local-only state | `.devkit/` is git-ignored; no secrets or noise in history | Committing run files |
@@ -360,6 +360,6 @@ Recipes are one line each in `recipes/index.md` as `name: when to use`; a recipe
 
 - The agent must follow the checklists. Only the tools' own rules (lint, state check, push guard, depth, caps) are enforced mechanically.
 - Workers run with permissions skipped by default; `DEVKIT_SAFE=1` narrows this for claude and codex only. OpenCode has no restricted mode here.
-- The push guard blocks pushes via git remotes; it does not stop other network access.
+- The push guard stops an accidental push to a named remote only: an explicit URL, dropping `GIT_CONFIG_COUNT`, or `gh` gets through. A worker that skips permissions can still publish; a real block needs a sandbox or withheld credentials.
 - Adapter flags track CLI versions; run `bin/spawn --doctor` after upgrades. OpenCode needs `opencode service start` once.
 - Tests: `tests/run-all.sh` runs the bash suites and lint with no agents; `evals/e2e*.sh` use real agents and cost tokens.
