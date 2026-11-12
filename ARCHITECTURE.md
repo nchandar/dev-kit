@@ -85,7 +85,7 @@ sequenceDiagram
   participant L as Ledger
   M->>S: spawn id cli brief (background)
   S->>S: claim id (atomic mkdir; a live id exits 2 "already running")
-  S->>S: claim slot (atomic mkdir, up to the worker cap)
+  S->>S: claim slot (per-slot lock around mkdir and the pid write, up to the worker cap)
   S->>S: optional git worktree devkit/task-id
   S->>S: push guard (dead pushurl), build CLI command, status=running
   S->>W: launch (interactive TUI in a herdr tab; headless, stdin closed, log to handoffs/id.log, as the fallback)
@@ -109,7 +109,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `--worktree` | off | Worker runs in `<task>/wt/<id>` on branch `devkit/<task>-<id>` |
 | `--lead` | off | Long-lived lead: implies `--worktree`, writes `run/<id>.detached` and (fresh worktree only) `run/<id>.base`, the commit it started from |
 | `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
-| `DEVKIT_MAX_WORKERS` | auto | Slot count, repo-wide; auto means min(3 x cores, RAM in GB) within 4..64, or 10 when the machine cannot be read (`DEVKIT_CORES` and `DEVKIT_RAM_GB` override detection, e.g. for a container RAM limit): one pool shared by leads and their helpers, first come first served (no per-lead budget); a nested spawn past the pool waits `DEVKIT_CHILD_WAIT` then exits 4; extras wait, stale slots (dead/reused pid, no pid after 1s) claimed and reclaimed under a per-slot lock that names its owner (pid + start; stolen only from a dead or reused owner), with a start-time check against pid reuse |
+| `DEVKIT_MAX_WORKERS` | auto | Slot count, repo-wide; auto means min(3 x cores, RAM in GB) within 4..64, or 10 when the machine cannot be read (`DEVKIT_CORES` and `DEVKIT_RAM_GB` override detection, e.g. for a container RAM limit): one pool shared by leads and their helpers, first come first served (no per-lead budget); a nested spawn past the pool waits `DEVKIT_CHILD_WAIT` then exits 4; extras wait, stale slots (dead/reused pid, no pid after 1s) reclaimed under a per-slot lock that names its owner (pid + start; stolen only from a dead or reused owner), with a start-time check against pid reuse; a claim takes that lock before its mkdir and holds it through the pid write, so a stalled claimer's dir is never mistaken for stale |
 | `DEVKIT_MAX_LEADS` | auto | Live `--lead` workers, repo-wide; auto means at most half the worker pool and at most 10 (at least 1); a `--lead` spawn past it exits 4 with a message (counted from `run/<id>.detached` plus a running status, so leads of other tasks count too) |
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
