@@ -37,18 +37,27 @@ if [ -d "$oc_dir" ] || command -v opencode >/dev/null 2>&1; then
   else
     mkdir -p "$oc_dir"
     res=$(python3 - "$oc_cfg" <<'PY'
-import json, os, sys
+import json, os, stat, sys
 p = sys.argv[1]
+real = os.path.realpath(p)  # write through a symlink, so the link and its dotfiles target stay
 try:
-    cfg = json.load(open(p)) if os.path.exists(p) else {"$schema": "https://opencode.ai/config.json"}
+    cfg = json.load(open(real)) if os.path.exists(real) else {"$schema": "https://opencode.ai/config.json"}
 except ValueError:
+    print("skip"); sys.exit()
+except OSError:
     print("skip"); sys.exit()
 exp = cfg.setdefault("experimental", {})
 if "todo" in exp:
     print("same"); sys.exit()
 exp["todo"] = True
-tmp = p + ".tmp"
-json.dump(cfg, open(tmp, "w"), indent=2); open(tmp, "a").write("\n"); os.replace(tmp, p)
+tmp = real + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(cfg, f, indent=2); f.write("\n")
+try:
+    os.chmod(tmp, stat.S_IMODE(os.stat(real).st_mode))  # keep the original's mode (0600 for keys)
+except OSError:
+    pass
+os.replace(tmp, real)
 print("set")
 PY
 )
