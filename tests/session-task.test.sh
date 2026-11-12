@@ -31,7 +31,7 @@ ok "a second session sees no current task"               '[ $rc -eq 1 ] && [ -z 
 
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$S1 "$run" echo hello); rc=$?
 ok "run: acts on the pointed task"                       '[ $rc -eq 0 ] && [ -d "$TD/runs" ] && [ "$(ls "$TD/runs" | wc -l | tr -d " ")" -ge 1 ]'
-ok "run: its ledger row lands in the pointed task"       'awk -F"\t" "\$2==\"run\"" "$TD/ledger.tsv" | grep -q "hello"'
+ok "run: its ledger row lands in the pointed task"       'awk -F"\t" "\$2==\"run\"" "$TD/ledger.tsv" | grep -q .'
 
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$S1 "$state" check 2>&1); rc=$?
 ok "state: acts on the pointed task"                     '[ $rc -eq 0 ] && echo "$out" | grep -q "^OK"'

@@ -140,7 +140,8 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 ### 3.5 run (`bin/run`)
 - Purpose: run a command without flooding context. No agent involved.
 - Usage: `run [-n TAIL] <command...>` (default tail 15). Exit code is the command's.
-- Output: `exit=<rc> secs=<n> log=<path>`; on failure up to 20 error-looking lines plus the tail.
+- Output: `exit=<rc> secs=<n> log=<path>`; on failure up to 20 error-looking lines plus the tail. Control characters are stripped (tab and newline kept).
+- Privacy: runs under `umask 077`; the ledger row names argv[0] and argc only, never the arguments.
 - Owns: `<task>/runs/NNN.log`; writes a ledger row with phase `run`.
 
 ### 3.6 learn (`bin/learn`)
@@ -159,7 +160,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
   - Skill sections: When to Use, Checklist, Rationalizations, Red Flags, Verification; a `bin/ledger` mention; a `library/state` reference (except dev-learn).
   - Core library: each file at most 80 lines (sections When to Use, Steps, Red Flags, Verification), total at most 32768 B.
   - Deep: at most 45 lines each, total 65536 B. Recipes: at most 45 lines each, total 49152 B, each indexed.
-  - Every `library/...` reference resolves; skill descriptions do not collide (Jaccard 0.5); no home paths, emails or secrets anywhere.
+  - Every `library/...` reference resolves; skill descriptions do not collide (Jaccard 0.5); tracked files hold no home paths, emails or secrets. A finding prints file:line and the pattern class, never the matched text; untracked and gitignored files are not read.
 
 ### 3.8 install (`install.sh`)
 - Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.

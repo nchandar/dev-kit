@@ -48,7 +48,7 @@ ok "a new run gets a new log" '[ "$(ls $TD/runs | wc -l)" -gt "$n0" ]'
 PS=sess-run; PT=$(CLAUDE_CODE_SESSION_ID=$PS "$ledger" start ptr-run "x"); PTD=".devkit/tasks/$PT"
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$PS "$run" echo via-pointer); rc=$?
 ok "no DEVKIT_TASK: the session pointer supplies the task" '[ $rc -eq 0 ] && [ -d "$PTD/runs" ]'
-ok "the pointer run is ledgered in that task"              'awk -F"\t" "\$2==\"run\"" "$PTD/ledger.tsv" | grep -q "via-pointer"'
+ok "the pointer run is ledgered in that task"              'awk -F"\t" "\$2==\"run\"" "$PTD/ledger.tsv" | grep -q .'
 out=$(DEVKIT_TASK=${TD##*/} CLAUDE_CODE_SESSION_ID=$PS "$run" echo explicit-wins); rc=$?
 ok "DEVKIT_TASK wins over the pointer"                     '[ $rc -eq 0 ] && grep -q "explicit-wins" $TD/runs/*.log && ! grep -q "explicit-wins" "$PTD"/runs/*.log 2>/dev/null'
 env -u DEVKIT_TASK -u CLAUDE_CODE_SESSION_ID "$run" true >/dev/null 2>"$t/run-notask.err"; rc=$?
@@ -64,5 +64,18 @@ git worktree add -q "$t/wt-run" -b wt-run-b
 ok "run resolves the pointer from a subdirectory of the repo"      '[ $rc -eq 0 ] && grep -q "from-subdir" "$WTD"/runs/*.log'
 ( cd "$t/wt-run" && env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$WS "$run" echo from-worktree >/dev/null ); rc=$?
 ok "run resolves the pointer from a git worktree of the repo"      '[ $rc -eq 0 ] && grep -q "from-worktree" "$WTD"/runs/*.log'
+
+# --- security: no argv in the ledger, private files, no control characters on screen
+secret="sk-$(printf 'c%.0s' $(seq 1 24))"
+out=$("$run" echo "$secret" --token="$secret"); rc=$?
+ok "a secret argument does not reach the ledger"                   '[ $rc -eq 0 ] && ! grep -q "$secret" $TD/ledger.tsv'
+ok "the run row records argv[0] and the argument count"            'awk -F"\t" "\$2==\"run\" && \$3==\"echo (3 args)\"" $TD/ledger.tsv | grep -q .'
+ok "the runs dir is private"                                       '[ "$(ls -ld "$TD/runs" | cut -c1-10)" = "drwx------" ]'
+ok "log files are private"                                         '! ls -l $TD/runs/*.log | cut -c1-10 | grep -qvx -- -rw-------'
+esc=$(printf '\033'); tab=$(printf '\t')
+out=$("$run" sh -c 'printf "error: \033[2K\033[1Aall tests passed\n"; exit 1'); rc=$?
+ok "printed lines drop control characters"                         '[ $rc -eq 1 ] && ! printf "%s\n" "$out" | grep -q "$esc" && printf "%s\n" "$out" | grep -q "all tests passed"'
+out=$("$run" sh -c 'printf "FAIL\ta\tb\n"; exit 1')
+ok "tabs survive the strip"                                        'printf "%s\n" "$out" | grep -q "$tab"'
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

@@ -83,6 +83,23 @@ sec_safety() {
   leak "aws AKIA$(printf 'C%.0s' $(seq 1 16))";     expect "AWS key id shape fails" 1 "$M"
   leak "${DASH}BEGIN RSA PRIV""ATE KEY${DASH}";           expect "private key header fails" 1 "$M"
   leak "use ~/.agents/dev-kit and \$HOME/x";        expect "tilde and \$HOME paths are fine" 0 "$M"
+
+  # --- public-safety reads tracked files only, and never prints the matched text
+  repo="$t/repo-safety"; good "$repo"
+  ( cd "$repo" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm init )
+  printf 'TOKEN=ghp_%s\n' "$(printf 'd%.0s' $(seq 1 36))" > "$repo/.env"; printf '.env\n' > "$repo/.gitignore"
+  ( cd "$repo" && git add .gitignore )
+  expect "a gitignored .env is not scanned" 0 "$repo"
+  printf 'mail someone%s@mail.com\n' "$A" > "$repo/loose.txt"
+  expect "an untracked file is not scanned" 0 "$repo"
+  tok="ghp_$(printf 'e%.0s' $(seq 1 36))"; printf 'token %s\n' "$tok" > "$repo/notes.txt"
+  ( cd "$repo" && git add notes.txt )
+  out=$("$lint" "$repo" 2>&1); rc=$?; [ $rc -ne 0 ] && rc=1
+  if [ $rc -eq 1 ] && printf '%s\n' "$out" | grep -q "notes.txt:1: github_token" && ! printf '%s\n' "$out" | grep -qF "$tok" && ! printf '%s\n' "$out" | grep -qx "FAIL public-safety: "; then
+    p=$((p+1)); echo "ok   a tracked secret fails by file:line and class, never the text"
+  else
+    f=$((f+1)); echo "FAIL a tracked secret fails by file:line and class, never the text"; printf '%s\n' "$out" | sed 's/^/     /'
+  fi
 }
 
 sec_budget() {
