@@ -142,4 +142,14 @@ ok "property-check: duplicated logic gets a differential test" "grep -qi 'differ
 ok "property-check: an expiry timer is an exclusion, not a TLC feature" "grep -qi 'expiry' $pc && grep -qi 'exclusion' $pc"
 ok "spec-to-code: a seam is an injectable call or an observable event" "grep -qi 'injectable call' $sc && grep -qi 'command block' $sc"
 
+# R8: the models live in a tracked home, not only in the git-ignored task dir
+ok "verify-sync: a model lives in tracked models/<name>/" "grep -q 'models/<name>/' $c && grep -q 'coverage.env' $c"
+ok "verify-sync: the task model dir is a draft only" "grep -qi 'draft' $c"
+ok "verify-sync: red flag for a model left in a task dir" "sed -n '/^## Red Flags/,\$p' $c | grep -qi 'task dir'"
+ok "create: writes the model to models/<name>/"      "grep -q 'models/<name>/' $create && grep -q 'models/<name>/coverage.env' $create"
+ok "create: the task model dir is a draft only"      "grep -qi 'draft' $create"
+ok "maintain: reads the tracked coverage record"     "grep -q 'bin/model-drift models/<name>/coverage.env' $maint"
+ok "maintain: the task model dir is a draft only"    "grep -qi 'draft' $maint"
+ok "tests/models.test.sh checks the tracked records" "[ -x tests/models.test.sh ] && grep -q 'coverage.env' tests/models.test.sh && grep -q 'git cat-file' tests/models.test.sh"
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

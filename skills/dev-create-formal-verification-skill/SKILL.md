@@ -13,10 +13,11 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 ## When to Use
 - No model exists yet for a promise about ordering, concurrency, a lease, a slot, a retry or an idempotent rerun.
+- The model lives in tracked `models/<name>/` with its `coverage.env`; `<task>/model/` is only a draft until it is tracked.
 - You need the model plus its coverage record and sync commit, not just a picture.
 - A model already exists: use dev-maintain-formal-verification-skill. Single actor, UI flow or plain logic: tests are cheaper.
 
-**You own:** one promise checked over every interleaving within a bound, proven able to fail, replayed on the real code, plus its coverage record and sync commit.
+**You own:** one promise checked over every interleaving within a bound, proven able to fail, replayed on the real code, plus its tracked model in `models/<name>/` with the coverage record and sync commit.
 
 **Reads:** always library/principles (step 0), library/deep/model-check (tool choice, commands, budgets), library/deep/verify-sync (coverage record, sync commit), library/state (closeout). Pick the target with library/deep/blast-radius when unsure.
 
@@ -26,11 +27,11 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 2. Point each model step at code a reviewer can open (file:line). One code step stays one model step. Name actions in the repo's words.
 - [ ] 3. Choose the tool: TLC on a small TLA+ design by default; a stateful property test against a small reference model (library/deep/property-check) for sequential or crash-free logic the code can drive; Quint and Apalache only if the user names them. Ledger the choice and why.
 - [ ] 4. Check at 3 actors (or the narrowest bound that shows the race); chart at 2 actors. Keep the constants small and list what the model excludes: timers, lock or lease expiry, stalls, non-atomic commands.
-- [ ] 5. Keep the spec in `<task>/model/`, run plain TLC, and record the exact line it prints. No error means the model holds, not the code, and not under any timing the model omits; when a timeout is the only guard, also check an untimed variant (library/deep/model-check step 5).
+- [ ] 5. Keep the spec in `models/<name>/` with its configs and scripts (a draft may start in `<task>/model/`), run plain TLC, and record the exact line it prints. No error means the model holds, not the code, and not under any timing the model omits; when a timeout is the only guard, also check an untimed variant (library/deep/model-check step 5).
 - [ ] 6. Prove every rule can fail: remove a check or reorder a step in a copy, watch TLC name that rule, drop the break. A rule never seen failing is untested; never weaken a rule or raise a bound to get a pass.
 - [ ] 7. When Bun and `tlachart` are present, draw the chart from the same spec and config; without `tlachart`, report the chart blocked and ask; do not install unasked. The TLC result still stands.
 - [ ] 8. Replay each counterexample on the real code, one action per step, as a test or a live repro, and once more with a stall injected past each expiry (shadow one command to inject it, library/deep/model-check step 10). A finding with no failing replay is a hypothesis, not a bug.
-- [ ] 9. Record the coverage (files and functions, property, bounds, exclusions, command, repo) and the sync commit where the model matched the code in `<task>/model/coverage.env` as `sync=<sha>`, `files=<space separated paths>` and optional `cmd=`, pointed to from `<task>/state.md`. A check without a record is a draft.
+- [ ] 9. Record the coverage (files and functions, property, bounds, exclusions, command, repo) and the sync commit where the model matched the code in `models/<name>/coverage.env` as `sync=<sha>`, `files=<space separated paths>` and optional `cmd=` (a draft's `<task>/model/coverage.env` moves there), pointed to from `<task>/state.md`. A check without a record is a draft.
 - [ ] 10. Closeout: follow library/state, then `bin/ledger done "<summary>"` or a `next` row.
 
 **Hand off to:** dev-maintain-formal-verification-skill for later drift; dev-debug when a replay shows a real bug; dev-review when the skill changed.

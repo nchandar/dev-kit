@@ -14,15 +14,16 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 ## When to Use
 - A model and its coverage record guard named code, and that code changed since the sync commit.
 - Someone asks whether an existing check still describes HEAD, or a green run looks stale.
+- Models live in tracked `models/<name>/`; `<task>/model/` is only a draft.
 - No model or coverage record yet: use dev-create-formal-verification-skill. A bug you already reproduced: use dev-debug.
 
-**You own:** keeping the model in step with the code, the four-outcome verdict, and a sync commit that advances only after confirmation.
+**You own:** keeping the tracked model in `models/<name>/` in step with the code, the four-outcome verdict, and a sync commit that advances only after confirmation.
 
 **Reads:** always library/deep/verify-sync (coverage record, sync commit, four outcomes), library/deep/model-check (commands, bounds), library/state (closeout).
 
 ## Checklist
-- [ ] 0. Load the coverage record and sync commit from `<task>/model/`; no record means the check is a draft, so send it back to the create skill.
-- [ ] 1. Run `bin/model-drift <task>/model/coverage.env` first: `in-sync` means no covered file changed, `drifted: <files>` names the rest. Diff those files from the sync commit: `git diff <sync>..HEAD -- <covered files>`. Read the commit messages too; look for renamed, moved or split code and for new writers of the guarded state.
+- [ ] 0. Load the tracked `models/<name>/coverage.env` (a draft still in `<task>/model/`); no record means the check is a draft, so send it back to the create skill.
+- [ ] 1. Run `bin/model-drift models/<name>/coverage.env` first: `in-sync` means no covered file changed, `drifted: <files>` names the rest. Diff those files from the sync commit: `git diff <sync>..HEAD -- <covered files>`. Read the commit messages too; look for renamed, moved or split code and for new writers of the guarded state.
 - [ ] 2. Give each change one outcome:
   - in sync: nothing the check describes changed, and it passes;
   - updated: the code moved and you changed the model or harness to match, and it passes;

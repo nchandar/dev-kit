@@ -16,4 +16,8 @@ ok "minimal permissions (contents read)"             '[ -f "$wf" ] && grep -q "c
 ok "concurrency cancel-in-progress"                  '[ -f "$wf" ] && grep -q "cancel-in-progress" "$wf"'
 ok "timeout-minutes 20"                              '[ -f "$wf" ] && grep -q "timeout-minutes:[[:space:]]*20" "$wf"'
 ok "sets git user.name and user.email"              '[ -f "$wf" ] && grep -q "user.name" "$wf" && grep -q "user.email" "$wf"'
+ok "runs the model-drift report over models/*/coverage.env" '[ -f "$wf" ] && grep -qF "models/*/coverage.env" "$wf" && grep -q "bin/model-drift" "$wf"'
+ok "model drift is informational"                    '[ -f "$wf" ] && grep -A2 "model drift (informational)" "$wf" | grep -q "continue-on-error: true"'
+ok "the drift step says why: run the maintain skill" '[ -f "$wf" ] && grep -B2 "model drift (informational)" "$wf" | grep -qi "maintain skill"'
+ok "checkout keeps history for the sync commits"    '[ -f "$wf" ] && grep -q "fetch-depth: 0" "$wf"'
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

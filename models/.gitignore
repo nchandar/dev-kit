@@ -1,0 +1,7 @@
+# model runs write these; the sources and coverage records are tracked
+states/
+*.log
+replay-run/
+scratch/
+chart-*/
+__pycache__/
