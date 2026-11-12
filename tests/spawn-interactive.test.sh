@@ -396,6 +396,7 @@ ok "interrupted interactive spawn closes its tab, records killed and frees its s
 ( export PATH="$hs:$PATH"; exec perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' "$spawn" i2 claude "$t/brief.md" ) 2>/dev/null &
 sp=$!; waitlog "^agent prompt i2 "; kill -INT $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
 ok "INT (cancelled): tab closed, killed recorded, slot freed" 'grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "^killed" $TD/run/i2.status && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
+grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "^killed" $TD/run/i2.status && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ] || echo "diag INT: tab_close=$(grep -c "tab close X:t9" "$HERDR_LOG") status=$(cat $TD/run/i2.status 2>/dev/null) run=$(ls $DEVKIT_DIR/run 2>/dev/null | tr "\n" " ") log=$(tail -n 5 "$HERDR_LOG" | tr "\n" "|")" # failure evidence only: CI flaked here once without a cause
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH" DEVKIT_VIEW_KEEP=1; exec "$spawn" i3 claude "$t/brief.md" ) 2>/dev/null &
 sp=$!; waitlog "^agent prompt i3 "; kill -TERM $sp; wait $sp 2>/dev/null; waitfile "$TD/run/i3.tab" # poll until the kept tab is recorded
