@@ -492,7 +492,7 @@ PY
         mkdir -p "$(dirname "$tgt")" || { note "could not create $(dirname "$tgt")"; return 0; }
         if [ -e "$tgt" ]; then
           ts=$(date -u +%Y%m%dT%H%M%SZ)
-          cp -p "$tgt" "$tgt.devkit-bak-$ts" || { note "backup failed; left $tgt untouched"; return 0; }
+          cp -p "$oc" "$oc.devkit-bak-$ts" || { note "backup failed; left $tgt untouched"; return 0; }
         fi
         write_file "$atmp/opencode.json" "$tgt" || note "could not write $tgt"
         note "apply it with: opencode service restart"
