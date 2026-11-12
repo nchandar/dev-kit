@@ -312,14 +312,16 @@ claim_lead() { local c=$T/run/$id.lead l=$H/run/leads.lock tries=0 p d
     if [ -n "$p" ] && slot_live "$d" "$p"; then nlead=$((nlead+1)); else rm -rf "$d"; fi # pitfall-ok: decimal-arith internal counter
   done
   if [ "$(cat "$c/pid" 2>/dev/null)" != "$$" ]; then leadclaim=; rm -rf "$c"; rm -f "$l"; return 1; fi
+  # the cap test and a refusal's removal stay under the lock: a refused candidate must not
+  # be visible to the next claimant, which would count a place that was never accepted
+  if [ "$nlead" -ge "$DEVKIT_MAX_LEADS" ]; then leadclaim=; rm -rf "$c"; rm -f "$l"; return 2; fi
   rm -f "$l"
-  [ "$nlead" -lt "$DEVKIT_MAX_LEADS" ] || return 2
   return 0; }
 if [ "$lead" -eq 1 ]; then
   claim_lead; leadrc=$?
   case $leadrc in
     0) ;;
-    2) rm -rf "$T/run/$id.lead"; echo "spawn: $nlead live lead(s) already, at the limit DEVKIT_MAX_LEADS=$DEVKIT_MAX_LEADS; wait for one to finish or raise it" >&2; exit 4;; # the EXIT trap is not installed this early
+    2) echo "spawn: $nlead live lead(s) already, at the limit DEVKIT_MAX_LEADS=$DEVKIT_MAX_LEADS; wait for one to finish or raise it" >&2; exit 4;; # the EXIT trap is not installed this early
     3) cpid=$(cat "$T/run/$id.lead/pid" 2>/dev/null); echo "spawn: $id is already running (pid ${cpid:-?}); pick another id" >&2; exit 2;; # a live claim of this id; keep the existing duplicate-id message
     *) echo "spawn: could not claim a lead place (lock $H/run/leads.lock held); try again" >&2; exit 4;;
   esac
