@@ -42,7 +42,6 @@ cat > "$H/.claude/settings.json" <<'EOS'
       "Bash(~/.agents/dev-kit/bin/ledger *)",
       "Bash(~/.agents/dev-kit/bin/reconcile *)",
       "Bash(~/.agents/dev-kit/bin/state *)",
-      "Bash(~/.agents/dev-kit/bin/run *)",
       "Bash(~/.agents/dev-kit/bin/setup --check)"
     ]
   },
@@ -144,7 +143,7 @@ run "$H5" "$fb:$base_path" "$t/partial.out"; rc=$?
 ok "partial links: exits 1" '[ $rc -eq 1 ]'
 ok "partial links: count in the line" "grep -Eq '^missing  skills  [0-9]+ of $skills_n linked$' '$t/partial.out'"
 
-# --- the five claude allow rows: a full set is ok, a partial set is optional and never fails; a colon form counts
+# --- the four claude allow rows: a full set is ok, a partial set is optional and never fails; a colon form counts
 H10="$t/home-allow"; copy_home "$H" "$H10"
 cat > "$H10/.claude/settings.json" <<'EOS'
 {
@@ -163,8 +162,34 @@ cat > "$H10/.claude/settings.json" <<'EOS'
 EOS
 run "$H10" "$fb:$base_path" "$t/allow.out"; rc=$?
 ok "allow rows: partial still exits 0" '[ $rc -eq 0 ]'
-ok "allow rows: partial is optional with a count" 'grep -qx "optional  allow-rows  2 of 5 (bin/setup --apply)" "$t/allow.out"'
+ok "allow rows: partial is optional with a count" 'grep -qx "optional  allow-rows  2 of 4 (bin/setup --apply; bin/run is not auto-allowed)" "$t/allow.out"'
 ok "allow rows: partial verdict stays ready" 'grep -qx "verdict: ready" "$t/allow.out"'
+
+# --- a legacy bin/run allow row stays in place, is not counted, and is warned about
+H11="$t/home-legacy-run"; copy_home "$H" "$H11"
+"$PY" - "$H11/.claude/settings.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+cfg = json.load(open(p))
+cfg["permissions"]["allow"].append("Bash(~/.agents/dev-kit/bin/run *)")
+with open(p, "w") as f:
+    json.dump(cfg, f, indent=2)
+PY
+run "$H11" "$fb:$base_path" "$t/legacy.out"; rc=$?
+ok "legacy run row: exits 0 (a warning is not missing)" '[ $rc -eq 0 ]'
+ok "legacy run row: the four required rows still count" 'grep -qx "ok  allow-rows  4 configured (bin/run is not auto-allowed)" "$t/legacy.out"'
+ok "legacy run row: reported as a warning, not removed" 'grep -qx "warn  allow-rows  bin/run row present; bin/run is not auto-allowed, remove it" "$t/legacy.out" && grep -qF "Bash(~/.agents/dev-kit/bin/run *)" "$H11/.claude/settings.json"'
+H12="$t/home-legacy-colon"; copy_home "$H" "$H12"
+"$PY" - "$H12/.claude/settings.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+cfg = json.load(open(p))
+cfg["permissions"]["allow"].append("Bash(~/.agents/dev-kit/bin/run:*)")
+with open(p, "w") as f:
+    json.dump(cfg, f, indent=2)
+PY
+run "$H12" "$fb:$base_path" "$t/legacy-colon.out"
+ok "legacy colon run row: also warned" 'grep -qx "warn  allow-rows  bin/run row present; bin/run is not auto-allowed, remove it" "$t/legacy-colon.out"'
 
 # --- golden outputs: stable order, no timestamps, no temp paths
 golden() { # label want-rc want-file home path
@@ -198,7 +223,7 @@ ok  pele  found
 ok  skills  $skills_n linked
 ok  home  linked
 ok  stop-gate  configured
-ok  allow-rows  5 configured
+ok  allow-rows  4 configured (bin/run is not auto-allowed)
 [codex]
 ok  skills  $skills_n linked
 [opencode]
@@ -222,7 +247,7 @@ golden "golden: no tlachart" 0 "$t/want-notl" "$H3" "$fb:$base_path"
 
 H4="$t/home-nogate"; copy_home "$H" "$H4"
 printf '%s\n' '{"hooks":{}}' > "$H4/.claude/settings.json"
-sed 's/^ok  stop-gate  configured$/missing  stop-gate  not configured/; s|^ok  allow-rows  5 configured$|optional  allow-rows  0 of 5 (bin/setup --apply)|; s/^verdict: ready$/verdict: 1 missing/' "$t/want-all" > "$t/want-nogate"
+sed 's/^ok  stop-gate  configured$/missing  stop-gate  not configured/; s|^ok  allow-rows  4 configured (bin/run is not auto-allowed)$|optional  allow-rows  0 of 4 (bin/setup --apply; bin/run is not auto-allowed)|; s/^verdict: ready$/verdict: 1 missing/' "$t/want-all" > "$t/want-nogate"
 golden "golden: claude without the Stop-gate" 1 "$t/want-nogate" "$H4" "$fb:$base_path"
 
 # --- absent codex or opencode: that section is skipped, the rest still checked
