@@ -78,6 +78,42 @@ gate_pass "$WD"
 DEVKIT_DEPTH=0 "$ledger" -t "$WD" done "main agent" 2>/dev/null; rc=$?
 ok "depth 0 can close a task"                '[ $rc -eq 0 ] && tail -1 .devkit/tasks/$WD/ledger.tsv | awk -F"\t" "\$2==\"done\"{f=1} END{exit !f}"'
 
+# --- a worker must not sign off its own work; only the parent that spawned an id may sign it off
+AG=$("$ledger" start accept-guard "x")
+agrows=$(wc -l < ".devkit/tasks/$AG/ledger.tsv")
+mkdir -p ".devkit/tasks/$AG/run"
+printf 'lead1\n' > ".devkit/tasks/$AG/run/w1.parent"   # lead1 spawned w1 and w2
+printf 'lead1\n' > ".devkit/tasks/$AG/run/w2.parent"
+printf 'main\n'  > ".devkit/tasks/$AG/run/lead1.parent"
+DEVKIT_DEPTH=1 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "w1 accepted" "self review" 2>"$t/accept-self.err"; rc=$?
+ok "a worker cannot accept its own id"        '[ $rc -eq 3 ] && grep -q "own" "$t/accept-self.err" && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=1 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "w1 rejected" "self review" 2>/dev/null; rc=$?
+ok "a worker cannot reject its own id either" '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=1 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "w2 accepted" "peer sign-off" 2>"$t/accept-sibling.err"; rc=$?
+ok "a worker cannot accept a sibling id"      '[ $rc -eq 3 ] && grep -q "spawned" "$t/accept-sibling.err" && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=1 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "w2 rejected" "peer veto" 2>/dev/null; rc=$?
+ok "a worker cannot reject a sibling either"  '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=1 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "lead1 accepted" "sign off my parent" 2>/dev/null; rc=$?
+ok "a worker cannot accept its parent"        '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=1 DEVKIT_WORKER=lead1 "$ledger" -t "$AG" accept "w1 accepted" "child reviewed"; rc=$?
+ok "a lead can still accept its child"        '[ $rc -eq 0 ] && grep -q "w1 accepted" ".devkit/tasks/$AG/ledger.tsv"'
+agrows=$(wc -l < ".devkit/tasks/$AG/ledger.tsv")
+DEVKIT_DEPTH=1 DEVKIT_WORKER=lead1 "$ledger" -t "$AG" accept "w9 accepted" "no parent record" 2>/dev/null; rc=$?
+ok "an id with no spawn record is not accepted" '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+env -u DEVKIT_WORKER DEVKIT_DEPTH=1 "$ledger" -t "$AG" accept "w1 accepted" "no worker id" 2>/dev/null; rc=$?
+ok "a worker with no DEVKIT_WORKER accepts nothing" '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$AG/ledger.tsv")" = "$agrows" ]'
+DEVKIT_DEPTH=0 DEVKIT_WORKER=w1 "$ledger" -t "$AG" accept "w1 accepted" "main reviewed"; rc=$?
+ok "the main agent can accept any id"         '[ $rc -eq 0 ] && [ "$(grep -c "w1 accepted" ".devkit/tasks/$AG/ledger.tsv")" -eq 2 ]'
+DEVKIT_DEPTH=abc DEVKIT_WORKER=w2 "$ledger" -t "$AG" accept "w2 accepted" "junk depth" 2>/dev/null; rc=$?
+ok "junk DEVKIT_DEPTH cannot accept its own id" '[ $rc -eq 3 ]'
+
+# --- control characters never reach the TSV: escape sequences could redraw the terminal
+CC=$("$ledger" start ctl-chars "x")
+"$ledger" -t "$CC" note $'keep\ttab\nline\e[2K\a\001\v\177end' "esc"
+ccfield=$(tail -1 ".devkit/tasks/$CC/ledger.tsv" | cut -f3)
+ccctl=$(printf '%s' "$ccfield" | LC_ALL=C grep -c '[[:cntrl:]]')
+ok "control characters are stripped from a row" '[ "$ccctl" -eq 0 ] && printf "%s" "$ccfield" | grep -q "keep tab line" && [ "$(tail -1 ".devkit/tasks/$CC/ledger.tsv" | awk -F"\t" "{print NF}")" -eq 6 ]'
+
 M="$t/mirror.out"; DEVKIT_LEDGER_MIRROR="echo \"\$1\" >> $M" "$ledger" -t "$A" ph2 dec2 why2
 for i in $(seq 1 50); do grep -q ph2 "$M" 2>/dev/null && break; sleep 0.1; done # sleep-ok: bounded poll, mirror is detached
 ok "mirror runs with row text as \$1"       'grep -q "ph2" "$M"'

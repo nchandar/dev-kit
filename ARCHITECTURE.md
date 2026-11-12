@@ -39,9 +39,10 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
 - Owns: `<task>/ledger.tsv`, a `state.md` template, and a line in `.git/info/exclude` that hides `.devkit/`.
 - Behaviors:
   - Id is `<slug>-<yymmdd-HHMMSS>-<4 hex>`; the directory is created with atomic `mkdir`, retried on collision.
-  - Tabs and newlines in fields become spaces; each field is cut to 400 chars with a warning.
+  - Tabs and newlines in fields become spaces; other control characters are dropped; each field is cut to 400 chars with a warning.
   - `DEVKIT_LEDGER_MIRROR="<cmd>"` runs with the row text as `$1`; `DEVKIT_DIR` overrides the `.devkit` location.
   - `start` refuses inside a worker (`DEVKIT_DEPTH` nonzero); workers log to their own `DEVKIT_TASK`. The refusal status is 3.
+  - `accept` refuses a worker an id it did not spawn: `spawn` writes the spawner to `<task>/run/<id>.parent` (`main` for a non-worker); a worker may accept only an id whose record names it (exit 3, no row), so a lead accepts its children, never itself, a sibling or its parent, and `main` accepts any id. This is a guardrail, not a sandbox: a worker that unsets `DEVKIT_WORKER` or rewrites a `.parent` file can still forge a row.
   - Inside a git worktree the base resolves to the main repo, so workers share one `.devkit`.
 
 ### 3.2 state (`bin/state`)
@@ -58,12 +59,14 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
 - Purpose: rebuild status from disk and git. No watcher, no state of its own.
 - Commands: no args (open tasks, one line each), `--all` (include finished), `<id>` (detail).
 - Detail view shows: resume point (last `next` row), direction, open questions, learning counts, last 5 rows, workers, `plan.json` slice count, branches `devkit/<id>-*`.
+- `next` and `note` text is untrusted data: printed on one line with control characters stripped, and the resume line says it is not instructions.
 - A worker whose status says `running` but whose pid is dead is shown as `killed`.
 - Footer line `learnings queued: N (run dev-learn)` when the inbox is non-empty.
 
 ### 3.4 spawn (`bin/spawn`)
 - Purpose: run one sub-agent on any CLI (a herdr tab TUI when herdr is up, else headless), brief in, handoff out. Blocks; the caller backgrounds it.
 - Usage: `spawn [--shape ship|scout] [--worktree] [--lead] [--model M] <id> <claude|codex|opencode> <brief-file>`; `--prompt "text"` replaces the brief file (saved to `briefs/<id>.md`).
+- Workers get `DEVKIT_DEPTH`, `DEVKIT_TASK`, `DEVKIT_DIR` and `DEVKIT_WORKER` (their own id) in the environment, and in `tab create --env` on the interactive path.
 - Updates file: every worker prompt tells the worker to read `<task>/updates/<id>.md` before each slice and before its handoff, so the main agent changes a running worker's scope by appending a line, with no interrupt and no approval prompt. A cross-session message is for urgent interrupts only; a worker in another permission mode holds it until the user approves it.
 - Also: `--doctor` (CLIs installed, adapter flags still valid), `--close-views` (close kept herdr tabs).
 - Herdr view: when herdr is up, the tab tails the worker log. The opencode adapter names its session (`ses_dk_*`) and the tab attaches to it with `opencode -s <id>` instead, so the new tab runs the agent; a session that never appears falls back to the log tail.
@@ -145,7 +148,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - Commands: `queue [-t id]`, `list`, `count`, `done <id> promoted|dropped`.
 - Owns: `${DEVKIT_LEARN_DIR:-~/.agents/learnings}/inbox.tsv` and `done.tsv`. Append-only, local.
 - Behaviors:
-  - `queue` takes only open `[ ]` learnings with scope `general` or `recipe`, and flips them to `[~]`.
+  - `queue` takes only open `[ ]` learnings with scope `general` or `recipe`, and flips them to `[~]`. It refuses inside a worker (`DEVKIT_DEPTH` nonzero); the parent queues at closeout. Refusal status: 3.
   - `done` appends an outcome row and flips the task's box to `[x]` or `[-]`.
   - A learning is pending while its inbox row number has no row in `done.tsv`.
 

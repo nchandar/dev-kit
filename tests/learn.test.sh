@@ -39,6 +39,14 @@ ok "inbox has a header and 2 rows"                 '[ "$(wc -l < "$t/inbox/inbox
 ok "inbox row carries scope, lesson and ref"       'grep -q "	recipe	recipe: build needs flag Y because Z	runs/001.log	" "$t/inbox/inbox.tsv"'
 out=$("$learn" queue)
 ok "queue is idempotent"                           'echo "$out" | grep -q "queued 0" && [ "$(wc -l < "$t/inbox/inbox.tsv")" -eq 3 ]'
+# --- the inbox is cross-project and feeds dev-learn: a worker must not write it
+printf -- '- [ ] worker lesson | scope: general | ref: handoffs/w.md:1\n' >> "$S"
+inboxrows=$(wc -l < "$t/inbox/inbox.tsv")
+DEVKIT_DEPTH=1 "$learn" queue >/dev/null 2>"$t/learn-worker.err"; rc=$?
+ok "a worker cannot queue to the shared inbox"     '[ $rc -eq 3 ] && grep -q "worker" "$t/learn-worker.err" && [ "$(wc -l < "$t/inbox/inbox.tsv")" = "$inboxrows" ] && grep -q "^- \[ \] worker lesson" "$S"'
+DEVKIT_DEPTH=abc "$learn" queue >/dev/null 2>&1; rc=$?
+ok "junk DEVKIT_DEPTH cannot queue either"         '[ $rc -eq 3 ]'
+grep -v '^- \[ \] worker lesson' "$S" > "$S.tmp" && mv "$S.tmp" "$S" # fixture only for the refusal above
 ok "count is 2"                                    '[ "$("$learn" count)" = 2 ]'
 out=$("$learn" list)
 ok "list shows ids, scope and lesson"              'echo "$out" | grep -q "^1 .*general.*general lesson about retries" && echo "$out" | grep -q "^2 .*recipe.*build needs flag Y"'

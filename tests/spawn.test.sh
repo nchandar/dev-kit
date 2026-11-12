@@ -68,7 +68,7 @@ echo $$ > "$DEVKIT_DIR/fakepid.${FAKE_ID:-x}"
 [ -n "${FAKE_DEEP:-}" ] && { ( ( sleep 60 & echo $! > "$DEVKIT_DIR/deep.${FAKE_ID}"; wait ) & wait ) & } # sleep-ok: two-level grandchild outlives the fake; the test checks it dies
 [ -z "${FAKE_HOLD:-}" ] || while [ -e "$FAKE_HOLD" ]; do sleep 0.1; done # sleep-ok: bounded by the test, which removes the hold file after its poll
 sleep "${FAKE_SLEEP:-0}"
-[ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "$PWD" "$stdin_state" > "$2"
+[ -n "${FAKE_NOHANDOFF:-}" ] || printf 'depth=%s worker=%s cwd=%s stdin=%s\n' "${DEVKIT_DEPTH:-}" "${DEVKIT_WORKER:-}" "$PWD" "$stdin_state" > "$2"
 [ -n "${FAKE_CHECKLIST:-}" ] && printf '\n## Checklist\n%b\n' "$FAKE_CHECKLIST" >> "$2"
 echo "$(date +%s) end $FAKE_ID" >> "$DEVKIT_DIR/events"
 F
@@ -79,9 +79,13 @@ FAKE_ID=a "$spawn" a fake "$t/brief.md"
 ok "ship run writes handoff"       '[ -s $TD/handoffs/a.md ]'
 ok "status is done"                'grep -q "^done 0" $TD/run/a.status'
 ok "worker sees DEVKIT_DEPTH=1"   'grep -q "depth=1" $TD/handoffs/a.md'
+ok "worker knows its own id"      'grep -q "worker=a" $TD/handoffs/a.md'
 
 FAKE_ID=d2 DEVKIT_DEPTH=1 "$spawn" d2 fake "$t/brief.md"; rc=$?
 ok "a depth-1 worker may spawn; its child sees depth 2" '[ $rc -eq 0 ] && grep -q "depth=2" $TD/handoffs/d2.md'
+ok "the child records its spawner in run/<id>.parent"    '[ "$(cat $TD/run/d2.parent)" = "${DEVKIT_WORKER:-main}" ]'
+FAKE_ID=pc DEVKIT_DEPTH=1 DEVKIT_WORKER=lead1 "$spawn" pc fake "$t/brief.md"; rc=$?
+ok "the parent record names the spawning lead"            '[ $rc -eq 0 ] && [ "$(cat $TD/run/pc.parent)" = lead1 ]'
 DEVKIT_DEPTH=3 "$spawn" z fake "$t/brief.md" 2>/dev/null; rc=$?
 ok "spawn refuses at the depth limit (3)" '[ $rc -eq 3 ]'
 DEVKIT_MAX_DEPTH=1 DEVKIT_DEPTH=1 "$spawn" z fake "$t/brief.md" 2>/dev/null; rc=$?

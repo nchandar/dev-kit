@@ -171,7 +171,8 @@ done
 # --- a worker (DEVKIT_DEPTH=1, no DEVKIT_TASK) never uses the pointer
 for tool in run state learn ledger; do
   out=$(DEVKIT_DEPTH=1 call $SA $tool 2>&1); rc=$?
-  ok "worker environment: $tool ignores the pointer (exit 2)" '[ $rc -eq 2 ] && ! echo "$out" | grep -q "last task"'
+  want=2; [ "$tool" = learn ] && want=3 # learn also refuses the shared inbox for a worker
+  ok "worker environment: $tool ignores the pointer (exit $want)" "[ \$rc -eq $want ] && ! echo \"\$out\" | grep -q \"last task\""
 done
 
 # --- regression: the leftover-worktree warning names the task, so the command it prints works after done
