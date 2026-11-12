@@ -1,28 +1,56 @@
 #!/usr/bin/env bash
-# Claude Code Stop hook: block the parent's turn end while its workers are running or unaccepted.
-#   stdin: hook JSON (session_id). exit 0 = allow stop, exit 2 = block with the stderr message.
-# Workers (DEVKIT_DEPTH) and sessions without workers pass. Blocks 3 times in a row, then fails open (ledgered).
-# Anything unexpected (no ledger beside the script, odd input, reconcile failing) also fails open: a broken hook must never block.
+# Claude Code Stop hook: hold the parent's turn while its workers are running or unreviewed.
+#   stdin: hook JSON (session_id). Default: exit 0 and one JSON object on stdout,
+#   {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"..."}}. Claude Code shows that
+#   as hook feedback, so the user reads a calm status instead of "Stop hook error".
+#   DEVKIT_STOP_GATE_FORMAT=exit2 restores the old form: exit 2 with the text on stderr. Use it only
+#   for a harness that does not know additionalContext (there the turn would simply end).
+#   Workers (DEVKIT_DEPTH) and sessions without workers pass. Holds 3 times in a row, then lets the turn end (ledgered).
+#   Anything unexpected (no ledger beside the script, odd input, reconcile failing) also lets the turn end: a broken hook must never hold.
 set -u
 here=${0%/*}; MAX=3
 [ -z "${DEVKIT_DEPTH:-}" ] || exit 0
-[ -x "$here/ledger" ] || { echo "stop-gate: $here/ledger not found (symlinked script?), gate disabled (fail-open)" >&2; exit 0; }
+[ -x "$here/ledger" ] || { echo "Worker check skipped (no ledger tool beside $0, symlinked script?); letting the turn end." >&2; exit 0; }
 sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)
 case $sid in ""|*[!A-Za-z0-9_-]*) exit 0;; esac # session_id becomes a filename
 cnt=$("$here/ledger" base)/run/gate-$sid.count
 out=$("$here/reconcile" --gate --session "$sid" 2>&1); rc=$?
 [ $rc -ne 0 ] || { rm -f "$cnt"; exit 0; }
-[ $rc -eq 1 ] || { echo "stop-gate: reconcile --gate failed (exit $rc), fail-open: $(printf '%s' "$out" | head -3 | tr '\n' ' ')" >&2; exit 0; }
+[ $rc -eq 1 ] || { echo "Worker check skipped (reconcile exit $rc: $(printf '%s' "$out" | head -3 | tr '\n' ' ')); letting the turn end." >&2; exit 0; }
 n=$(cat "$cnt" 2>/dev/null); n=$((10#${n:-0}+1)); mkdir -p "${cnt%/*}"; echo "$n" > "$cnt"
+# one plain status line per worker; alarm words (failed, killed, unaccepted) become "stopped" / "awaiting your review"
+list=$(printf '%s\n' "$out" | sed -e 's/^\([^ ]*\) running /\1: working /' \
+  -e 's/^\([^ ]*\) done, unaccepted /\1: finished, awaiting your review /' \
+  -e 's/^\([^ ]*\) [a-z]*, unaccepted /\1: stopped, awaiting your review /' -e 's/^/  /')
+running=$(printf '%s\n' "$out" | grep -c ' running ')
+review=$(printf '%s\n' "$out" | grep -c 'unaccepted')
+plural() { [ "$1" -eq 1 ] && printf worker || printf workers; }
+if [ "$running" -gt 0 ]; then
+  head="Waiting on $running $(plural "$running") to report back."
+  [ "$review" -eq 0 ] || head="$head $review more $([ "$review" -eq 1 ] && printf is || printf are) ready for your review."
+else
+  head="$review $(plural "$review") finished and $([ "$review" -eq 1 ] && printf is || printf are) ready for your review."
+fi
 if [ "$n" -le "$MAX" ]; then
-  { echo "stop-gate: workers you spawned are not accepted yet ($n/$MAX):"; printf '%s\n' "$out" | sed 's/^/  /'
-    echo "Run: bin/reconcile --wait --session $sid  (the wait is capped; if workers still run, repeat it)"
-    echo "Then read each handoff and write: bin/ledger -t <task> accept \"<id> accepted|rejected\" <reason>"; } >&2
-  exit 2
+  msg="$head
+Next: bin/reconcile --wait --session $sid (capped, repeat while workers run), then read each handoff and record the review with: bin/ledger -t <task> accept \"<id> accepted|rejected\" <reason>.
+$list
+(check $n of $MAX; the turn can end after $MAX)"
+  if [ "${DEVKIT_STOP_GATE_FORMAT:-context}" = exit2 ]; then
+    printf '%s\n' "$msg" >&2; exit 2
+  fi
+  esc() { # JSON string body: escape backslash, quote, newline, CR, tab; drop other control chars (bash 3.2, no jq/python)
+    local s=$1
+    s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\r'/\\r}; s=${s//$'\t'/\\t}
+    printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037\177'
+  }
+  printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$(esc "$msg")"
+  exit 0
 fi
 rm -f "$cnt"
-echo "stop-gate: $MAX blocks spent, fail-open with workers unaccepted:" >&2; printf '%s\n' "$out" | sed 's/^/  /' >&2
+echo "Letting the turn end after $MAX checks; these workers still await your review:" >&2
+printf '%s\n' "$list" >&2
 for task in $(printf '%s\n' "$out" | sed -n 's/.*task=//p' | sort -u); do
-  "$here/ledger" -t "$task" gate fail-open "stop allowed after $MAX blocks, unaccepted: $(printf '%s' "$out" | tr '\n' ';' | cut -c1-200)" "" fail
+  "$here/ledger" -t "$task" gate fail-open "stop allowed after $MAX checks, unaccepted: $(printf '%s' "$out" | tr '\n' ';' | cut -c1-200)" "" fail
 done
 exit 0
