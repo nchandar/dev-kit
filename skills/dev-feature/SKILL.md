@@ -21,7 +21,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 
 ## Checklist
 - [ ] 0. Skim library/principles (about 700 tokens); open a deep file only when its trigger matches. Building, deploying or setting up tooling? Also check library/recipes/index.
-- [ ] 1. Recon, options, clarify: fresh research report wins; else follow skills/dev-research/SKILL.md (clarify skipped, checkpoint folds into options). List 2-3 options + recommendation; grill to approved goal, non-goals, check. Unknowns loop back to recon, up to 3 rounds. Refresh state.md.
+- [ ] 1. Recon, options, clarify: fresh research report wins; else follow skills/dev-research/SKILL.md (clarify skipped, checkpoint folds into options). List 2-3 options + recommendation; grill to approved goal, non-goals, check. Unknowns loop back to recon, up to 3 rounds. Refresh state.md (a worker uses `<task>/state.<worker>.md` or skips it; only the main agent writes `state.md`).
   - Fresh report: user-named path, else newest `.devkit/tasks/*/report.md` for this request.
   - dev-research run: code plus the external industry-standard/cutting-edge pass.
 - [ ] 2. Spec: follow library/spec; save `<task>/spec.md`. Interface or data shape involved? also library/architecture. Show the flow on an explain-html page (library/explain-html) for the user's confirmation unless trivial; code crossing a function boundary? follow library/deep/sketch first.
@@ -33,7 +33,7 @@ Open the host todo list (todowrite, TodoWrite or TaskCreate, whichever exists; e
 - [ ] 7a. User-visible? follow library/ui-browser. External library? follow library/docs-grounding. Building an app? also library/deep/app-verification-recipe; TypeScript: library/deep/typescript; UI: library/deep/experience-first.
 - [ ] 8. Review: follow skills/dev-review/SKILL.md on the full diff; fix blockers.
 - [ ] 9. Verify: follow library/verify against the spec's acceptance criteria; run the real tool live in an isolated scratch copy and ledger it (`bin/ledger live "<tool and scenarios>" "<what you saw>" "<evidence path>" pass` or fail).
-- [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains.
+- [ ] 10. Ship: follow library/git-ship. Ask before any push. Closeout: follow library/state. Then run `bin/verify`, then close the ledger: `bin/ledger done "<summary>"`, or a `next` row with the first runnable step if work remains. A worker runs `tests/run-all.sh` and `bin/verify-scan` and leaves `bin/verify` and `bin/ledger done` to the parent; a new gate test (`tests/verify*.test.sh`) leaves the scan red until the user approves.
 
 **Hand off to:** dev-review on the full diff, then ship. A structure-only change goes to dev-refactor instead.
 
