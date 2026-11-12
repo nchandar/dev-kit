@@ -68,7 +68,8 @@ tier=-; tree=?; evidence=; run_pid=; watch_pid=; base_kind=
 finish() { # result exit-code why
   local why=${3:-} reason; reason="tree $tree $SECONDS""s"; [ -z "$base_kind" ] || reason="$reason; base $base_kind"
   [ -z "$why" ] || reason="$reason; $why"
-  "$ledger" -t "$task" gate-row "$tier" "$reason" "$evidence" "$1" >/dev/null || echo "verify: could not write the ledger row" >&2
+  DEVKIT_GATE_TOKEN_FILE="$gate_token_file" DEVKIT_GATE_TOKEN="$gate_token" \
+    "$ledger" -t "$task" gate-row "$tier" "$reason" "$evidence" "$1" >/dev/null || echo "verify: could not write the ledger row" >&2
   echo "verify: $1 tier=$tier tree=$tree${why:+ ($why)}"; exit "$2"; }
 cant() { finish not-run 2 "$*"; }
 # A pass covers the tree the run started on: a mid-run edit must not be recorded against the old id.
@@ -89,6 +90,11 @@ rundir=$(mktemp -d); trip=""; trap 'rm -rf "$rundir" "$trip"' EXIT
 trap 'interrupted TERM 143' TERM
 trap 'interrupted INT 130' INT
 trap 'interrupted HUP 129' HUP
+# A per-run gate token: ledger gate-row refuses a row that does not carry it, so a plain hand-written
+# call stops working. It lives in this run's private mktemp dir (0600) and is exported only to that call.
+# This is a speedbump, not a boundary: an agent that reads this file can replay it.
+gate_token=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n'); gate_token_file=$rundir/gate-token
+( umask 077; printf '%s\n' "$gate_token" > "$gate_token_file" ) || { echo "verify: cannot write the gate token" >&2; exit 2; }
 # watchdog limit: $VERIFY_TIMEOUT, else 2x suite_total_s from the budget, else 900
 runlimit() { local t=${VERIFY_TIMEOUT:-}
   if [ -n "$t" ]; then case $t in *[!0-9]*|0) t=900;; esac; echo "$t"; return; fi

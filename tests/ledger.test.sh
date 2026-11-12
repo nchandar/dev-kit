@@ -11,9 +11,12 @@ unset DEVKIT_DIR DEVKIT_LEDGER DEVKIT_LEDGER_MIRROR DEVKIT_TASK DEVKIT_DEPTH
 unset CLAUDE_CODE_SESSION_ID
 verify="$here/bin/verify"
 export VERIFY_TICK=0.1 # watchdog poll resolution: bounds unchanged, the idle wait after an instant run shrinks
-# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate);
+# bin/verify hands gate-row a per-run token, so the fixture plays verify's part with the same contract
+gate_row() { local f; f=$(mktemp) && printf 'test-token\n' > "$f" \
+  && DEVKIT_GATE_TOKEN_FILE="$f" DEVKIT_GATE_TOKEN=test-token "$ledger" -t "$1" gate-row "${@:2}"; }
 gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
-  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
+  && gate_row "$1" full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 
 A=$(cd sub/deep && "$ledger" start fix-login "first look")
 ok "start prints a slugged id"              '[[ $A == fix-login-* ]] && [ -d ".devkit/tasks/$A" ]'
@@ -334,16 +337,26 @@ mkgate; echo more >> README.md; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
 "$ledger" -t "$GT" verify-gate full "tree $("$verify" tree) 1s" "$EVID" pass 2>"$t/gate-forge.err"; rc=$?
 ok "a hand-written verify-gate phase is refused" '[ $rc -eq 2 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && grep -q "reserved" "$t/gate-forge.err"'
 mkgate; echo more >> README.md
-"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/no-such.log" pass
+gate_row "$GT" full "tree $("$verify" tree) 1s" "$t/no-such.log" pass
 "$ledger" -t "$GT" done "no log" 2>"$t/gate-nolog.err"; rc=$?
 ok "a gate row without its log file does not satisfy" '[ $rc -eq 4 ] && grep -q "no log file" "$t/gate-nolog.err"'
 
+# A2: gate-row is bin/verify's alone: a plain call, or a token it did not hand over, writes nothing
+mkgate; echo more >> README.md; printf 'log\n' > "$t/forge.log"; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/forge.log" pass 2>"$t/gate-token.err"; rc=$?
+ok "A2: gate-row without bin/verify's token exits 3" '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ] && grep -q "bin/verify" "$t/gate-token.err"'
+mkgate; echo more >> README.md; TF=$(mktemp); printf 'not-the-token\n' > "$TF"; n0=$(wc -l < ".devkit/tasks/$GT/ledger.tsv")
+DEVKIT_GATE_TOKEN_FILE="$TF" DEVKIT_GATE_TOKEN=wrong "$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/forge.log" pass 2>"$t/gate-token2.err"; rc=$?
+ok "A2: a gate-row token that does not match its file exits 3" '[ $rc -eq 3 ] && [ "$(wc -l < ".devkit/tasks/$GT/ledger.tsv")" = "$n0" ]'
+"$ledger" -t "$GT" done "forged row" 2>"$t/gate-forge2.err"; rc=$?
+ok "A2: a forged gate row still leaves done at exit 4" '[ $rc -eq 4 ] && grep -q "no verify-gate row" "$t/gate-forge2.err"'
+
 mkgate; echo more >> README.md; printf 'log\n' > "$t/elsewhere.log"
-"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$t/elsewhere.log" pass
+gate_row "$GT" full "tree $("$verify" tree) 1s" "$t/elsewhere.log" pass
 "$ledger" -t "$GT" done "outside runs" 2>"$t/gate-outside.err"; rc=$?
 ok "m1: a log outside the task's runs does not satisfy" '[ $rc -eq 4 ] && grep -q "runs" "$t/gate-outside.err" && [ ! "$(tail -1 ".devkit/tasks/$GT/ledger.tsv" | cut -f2)" = done ]'
 mkgate; echo more >> README.md; ER=$("$ledger" -t "$GT" path)/runs/empty.log; mkdir -p "$(dirname "$ER")"; : > "$ER"
-"$ledger" -t "$GT" gate-row full "tree $("$verify" tree) 1s" "$ER" pass
+gate_row "$GT" full "tree $("$verify" tree) 1s" "$ER" pass
 "$ledger" -t "$GT" done "empty log" 2>"$t/gate-empty.err"; rc=$?
 ok "m1: an empty log under runs does not satisfy" '[ $rc -eq 4 ] && grep -q "runs" "$t/gate-empty.err" && [ ! "$(tail -1 ".devkit/tasks/$GT/ledger.tsv" | cut -f2)" = done ]'
 

@@ -11,7 +11,8 @@ HOME_BIN="$here/bin"; TOOLS="$HOME_BIN"
 export VT_MARK="$root/mark"
 export VERIFY_TICK=0.02 # watchdog poll resolution: bounds unchanged, each gate invocation stops waiting a full second
 
-# scratch repo on main with copies of the gate tools; prints nothing, sets GT and TD, cds into it
+# scratch repo on main with copies of the gate tools; prints nothing, sets GT and TD, cds into it.
+# RUNALL_BODY overrides the stub suite's output, so a flow can commit a runner it does not edit after start.
 mkrepo() { local d t; d=$(mktemp -d "$root/r.XXXXXX") || return 2; cd "$d" || return 2
   git init -q -b main . && git config user.email t@t && git config user.name t || return 2
   mkdir -p bin tests docs skills/dev-x
@@ -19,7 +20,7 @@ mkrepo() { local d t; d=$(mktemp -d "$root/r.XXXXXX") || return 2; cd "$d" || re
   chmod +x bin/verify bin/verify-scan bin/ledger bin/run
   printf '#!/usr/bin/env bash\necho lint-ok\n' > bin/lint-budget
   printf '#!/usr/bin/env bash\necho "ok light"\n' > tests/pitfalls.test.sh
-  printf '#!/usr/bin/env bash\necho ran >> "$VT_MARK"\necho "a.test.sh   3 passed, 0 failed   1s"\n' > tests/run-all.sh
+  printf '#!/usr/bin/env bash\necho ran >> "$VT_MARK"\n%s\n' "${RUNALL_BODY:-echo \"a.test.sh   3 passed, 0 failed   1s\"}" > tests/run-all.sh
   printf '#!/usr/bin/env bash\nok "a1" true\nok "a2" true\nok "a3" true\n' > tests/a.test.sh
   printf 'suite_file_s=100\nsuite_total_s=200\n' > bin/verify.budget
   echo base > README.md; echo s > skills/dev-x/SKILL.md; echo d > docs/a.md
@@ -76,6 +77,16 @@ flow_gate_edit() { mkrepo || return 2; echo '# touched' >> bin/verify.budget
   bin/verify >/dev/null 2>&1; local rc=$?
   [ $rc -eq 1 ] && [ "$(field 6)" = fail ] && grep -q "gate-edit bin/verify.budget needs user approval" "$(field 5)"; }
 
+# A1: the done gate and the suite runner are gate files too, even when the line names no gate word
+flow_ledger_gate_edit() { mkrepo || return 2
+  perl -i -pe 's/\[ "\$t" != "\$b" \]/[ "\$t" != "\$t" ]/' bin/ledger || return 2
+  grep -q '\[ "\$t" != "\$t" \]' bin/ledger || return 2
+  bin/verify >/dev/null 2>&1; local rc=$?
+  [ $rc -eq 1 ] && [ "$(field 6)" = fail ] && grep -q "gate-edit bin/ledger needs user approval" "$(field 5)"; }
+flow_runner_gate_edit() { mkrepo || return 2; setrun 'echo "a.test.sh   1 passed, 0 failed   1s"'
+  bin/verify >/dev/null 2>&1; local rc=$?
+  [ $rc -eq 1 ] && [ "$(field 6)" = fail ] && grep -q "gate-edit tests/run-all.sh needs user approval" "$(field 5)"; }
+
 flow_waive() { mkrepo || return 2; echo more >> skills/dev-x/SKILL.md; local out rc
   out=$(bin/ledger -t "$GT" done --waive "verified by hand, the suite cannot run here" "w" 2>&1); rc=$?
   [ $rc -eq 0 ] && printf '%s\n' "$out" | grep -q "^waived: verified by hand, the suite cannot run here" \
@@ -93,7 +104,9 @@ flow_flaky() { mkrepo || return 2
   bin/verify >/dev/null 2>&1; local rc=$?
   [ $rc -eq 1 ] && [ "$(field 6)" = fail ] && field 4 | grep -q "flaky: flap.test.sh"; }
 
-flow_slow() { mkrepo || return 2; setrun 'echo "big.test.sh   1 passed, 0 failed   150s"'
+# a slow suite: the stub is committed at start (a post-start runner edit is now a gate edit, which would mask it)
+flow_slow() { RUNALL_BODY='echo "big.test.sh   1 passed, 0 failed   150s"' mkrepo || return 2
+  echo more >> skills/dev-x/SKILL.md
   bin/verify >/dev/null 2>&1; local rc=$?
   [ $rc -eq 1 ] && [ "$(field 6)" = fail ] && field 4 | grep -q "slow: big.test.sh 150s > 100s"; }
 
@@ -150,6 +163,8 @@ ok "bin/verify passes then done closes"             'flow_pass_close'
 ok "an edit after the pass: done exits 4"           'flow_edit_after_pass'
 ok "A1: a removed assertion makes verify exit 1"    'flow_removed_assertion'
 ok "a gate-file edit is reported"                   'flow_gate_edit'
+ok "A1: a bin/ledger edit with no gate word fails verify" 'flow_ledger_gate_edit'
+ok "A1: a stubbed tests/run-all.sh fails verify"    'flow_runner_gate_edit'
 ok "A8: --waive closes and prints the reason"       'flow_waive'
 ok "A4: a not-run result never closes"              'flow_not_run'
 ok "a flaky suite fails with flaky: <suite>"        'flow_flaky'
