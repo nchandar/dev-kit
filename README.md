@@ -63,7 +63,7 @@ Tools live in `~/.agents/dev-kit/bin/`.
 | render a Mermaid chart | `chart-svg SRC.mmd OUT.svg` |
 
 ## Settings
-Workers skip permission prompts but can never push.
+Workers skip permission prompts. Push URLs are disabled to stop accidents; that is a guardrail, not a sandbox, so a worker with network access can still push by other routes.
 
 | Variable | Effect |
 |---|---|
