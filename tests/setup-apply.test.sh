@@ -141,7 +141,6 @@ merge_settings() { # home: the exact file --apply would write, so no settings pr
       "Bash(~/.agents/dev-kit/bin/ledger *)",
       "Bash(~/.agents/dev-kit/bin/reconcile *)",
       "Bash(~/.agents/dev-kit/bin/state *)",
-      "Bash(~/.agents/dev-kit/bin/run *)",
       "Bash(~/.agents/dev-kit/bin/setup --check)"
     ]
   },
@@ -185,9 +184,11 @@ sec_fresh() {
   nc=$(grep -n 'curl .*tla2tools.jar' "$log" | head -n 1 | cut -d: -f1)
   ok "fresh: installers run in order (bun, tlachart, pele, jar)" '[ -n "$nb" ] && [ -n "$nt" ] && [ -n "$np" ] && [ -n "$nc" ] && [ "$nb" -lt "$nt" ] && [ "$nt" -lt "$np" ] && [ "$np" -lt "$nc" ]'
   ok "fresh: prompts show the exact commands" 'grep -qF "brew install bun" "$t/fresh.out" && grep -qF "bun add -g tlachart@0.1.0" "$t/fresh.out" && grep -qF "curl -fsSL" "$t/fresh.out" && grep -qF "https://github.com/tlaplus/tlaplus/releases/download/v9.9.9/tla2tools.jar" "$t/fresh.out" && grep -qF "install.sh" "$t/fresh.out"'
-  for r in 'Bash(~/.agents/dev-kit/bin/ledger *)' 'Bash(~/.agents/dev-kit/bin/reconcile *)' 'Bash(~/.agents/dev-kit/bin/state *)' 'Bash(~/.agents/dev-kit/bin/run *)' 'Bash(~/.agents/dev-kit/bin/setup --check)'; do
+  for r in 'Bash(~/.agents/dev-kit/bin/ledger *)' 'Bash(~/.agents/dev-kit/bin/reconcile *)' 'Bash(~/.agents/dev-kit/bin/state *)' 'Bash(~/.agents/dev-kit/bin/setup --check)'; do
     ok "fresh: settings has $r" '[ -n "$(has_row "$H/.claude/settings.json" "$r")" ]'
   done
+  ok "fresh: settings has no bin/run allow row (raw)" '! grep -qF "bin/run *)" "$H/.claude/settings.json"'
+  ok "fresh: apply says bin/run is not auto-allowed" 'grep -qF "bin/run is not auto-allowed" "$t/fresh.out"'
   ok "fresh: Stop-gate hook added" 'grep -q "stop-gate" "$H/.claude/settings.json"'
 }
 
@@ -199,11 +200,11 @@ sec_symlink() {
   ok "symlink: verdict ready" '[ "$(tail -n 1 "$t/t2.out")" = "verdict: ready" ]'
   ok "symlink: the settings link is kept" '[ -L "$H2/.claude/settings.json" ]'
   ok "symlink: the link still points at the dotfiles file" '[ "$(readlink "$H2/.claude/settings.json")" = ../dotfiles/claude-settings.json ]'
-  ok "symlink: the target got the five rows" '[ "$(allow_rows "$H2/dotfiles/claude-settings.json" | wc -l | tr -d " ")" -eq 6 ]'
+  ok "symlink: the target got the four rows" '[ "$(allow_rows "$H2/dotfiles/claude-settings.json" | wc -l | tr -d " ")" -eq 5 ]'
   ok "symlink: the existing allow row is kept" '[ -n "$(has_row "$H2/dotfiles/claude-settings.json" "Bash(git status:*)")" ]'
   ok "symlink: one backup next to the settings file" '[ "$(find "$H2/.claude" -maxdepth 1 -name "settings.json.devkit-bak-*" | wc -l | tr -d " ")" = 1 ]'
   ok "symlink: todo enabled in the jsonc" '[ "$(todo_flag "$H2/.config/opencode/opencode.jsonc")" = True ]'
-  for bad in 'Bash(*)' '--dangerously' '/spawn' '/verify' '/push'; do
+  for bad in 'Bash(*)' '--dangerously' '/spawn' '/verify' '/push' 'bin/run *)'; do
     ok "symlink: never adds $bad" '! grep -qF -- "$bad" "$H2/dotfiles/claude-settings.json"'
   done
   h1=$(hash_tree "$H2"); b1=$(backups "$H2"); n1=$(wc -l < "$t/t2.out" | tr -d ' ')
@@ -305,6 +306,8 @@ EOS
   ok "diff: stable a/ and b/ labels" 'grep -qF -- "--- a/settings.json" "$t/t11.out" && grep -qF -- "+++ b/settings.json" "$t/t11.out"'
   ok "diff: one line of context" '! grep -q "CTX3" "$t/t11.out"'
   ok "mode: the settings file keeps 0644" '[ "$(mode_of "$H11/dotfiles/claude-settings.json")" = 644 ]'
+  ok "utf8: an existing bin/run row is left alone" 'grep -qF "Bash(~/.agents/dev-kit/bin/run *)" "$H11/dotfiles/claude-settings.json"'
+  ok "utf8: apply warns that bin/run is not auto-allowed" 'grep -qF "warn  allow-rows  bin/run row present; bin/run is not auto-allowed, remove it" "$t/t11.out"'
   ok "opencode: the config is backed up once" '[ "$(find "$H11/.config/opencode" -name "opencode.jsonc.devkit-bak-*" | wc -l | tr -d " ")" = 1 ]'
   ok "stop-gate: a mention does not count, the real hook is added" '[ "$(gate_hooks "$H11/dotfiles/claude-settings.json")" = 1 ]'
 }
@@ -403,7 +406,7 @@ sec_symlinked() {
   ok "symlinked configs: the opencode backup sits beside the link" '[ "$(find "$H17/.config/opencode" -maxdepth 1 -name "opencode.jsonc.devkit-bak-*" | wc -l | tr -d " ")" = 1 ]'
   ok "symlinked configs: no backup lands in the link target repo" '[ "$(backups "$H17/dotfiles")" = 0 ]'
   ok "symlinked configs: both links are kept" '[ -L "$H17/.claude/settings.json" ] && [ -L "$H17/.config/opencode/opencode.jsonc" ]'
-  ok "symlinked configs: both targets got the change" '[ "$(allow_rows "$H17/dotfiles/claude-settings.json" | wc -l | tr -d " ")" -eq 6 ] && [ "$(todo_flag "$H17/dotfiles/opencode.jsonc")" = True ]'
+  ok "symlinked configs: both targets got the change" '[ "$(allow_rows "$H17/dotfiles/claude-settings.json" | wc -l | tr -d " ")" -eq 5 ] && [ "$(todo_flag "$H17/dotfiles/opencode.jsonc")" = True ]'
   b17=$(backups "$H17")
   yes | run_apply "$H17" "$fb:$toolsbin:$base_path" "$log" "$t/inst17" > "$t/t17b.out" 2>&1
   ok "symlinked configs: a rerun adds no backup" '[ "$(backups "$H17")" = "$b17" ]'
