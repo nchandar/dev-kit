@@ -96,10 +96,33 @@ if [ -n "$descs" ]; then
       exit c>0 }' || errs=$((errs+1)) # pitfall-ok: decimal-arith internal counter
 fi
 
-# public-safety: this repo is public, so no home paths, emails or secret-shaped strings anywhere in it
-LEAK='/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
-leaks=$(grep -rIno -E "$LEAK" . --exclude-dir=.git --exclude=.git --exclude-dir=.devkit --exclude=lint-budget --exclude=lint-budget.test.sh 2>/dev/null | grep -v -E '@(example\.com|users\.noreply\.github\.com)$')
-[ -z "$leaks" ] || { printf '%s\n' "$leaks" | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
+# public-safety: this repo is public, so no home paths, emails or secret-shaped strings in it.
+# Tracked files only: a local .env or other ignored file must never be read or echoed, and a
+# finding prints file:line plus the pattern class, never the matched text.
+LEAK_CLASSES='home_path email github_token api_key aws_key_id private_key'
+leak_re() { case $1 in
+  home_path) printf '%s' '/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+';;
+  email) printf '%s' '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}';;
+  github_token) printf '%s' 'gh[pousr]_[A-Za-z0-9]{20,}';;
+  api_key) printf '%s' 'sk-[A-Za-z0-9]{20,}';;
+  aws_key_id) printf '%s' 'AKIA[0-9A-Z]{16}';;
+  private_key) printf '%s' '-----BEGIN [A-Z ]*PRIVATE KEY-----';;
+esac; }
+in_git=0; git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_git=1
+leaks=""
+for c in $LEAK_CLASSES; do
+  re=$(leak_re "$c")
+  if [ "$in_git" -eq 1 ]; then hits=$(git grep -I -n -o -E -e "$re" -- . 2>/dev/null)
+  else hits=$(grep -rIno -E -e "$re" . --exclude-dir=.git --exclude-dir=.devkit 2>/dev/null)
+  fi
+  [ -n "$hits" ] || continue
+  # allowed addresses are the only matches whose text is inspected; then the text is dropped
+  hits=$(printf '%s\n' "$hits" | grep -v -E '@(example\.com|users\.noreply\.github\.com)$' | grep -v -E '(^|/)(lint-budget|lint-budget\.test\.sh):[0-9]+:')
+  [ -n "$hits" ] || continue
+  leaks="$leaks$(printf '%s\n' "$hits" | sed -E 's/^([^:]+:[0-9]+):.*/\1/' | sed "s/$/: $c/")
+"
+done
+[ -z "$leaks" ] || { printf '%s' "$leaks" | sort -u | head -8 | sed 's/^/FAIL public-safety: /'; errs=$((errs+1)); } # pitfall-ok: decimal-arith internal counter
 
 if [ $errs -eq 0 ]; then echo "OK: AGENTS.md ${sz}B, $n skills (descriptions ${total}B), $ln library files (${libbytes}B) + $dn deep (${deepbytes}B) + $rn recipes (${recbytes}B), on demand"; exit 0; fi
 exit 1

@@ -3,7 +3,9 @@
 # Usage: bin/run [-n TAIL_LINES] <command> [args...]    (default tail 15). Exit code = the command's.
 # Output: line 1 "exit=<rc> secs=<n> log=<path>", then on failure up to 20 error-looking lines and the tail.
 set -u
+umask 077 # .devkit runs dir, logs and anything the command writes stay private
 here=$(dirname "$0"); tail_n=15
+clean() { LC_ALL=C tr -d '\000-\010\013-\037\177'; } # tab, newline and printable text survive
 [ "${1:-}" = -n ] && { tail_n=${2:-15}; shift 2; }
 [ $# -ge 1 ] || { echo "usage: run [-n N] <command> [args...]" >&2; exit 2; }
 # Task: -t is not an option here, so $DEVKIT_TASK, else the session pointer
@@ -26,8 +28,10 @@ done
 s=$(date +%s); "$@" > "$log" 2>&1 < /dev/null; rc=$?; e=$(date +%s)
 printf 'exit=%s secs=%s log=%s\n' "$rc" "$((e-s))" "$log" # pitfall-ok: decimal-arith epoch seconds, always decimal
 if [ $rc -ne 0 ]; then
-  grep -n -i -E 'fail|error|panic|assert|exception|traceback|✗|not ok' "$log" | cut -c1-200 | head -20
-  echo "--- last $tail_n lines:"; tail -n "$tail_n" "$log" | cut -c1-200
+  grep -n -i -E 'fail|error|panic|assert|exception|traceback|✗|not ok' "$log" | cut -c1-200 | clean | head -20
+  echo "--- last $tail_n lines:"; tail -n "$tail_n" "$log" | cut -c1-200 | clean
 fi
-"$here/ledger" -t "$task" run "$(printf '%s ' "$@" | cut -c1-80)" "exit $rc in $((e-s))s" "$log" "$([ $rc -eq 0 ] && echo pass || echo fail)" 2>/dev/null || true # pitfall-ok: decimal-arith rc from $?, always decimal
+# argv[0] and the count only: a token passed to the command must not land in the ledger
+cmd=$(printf '%s' "$1" | clean | cut -c1-80)
+"$here/ledger" -t "$task" run "$(printf '%s (%s args)' "$cmd" "$#")" "exit $rc in $((e-s))s" "$log" "$([ $rc -eq 0 ] && echo pass || echo fail)" 2>/dev/null || true # pitfall-ok: decimal-arith rc from $?, always decimal
 exit $rc

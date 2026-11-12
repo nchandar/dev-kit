@@ -44,6 +44,9 @@ All tools are bash. `<task>` means `.devkit/tasks/<id>`. The task comes from `-t
   - `start` refuses inside a worker (`DEVKIT_DEPTH` nonzero); workers log to their own `DEVKIT_TASK`. The refusal status is 3.
   - `accept` refuses a worker an id it did not spawn: `spawn` writes the spawner to `<task>/run/<id>.parent` (`main` for a non-worker); a worker may accept only an id whose record names it (exit 3, no row), so a lead accepts its children, never itself, a sibling or its parent, and `main` accepts any id. This is a guardrail, not a sandbox: a worker that unsets `DEVKIT_WORKER` or rewrites a `.parent` file can still forge a row.
   - Inside a git worktree the base resolves to the main repo, so workers share one `.devkit`.
+  - The close gate `gate()`: `done` exits 4 unless the tree equals the base or the newest `verify-gate` row passed for that exact tree with a non-empty log under `<task>/runs/`; `--waive "<20+ chars>"` records the reason, and every waive prints at close.
+  - `gate-row`, the only writer of the reserved `verify-gate` phase, needs the per-run token `bin/verify` exports (`DEVKIT_GATE_TOKEN` and `DEVKIT_GATE_TOKEN_FILE`, a 0600 file in its mktemp dir); otherwise it exits 3. This stops accidental and injected plain calls, not an agent that reads `bin/verify` and replays the token; a hard guarantee needs a signer outside the agent. A matching `run` row was rejected as a second check: any caller can append one, so it proves nothing.
+  - `bin/verify-scan` flags any change to `bin/verify`, `bin/verify-scan`, `bin/verify.budget`, `bin/ledger`, `bin/run`, `bin/defaults`, `tests/run-all.sh` and the verify tests as `gate-edit ... needs user approval`. `bin/verify` runs the scanner from the base commit, so the rule protects once it is on the base; it cannot stop a working copy from fooling itself.
 
 ### 3.2 state (`bin/state`)
 - Purpose: lint a task's `state.md` and the project's `.devkit/memory.md` against the no-redundancy rules.
@@ -113,7 +116,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `--lead` | off | Long-lived lead: implies `--worktree`, writes `run/<id>.detached` and (fresh worktree only) `run/<id>.base`, the commit it started from; holds `run/<id>.lead` while it runs |
 | `--model`, `DEVKIT_MODEL` | CLI default | Passed as `--model` (claude) or `-m` |
 | `DEVKIT_MAX_WORKERS` | auto | Slot count, repo-wide; auto means min(3 x cores, RAM in GB) within 4..64, or 10 when the machine cannot be read (`DEVKIT_CORES` and `DEVKIT_RAM_GB` override detection, e.g. for a container RAM limit): one pool shared by leads and their helpers, first come first served (no per-lead budget); a nested spawn past the pool waits `DEVKIT_CHILD_WAIT` then exits 4; extras wait, stale slots (dead/reused pid, no pid after 1s) reclaimed under a per-slot lock that names its owner (pid + start; stolen only from a dead or reused owner), with a start-time check against pid reuse; a claim takes that lock before its mkdir and holds it through the pid write, so a stalled claimer's dir is never mistaken for stale |
-| `DEVKIT_MAX_LEADS` | auto | Live `--lead` workers, repo-wide; auto means at most half the worker pool and at most 10 (at least 1); a `--lead` spawn past it exits 4 with a message. A lead claims its place (`run/<id>.lead`, owner pid + start) under one repo-wide owner lock before the count, so two simultaneous leads cannot both pass; the claim lives until cleanup and a dead or reused owner is reclaimed, so leads of other tasks count too |
+| `DEVKIT_MAX_LEADS` | auto | Live `--lead` workers, repo-wide; auto means at most half the worker pool and at most 10 (at least 1); a `--lead` spawn past it exits 4 with a message. A lead claims its place (`run/<id>.lead`, owner pid + start) under one repo-wide owner lock before the count; the cap test and a refusal's claim removal both stay under that lock, so two simultaneous leads cannot both pass and the next claimant never counts a refused candidate; the claim lives until cleanup and a dead or reused owner is reclaimed, so leads of other tasks count too |
 | `DEVKIT_MAX_DEPTH` | 3 | Nesting limit: a worker may spawn until its depth reaches it |
 | `DEVKIT_CHILD_WAIT` | 60 | Seconds a nested spawn waits for a slot before exit 4 (its parents hold slots, so waiting forever could deadlock) |
 | `DEVKIT_TIMEOUT` | 7200 s | 0 disables; hung worker is TERMed, then KILLed |
@@ -140,7 +143,8 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 ### 3.5 run (`bin/run`)
 - Purpose: run a command without flooding context. No agent involved.
 - Usage: `run [-n TAIL] <command...>` (default tail 15). Exit code is the command's.
-- Output: `exit=<rc> secs=<n> log=<path>`; on failure up to 20 error-looking lines plus the tail.
+- Output: `exit=<rc> secs=<n> log=<path>`; on failure up to 20 error-looking lines plus the tail. Control characters are stripped (tab and newline kept).
+- Privacy: runs under `umask 077`; the ledger row names argv[0] and argc only, never the arguments.
 - Owns: `<task>/runs/NNN.log`; writes a ledger row with phase `run`.
 
 ### 3.6 learn (`bin/learn`)
@@ -159,7 +163,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
   - Skill sections: When to Use, Checklist, Rationalizations, Red Flags, Verification; a `bin/ledger` mention; a `library/state` reference (except dev-learn).
   - Core library: each file at most 80 lines (sections When to Use, Steps, Red Flags, Verification), total at most 32768 B.
   - Deep: at most 45 lines each, total 65536 B. Recipes: at most 45 lines each, total 49152 B, each indexed.
-  - Every `library/...` reference resolves; skill descriptions do not collide (Jaccard 0.5); no home paths, emails or secrets anywhere.
+  - Every `library/...` reference resolves; skill descriptions do not collide (Jaccard 0.5); tracked files hold no home paths, emails or secrets. A finding prints file:line and the pattern class, never the matched text; untracked and gitignored files are not read.
 
 ### 3.8 install (`install.sh`)
 - Symlinks the repo to `~/.agents/dev-kit` and each `skills/dev-*` into `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills` (OpenCode and others read the last). Safe to rerun: replaces only symlinks, skips real files.

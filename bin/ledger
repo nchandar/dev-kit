@@ -6,7 +6,7 @@
 #   ledger [-t id] accept "<id> accepted" <reason>      for a --lead worker, refused (exit 5) when its branch is not built on the default branch tip, a rejection skips that check; a worker may accept only an id it spawned (run/<id>.parent written by spawn); its own id, a sibling or its parent exits 3
 #   ledger [-t id] done [--waive "<reason>"] [summary]  mark the task finished; needs a passing verify-gate row for the current tree, or a waive reason of 20+ chars; refused inside a worker (exit 3)
 #   ledger [-t id] path | ledger base                   print task dir | .devkit dir
-#   ledger [-t id] gate-row <tier> <reason> <evidence> <result>   append the verify-gate row (bin/verify only)
+#   ledger [-t id] gate-row <tier> <reason> <evidence> <result>   append the verify-gate row (bin/verify only, with the token it exports)
 # Task: -t id, else $DEVKIT_TASK, else the session pointer. No task is an error: there is no shared fallback ledger.
 # The pointer lives at $(ledger base)/run/session-<sid>.task; start rewrites it, only outside workers.
 # $DEVKIT_DIR overrides the .devkit location. $DEVKIT_LEDGER_MIRROR="<cmd>" runs with the row text as $1.
@@ -135,8 +135,11 @@ case $task in .|..|*/*) die "bad id '$task' (must not be . or .. or contain '/')
 D=$B/tasks/$task; [ -d "$D" ] || die "unknown task '$task' (see bin/reconcile)"
 case ${1:-} in
   path) echo "$D"; exit 0;;
-  gate-row) # bin/verify's row write; the phase is reserved so it cannot be hand-written
+  gate-row) # bin/verify's row write; the phase is reserved and the row must carry the per-run token it exports
     [ $# -eq 5 ] || die "usage: ledger gate-row <tier> <reason> <evidence> <result>"
+    tf=${DEVKIT_GATE_TOKEN_FILE:-}; tok=${DEVKIT_GATE_TOKEN:-}
+    [ -n "$tf" ] && [ -n "$tok" ] && [ -f "$tf" ] && [ -r "$tf" ] && [ "$(cat "$tf" 2>/dev/null)" = "$tok" ] \
+      || { echo "ledger: gate-row is written only by bin/verify (its per-run token is missing or wrong); run bin/verify" >&2; exit 3; }
     append "$D/ledger.tsv" verify-gate "$2" "$3" "$4" "$5"; exit 0;;
   done)
     depth=${DEVKIT_DEPTH:-0}

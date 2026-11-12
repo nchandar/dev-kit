@@ -126,4 +126,33 @@ FAKE_ID=plain DEVKIT_MAX_WORKERS=3 DEVKIT_MAX_LEADS=1 "$spawn" plain fake "$t/br
 ok "a non-lead spawn still runs while a lead holds the only place" '[ "$rc" -eq 0 ] && [ ! -e "$TD/wt/plain" ]'
 rm -f "$holdl"; wait "$pk" 2>/dev/null
 
+# --- spurious refusal: a refused claimant must remove its candidate inside the leads
+#     lock. If it stays visible until after the unlock, the next claimant counts a dead
+#     place and refuses too, although no accepted lead is live (see docs/pitfalls.md pg-53).
+shim="$t/shim"; mkdir -p "$shim"
+cat > "$shim/rm" <<'M'
+#!/usr/bin/env bash
+/bin/rm "$@"; rc=$?
+case "$*" in *leads.lock*) : > "${RM_MARKS:?}/unlocked-${FAKE_ID:-x}"; sleep 2;; esac # sleep-ok: stall owned by the test, which frees the place while claimant s2 is stalled
+exit $rc
+M
+chmod +x "$shim/rm"
+export RM_MARKS="$t/marks"; mkdir -p "$RM_MARKS"
+export PATH="$shim:$PATH"
+waitfile() { local n=0; while [ ! -e "$1" ] && [ $n -lt 200 ]; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll
+hsp="$t/spur.hold"; : > "$hsp"
+leads s3 "$hsp" 1; ps3=$!
+waitstart s3
+leads s2 "" 1; ps2=$!
+waitfile "$RM_MARKS/unlocked-s2"
+ok "a refused claimant removes its candidate before releasing the leads lock" '[ ! -e "$C/s2.lead" ]'
+rm -f "$hsp"; waitfile "$t/s3.rc"
+leads s1 "" 1; ps1=$!
+waitfile "$t/s1.rc"; waitfile "$t/s2.rc"
+wait "$ps1" "$ps2" "$ps3" 2>/dev/null
+rs1=$(cat "$t/s1.rc" 2>/dev/null || echo missing); rs2=$(cat "$t/s2.rc" 2>/dev/null || echo missing)
+ok "once the live place is released, one waiting claimant starts instead of both refusing" '{ [ "$rs1" -eq 0 ] && [ "$rs2" -eq 4 ]; } || { [ "$rs1" -eq 4 ] && [ "$rs2" -eq 0 ]; }'
+ok "the spurious-refusal loser kept the cap message" 'grep -qx "spawn: 1 live lead(s) already, at the limit DEVKIT_MAX_LEADS=1; wait for one to finish or raise it" "$t/s2.err"'
+ok "the spurious-refusal case leaves no lead claim behind" '[ -z "$(ls "$C"/*.lead 2>/dev/null)" ]'
+
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

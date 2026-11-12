@@ -12,9 +12,11 @@ rec="$here/bin/reconcile"; spawn="$here/bin/spawn"
 pass=0; fail=0
 ok() { if eval "$2"; then pass=$((pass+1)); echo "ok   $1"; else fail=$((fail+1)); echo "FAIL $1   [$2]"; fi; }
 verify="$here/bin/verify"
-# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate)
-gate_pass() { local d; d=$("$ledger" -t "$1" path) && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
-  && "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
+# a verify-gate pass row for the current tree, the shape bin/verify writes (scratch repos cannot run the real gate);
+# bin/verify hands gate-row a per-run token, so the fixture plays verify's part with the same contract
+gate_pass() { local d f; d=$("$ledger" -t "$1" path) && f=$(mktemp) && printf 'test-token\n' > "$f" \
+  && mkdir -p "$d/runs" && echo gate > "$d/runs/gate.log" \
+  && DEVKIT_GATE_TOKEN_FILE="$f" DEVKIT_GATE_TOKEN=test-token "$ledger" -t "$1" gate-row full "tree $("$verify" tree) 1s" "$d/runs/gate.log" pass; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 cd "$t" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 export DEVKIT_DIR="$t/.devkit" DEVKIT_LEARN_DIR="$t/learn"
@@ -31,7 +33,7 @@ ok "a second session sees no current task"               '[ $rc -eq 1 ] && [ -z 
 
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$S1 "$run" echo hello); rc=$?
 ok "run: acts on the pointed task"                       '[ $rc -eq 0 ] && [ -d "$TD/runs" ] && [ "$(ls "$TD/runs" | wc -l | tr -d " ")" -ge 1 ]'
-ok "run: its ledger row lands in the pointed task"       'awk -F"\t" "\$2==\"run\"" "$TD/ledger.tsv" | grep -q "hello"'
+ok "run: its ledger row lands in the pointed task"       'awk -F"\t" "\$2==\"run\"" "$TD/ledger.tsv" | grep -q .'
 
 out=$(env -u DEVKIT_TASK CLAUDE_CODE_SESSION_ID=$S1 "$state" check 2>&1); rc=$?
 ok "state: acts on the pointed task"                     '[ $rc -eq 0 ] && echo "$out" | grep -q "^OK"'

@@ -103,6 +103,7 @@ repo_name_of() { # git common dir -> repo name
   printf '%s\n' "$b"
 }
 SYNC_REPOS="" # kind<TAB>common-dir<TAB>worktree-root
+sync_discovered=0 # one walk per run, shared by --check, --apply and its final check
 repo_known() { # common dir
   want=$1; oldIFS=$IFS; IFS='
 '
@@ -135,7 +136,10 @@ set_repo_kind() { # common-dir kind: config wins over skills, so a repo read bot
   done
   SYNC_REPOS=$out; IFS=$oldIFS
 }
-discover_sync() {
+discover_sync() { # one walk per run: --check, --apply and its final check reuse the result
+  [ "$sync_discovered" -eq 0 ] || return 0
+  sync_discovered=1
+  [ -z "${DEVKIT_SETUP_DISCOVER_LOG:-}" ] || printf 'discover\n' >>"$DEVKIT_SETUP_DISCOVER_LOG" # test hook: counts real walks
   SYNC_REPOS=""
   devkit_id=$(repo_id "$here" 2>/dev/null) || devkit_id=
   [ -z "$devkit_id" ] || add_repo dev-kit "$here"
@@ -629,11 +633,13 @@ install_after_pull() { # name root
     did=1  # offered once: an N here must not fall through to install.sh for the same repo
     ask_run || continue
     make -C "$2" "install-$c" </dev/null || note "make install-$c failed"
+    sync_discovered=0 # an installer may have added a link the final check must see
   done
   if [ "$did" -eq 0 ] && [ -x "$2/install.sh" ]; then
     show_cmd "$2/install.sh"
     ask_run || return 0
     ( cd "$2" && ./install.sh ) </dev/null || note "install.sh failed"
+    sync_discovered=0 # an installer may have added a link the final check must see
   fi
 }
 
@@ -691,6 +697,7 @@ install_devkit() { # a pull may add skills/dev-*; link them now, once, before ap
   show_cmd "$here/install.sh"
   note "this runs code from the pulled commits"
   ask_run || return 0
+  # no sync_discovered reset: install.sh links only this repo, which discover_sync skips
   if ( cd "$here" && ./install.sh ) </dev/null; then f_links=0
   else note "install.sh failed"; fi
 }

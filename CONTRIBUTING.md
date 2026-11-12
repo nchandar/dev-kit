@@ -79,6 +79,7 @@ Preferred route for library content: `dev-learn`. It drafts on a branch in a sep
 | `run` | Log plus short summary wrapper |
 | `setup` | `bin/setup --check`: core, tools, claude, codex, opencode, sync, goldens, read-only |
 | `setup-apply` | `bin/setup --apply`: prompts, fake installers, backup, idempotent, symlink-safe |
+| `setup-discover` | One repo discovery per run, re-walked after a foreign installer |
 | `setup-sync` | Repo sync: discovery, ff-only pull, frozen copy, optional installers |
 | `spawn` | Worker launch, caps, push guard, with a fake agent |
 | `state` | `state.md` and `memory.md` rules |
