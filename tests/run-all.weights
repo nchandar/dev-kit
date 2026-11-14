@@ -1,7 +1,7 @@
 # Wall seconds each suite takes alone, not its share of the parallel cap; used only to pick the start order (longest first).
 # Format: name seconds. Suites not listed start after these, in glob order, so a new slow suite can be added here to start early; it is optional.
 spawn-interactive 21
-spawn 49
+spawn 23
 verify 23
 verify-gate-property 20
 ledger 12
