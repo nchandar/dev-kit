@@ -5,18 +5,33 @@
 #   as hook feedback, so the user reads a calm status instead of "Stop hook error".
 #   DEVKIT_STOP_GATE_FORMAT=exit2 restores the old form: exit 2 with the text on stderr. Use it only
 #   for a harness that does not know additionalContext (there the turn would simply end).
-#   Workers (DEVKIT_DEPTH) and sessions without workers pass. Holds 3 times in a row, then lets the turn end (ledgered).
+#   Workers (DEVKIT_DEPTH) and sessions without workers pass. Holds 3 times in a row, then lets the turn end (ledgered);
+#   a running host-tracked waiter (background_tasks) passes at once, since its exit re-invokes the agent.
 #   Anything unexpected (no ledger beside the script, odd input, reconcile failing) also lets the turn end: a broken hook must never hold.
 set -u
 here=${0%/*}; MAX=3
 [ -z "${DEVKIT_DEPTH:-}" ] || exit 0
 [ -x "$here/ledger" ] || { echo "Worker check skipped (no ledger tool beside $0, symlinked script?); letting the turn end." >&2; exit 0; }
-sid=$(sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)
+payload=$(cat)
+sid=$(printf '%s\n' "$payload" | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)
 case $sid in ""|*[!A-Za-z0-9_-]*) exit 0;; esac # session_id becomes a filename
 cnt=$("$here/ledger" base)/run/gate-$sid.count
+# Claude re-invokes the agent when a host-tracked waiter exits, so passing here costs no turn.
+# All three fields must sit in one background_tasks object; a missing field or any parse doubt holds.
+waiter_running() {
+  local arr
+  arr=$(printf '%s\n' "$payload" | sed -n 's/.*"background_tasks"[[:space:]]*:[[:space:]]*\[\([^]]*\)\][[:space:]]*[,}].*/\1/p' | head -1)
+  [ -n "$arr" ] || return 1
+  case $arr in *'['*) return 1;; esac # a nested array: parse doubt, hold
+  printf '%s\n' "$arr" | tr '}' '\n' | grep -vE '\{[^{]*\{' |
+    grep -E '"type"[[:space:]]*:[[:space:]]*"shell"' |
+    grep -E '"status"[[:space:]]*:[[:space:]]*"running"' |
+    grep -qE '"command"[[:space:]]*:[[:space:]]*"[^"]*reconcile --wait'
+}
 out=$("$here/reconcile" --gate --session "$sid" 2>&1); rc=$?
 [ $rc -ne 0 ] || { rm -f "$cnt"; exit 0; }
 [ $rc -eq 1 ] || { echo "Worker check skipped (reconcile exit $rc: $(printf '%s' "$out" | head -3 | tr '\n' ' ')); letting the turn end." >&2; exit 0; }
+waiter_running && exit 0
 n=$(cat "$cnt" 2>/dev/null); n=$((10#${n:-0}+1)); mkdir -p "${cnt%/*}"; echo "$n" > "$cnt"
 # one plain status line per worker; alarm words (failed, killed, unaccepted) become "stopped" / "awaiting your review"
 list=$(printf '%s\n' "$out" | sed -e 's/^\([^ ]*\) running /\1: working /' \
@@ -33,7 +48,7 @@ else
 fi
 if [ "$n" -le "$MAX" ]; then
   msg="$head
-Next: bin/reconcile --wait --session $sid (capped, repeat while workers run), then read each handoff and record the review with: bin/ledger -t <task> accept \"<id> accepted|rejected\" <reason>.
+Next: start ONE tracked background waiter: DEVKIT_WAIT=3600 bin/reconcile --wait --session $sid (Claude Code: Bash run_in_background; its exit re-invokes you; never nohup, &, or disown), then read each handoff and record the review with: bin/ledger -t <task> accept \"<id> accepted|rejected\" <reason>.
 $list
 (check $n of $MAX; the turn can end after $MAX)"
   if [ "${DEVKIT_STOP_GATE_FORMAT:-context}" = exit2 ]; then
