@@ -75,6 +75,9 @@ irun2() { ( export PATH="$hs:$PATH"; "$@" ); }
 tailargs() { grep '^agent start' "$HERDR_LOG" | sed 's/^.* -- //'; }
 # bounded polls replace fixed sleeps: they end as soon as the thing happens, so the wait is a guard, not a cost
 waitlog() { local n=0; while [ $n -lt 200 ] && ! grep -q "$1" "${2:-$HERDR_LOG}" 2>/dev/null; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (200 tries) for a herdr log line
+# a launch line is waited for while its spawn lives: a loaded machine can take longer than a fixed window, and
+# killing before the launch reports an INT against a run that never started (no tab to close, no killed row)
+waitlive() { local n=0; while [ $n -lt 600 ] && ! grep -q "$1" "${2:-$HERDR_LOG}" 2>/dev/null && kill -0 "$3" 2>/dev/null; do sleep 0.05; n=$((n+1)); done; grep -q "$1" "${2:-$HERDR_LOG}" 2>/dev/null; } # sleep-ok: bounded poll (600 tries) for a launch line while its spawn lives
 waitfile() { local n=0; while [ $n -lt 200 ] && [ ! -s "$1" ]; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (200 tries) for a non-empty file
 waitcount() { local n=0 c; while [ $n -lt 200 ]; do c=$(grep -c "$1" "$2" 2>/dev/null); [ "${c:-0}" -gt "$3" ] && return 0; sleep 0.05; n=$((n+1)); done; return 1; } # sleep-ok: bounded poll (200 tries) until a log has more matching lines
 gonepoll() { local n=0; while [ $n -lt 200 ] && pgrep -f "$1" >/dev/null 2>&1; do sleep 0.05; n=$((n+1)); done; } # sleep-ok: bounded poll (200 tries) until the process is gone
@@ -252,7 +255,7 @@ ok "TERM during the done-run session delete: no delete process survives" '! pgre
 pkill -KILL -f "sleep 997" 2>/dev/null
 : > "$HERDR_LOG"; rm -f "$HERDR_LOG.cli"
 ( export PATH="$hs:$PATH" STUB_STOP_UNIQ=1 DEVKIT_STOP_TIMEOUT=30; exec "$spawn" os2 opencode "$t/brief.md" ) 2>/dev/null &
-sp=$!; waitlog "^agent prompt os2 "; kill -TERM $sp; waitdelete; kill -TERM $sp; wait $sp 2>/dev/null; gonepoll "sleep 997" # first TERM starts cleanup, the second lands in its delete wait
+sp=$!; waitlive "^agent prompt os2 " "$HERDR_LOG" "$sp"; kill -TERM $sp; waitdelete; kill -TERM $sp; wait $sp 2>/dev/null; gonepoll "sleep 997" # first TERM starts cleanup, the second lands in its delete wait
 ok "second TERM during the cleanup session delete: no delete process survives" '! pgrep -f "sleep 997" >/dev/null'
 pkill -KILL -f "sleep 997" 2>/dev/null
 mkdir -p "$base/ms"; cat > "$base/ms/now" <<'S'
@@ -273,7 +276,7 @@ rm -f "$HERDR_LOG.cli"; DEVKIT_TIMEOUT=1 irun "$spawn" xt1 codex "$t/brief.md" 2
 ok "codex: a timeout stops no opencode session" '! grep -q "session delete" "$HERDR_LOG.cli" 2>/dev/null'
 : > "$HERDR_LOG"; rm -f "$HERDR_LOG.cli"
 ( export PATH="$hs:$PATH"; exec "$spawn" oi1 opencode "$t/brief.md" ) 2>/dev/null &
-sp=$!; waitlog "^agent prompt oi1 "; kill -TERM $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
+sp=$!; waitlive "^agent prompt oi1 " "$HERDR_LOG" "$sp"; kill -TERM $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
 sid_i=$(grep "^agent start oi1 " "$HERDR_LOG" | grep -o 'ses_[A-Za-z0-9_]*' | head -1)
 ok "TERM: an interrupted opencode session is stopped before the tab closes" 'grep -q "^opencode session delete $sid_i$" "$HERDR_LOG.cli" && [ $(grep -n "^session delete $sid_i$" "$HERDR_LOG" | head -1 | cut -d: -f1) -lt $(grep -n "tab close X:t9" "$HERDR_LOG" | head -1 | cut -d: -f1) ]'
 }
@@ -388,18 +391,18 @@ STUB_EDIT=1 STUB_DROP=0 irun "$spawn" --shape scout sw claude "$t/brief.md" >/de
 ok "scout that changes files in a tab is a ledger warning, not a violation" '[ $rc -eq 0 ] && grep -q "^done" $TD/run/sw.status && grep -q "sw scout changed files" $TD/ledger.tsv'
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH"; exec "$spawn" i1 claude "$t/brief.md" ) 2>/dev/null &
-sp=$!; waitlog "^agent prompt i1 "; kill -TERM $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
+sp=$!; waitlive "^agent prompt i1 " "$HERDR_LOG" "$sp"; kill -TERM $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
 ok "TERM: killed spawn writes a pane-read stub, notifies, then closes the tab" 'grep -q "last screen line" $TD/handoffs/i1.md && grep "notification show" "$HERDR_LOG" | grep -q "i1 killed" && [ $(grep -n "notification show" "$HERDR_LOG" | head -1 | cut -d: -f1) -lt $(grep -n "tab close" "$HERDR_LOG" | head -1 | cut -d: -f1) ]'
 ok "interrupted interactive spawn closes its tab, records killed and frees its slot" 'grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "^killed" $TD/run/i1.status && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 : > "$HERDR_LOG"
 # a plain async job ignores SIGINT; perl restores the default so spawn's INT trap can fire
 ( export PATH="$hs:$PATH"; exec perl -e '$SIG{INT}="DEFAULT"; exec @ARGV' "$spawn" i2 claude "$t/brief.md" ) 2>/dev/null &
-sp=$!; waitlog "^agent prompt i2 "; kill -INT $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
+sp=$!; waitlive "^agent prompt i2 " "$HERDR_LOG" "$sp"; kill -INT $sp; wait $sp 2>/dev/null; waitlog "tab close X:t9" # poll until the tab exists and the cleanup closed it
 ok "INT (cancelled): tab closed, killed recorded, slot freed" 'grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "^killed" $TD/run/i2.status && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ]'
 grep -q "tab close X:t9" "$HERDR_LOG" && grep -q "^killed" $TD/run/i2.status && [ -z "$(ls -d $DEVKIT_DIR/run/slot.* 2>/dev/null)" ] || echo "diag INT: tab_close=$(grep -c "tab close X:t9" "$HERDR_LOG") status=$(cat $TD/run/i2.status 2>/dev/null) run=$(ls $DEVKIT_DIR/run 2>/dev/null | tr "\n" " ") log=$(tail -n 5 "$HERDR_LOG" | tr "\n" "|")" # failure evidence only: CI flaked here once without a cause
 : > "$HERDR_LOG"
 ( export PATH="$hs:$PATH" DEVKIT_VIEW_KEEP=1; exec "$spawn" i3 claude "$t/brief.md" ) 2>/dev/null &
-sp=$!; waitlog "^agent prompt i3 "; kill -TERM $sp; wait $sp 2>/dev/null; waitfile "$TD/run/i3.tab" # poll until the kept tab is recorded
+sp=$!; waitlive "^agent prompt i3 " "$HERDR_LOG" "$sp"; kill -TERM $sp; wait $sp 2>/dev/null; waitfile "$TD/run/i3.tab" # poll until the kept tab is recorded
 ok "TERM with DEVKIT_VIEW_KEEP: tab kept and recorded" '! grep -q "tab close" "$HERDR_LOG" && [ -s $TD/run/i3.tab ]'
 }
 
