@@ -1,5 +1,6 @@
 ---- MODULE StopGate ----
-\* Stop-gate accept protocol, re-synced to bin/stop-gate at d6e9d696b2c0c70b5a95994680b35b7570a146d5.
+\* Stop-gate accept protocol, re-synced to bin/stop-gate as of PR 49 (the sync
+\* commit advances in a follow-up after the merge).
 \* Code: bin/stop-gate:12,35 (block counter), :31-33 (reconcile exit: 0 passes and
 \*   clears the counter), :49-64 (hold text), :65-70 (fail-open + ledger row),
 \*   :19-30 waiter_running (one background_tasks object with type shell, status

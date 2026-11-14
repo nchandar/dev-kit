@@ -5,7 +5,8 @@ a worker it spawned is running or its latest run has no accept newer than its
 exit row, except that a live host-tracked waiter lets it park the turn until the
 waiter exits and wakes it.
 
-Code under test at `d6e9d69`:
+Code under test: `bin/stop-gate` as of PR 49 (the sync commit advances in a
+follow-up after the merge):
 `bin/stop-gate:12,35` (block counter), `:31-33` (reconcile exit: 0 passes and
 clears the counter), `:49-64` (hold text), `:65-70` (fail-open and its ledger
 row), `:19-30,34` (the tracked-waiter pass), `bin/reconcile:24-34` (`gate_task`:
