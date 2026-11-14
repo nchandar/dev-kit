@@ -44,7 +44,8 @@ ok "stdout is one JSON object, hookEventName Stop" 'printf "%s" "$HOUT" | validj
 TXT=$(printf '%s' "$HOUT" | text 2>/dev/null); trc=$?
 ok "additionalContext decodes"                     '[ $trc -eq 0 ] && [ -n "$TXT" ]'
 ok "headline first, then the next step on line two" '[ "$(printf %s "$TXT" | sed -n 2p | cut -c1-6)" = "Next: " ] && printf %s "$TXT" | sed -n 1p | grep -q "^Waiting on .* to report back\."'
-ok "next step names the wait command"              'echo "$TXT" | grep -q "bin/reconcile --wait --session sess-A" && echo "$TXT" | grep -q "capped" && echo "$TXT" | grep -q "accept"'
+ok "next step names a long tracked wait"            'echo "$TXT" | grep -q "DEVKIT_WAIT=3600" && echo "$TXT" | grep -q "reconcile --wait --session sess-A" && echo "$TXT" | grep -q "accept"'
+ok "next step says background, never nohup/&/disown" 'echo "$TXT" | grep -qi "background" && echo "$TXT" | grep -q "never nohup" && echo "$TXT" | grep -q "disown"'
 ok "status lists each pending worker with its task" 'echo "$TXT" | grep -q "w1: working" && echo "$TXT" | grep -q "task=gate-task" && echo "$TXT" | grep -q "w9: working" && echo "$TXT" | grep -q "task=gate-task-2"'
 ok "count reads as a check, not a score"           'echo "$TXT" | grep -q "check 1 of 3" && ! echo "$TXT" | grep -q "1/3"'
 ok "status text has no error or failed"            '! echo "$TXT" | alarm'
@@ -64,7 +65,8 @@ runhook_exit2 sess-A
 ok "escape hatch: exit 2 keeps the old block"      '[ $HRC -eq 2 ] && [ "$(cat "$CNT")" = 1 ]'
 ok "escape hatch: text goes to stderr, not stdout" '[ -z "$HOUT" ] && [ -s "$HERR" ]'
 out=$(cat "$HERR")
-ok "escape hatch: message names the worker and the wait command" 'echo "$out" | grep -q "w1: working" && echo "$out" | grep -q "capped" && echo "$out" | grep -q "reconcile --wait --session sess-A" && echo "$out" | grep -q "accept"'
+ok "escape hatch: message names the worker and the wait command" 'echo "$out" | grep -q "w1: working" && echo "$out" | grep -q "DEVKIT_WAIT=3600" && echo "$out" | grep -q "reconcile --wait --session sess-A" && echo "$out" | grep -q "accept"'
+ok "escape hatch: message says background, never nohup" 'echo "$out" | grep -qi "background" && echo "$out" | grep -q "never nohup" && echo "$out" | grep -q "disown"'
 
 hook sess-A >/dev/null 2>&1; echo "done 0 100" > "$GD/run/w1.status"; "$ledger" -t "$G" spawn "w1 done" cli=fake "" done
 "$ledger" -t "$G" accept "w1 accepted" "checked" "" pass
@@ -126,5 +128,41 @@ ok "no stop-gate prefix, no unaccepted, no accepted yet" '! echo "$TXT" | grep -
 ok "check count is a quiet tail line"               'printf %s "$TXT" | tail -1 | grep -q "^(check [0-9] of 3; the turn can end after 3)$"'
 "$ledger" -t "$G" accept "w1 accepted" "checked" "" pass
 runhook sess-A
+
+# --- a host-tracked waiter wakes the agent when it exits, so the gate must pass silently
+echo "running $$ 100" > "$GD/run/w1.status"
+runjson() { HOUT=$(printf '%s' "$1" | "$gate" 2>"$HERR"); HRC=$?; }
+hold() { # label, payload -> today's hold: rc 0, JSON status, counter 1
+  rm -f "$CNT"; runjson "$2"
+  ok "$1 holds as today (JSON status, counter 1)" '[ $HRC -eq 0 ] && printf "%s" "$HOUT" | validjson && [ "$(cat "$CNT" 2>/dev/null)" = 1 ]'
+}
+WAITER='{"session_id":"sess-A","stop_hook_active":false,"last_assistant_message":"waiting","background_tasks":[{"id":"b05evwo8o","type":"shell","status":"running","description":"Wait for workers","command":"DEVKIT_WAIT=3600 bin/reconcile --wait --session sess-A"}],"session_crons":[]}'
+rows_before=$(wc -l < "$GD/ledger.tsv")
+echo 2 > "$CNT"
+runjson "$WAITER"
+ok "tracked waiter ends the turn silently (exit 0, no output)" '[ $HRC -eq 0 ] && [ -z "$HOUT" ] && [ ! -s "$HERR" ]'
+ok "tracked waiter leaves the block counter alone"             '[ "$(cat "$CNT")" = 2 ]'
+ok "tracked waiter writes no ledger row"                       '[ "$(wc -l < "$GD/ledger.tsv")" -eq "$rows_before" ]'
+hold "background_tasks empty"            '{"session_id":"sess-A","background_tasks":[]}'
+hold "another running shell"             '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"shell","status":"running","description":"Run sleep 25 in background","command":"sleep 25"}]}' # sleep-ok: payload text, nothing sleeps
+hold "waiter command but status done"    '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"shell","status":"completed","description":"waited","command":"bin/reconcile --wait --session sess-A"}]}'
+hold "waiter command but type subagent"  '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"subagent","status":"running","description":"waited","command":"bin/reconcile --wait --session sess-A"}]}'
+hold "waiter text only in description"   '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"shell","status":"running","description":"run bin/reconcile --wait","command":"sleep 25"}]}'
+hold "running and waiter in two objects" '{"session_id":"sess-A","background_tasks":[{"id":"a","type":"shell","status":"running","description":"sleep","command":"sleep 25"},{"id":"b","type":"shell","status":"completed","description":"wait","command":"bin/reconcile --wait --session sess-A"}]}'
+# a nested object is not a flat task: the fields must sit in the task object itself
+hold "waiter command under a nested meta" '{"session_id":"sess-A","background_tasks":[{"type":"shell","command":"bin/reconcile --wait --session sess-A","meta":{"status":"running"},"status":"completed"}]}'
+hold "type, status and command split by a nested meta" '{"session_id":"sess-A","background_tasks":[{"command":"bin/reconcile --wait --session sess-A","meta":{"type":"shell","status":"running"},"status":"failed","type":"agent"}]}'
+hold "waiter command under a nested extra" '{"session_id":"sess-A","background_tasks":[{"type":"shell","status":"running","extra":{"command":"bin/reconcile --wait --session sess-A"}}]}'
+hold "shell type under a nested info"     '{"session_id":"sess-A","background_tasks":[{"type":"agent","status":"running","command":"bin/reconcile --wait --session sess-A","info":{"type":"shell"}}]}'
+rm -f "$CNT"; echo 2 > "$CNT"
+runjson '{"session_id":"sess-A","background_tasks":[{"id":"a","type":"shell","status":"running","description":"Run sleep 25 in background","command":"sleep 25"},{"id":"b","type":"shell","status":"running","description":"Wait for workers","command":"DEVKIT_WAIT=3600 bin/reconcile --wait --session sess-A"}]}' # sleep-ok: payload text, nothing sleeps
+ok "waiter beside another running shell still ends the turn silently" '[ $HRC -eq 0 ] && [ -z "$HOUT" ] && [ ! -s "$HERR" ] && [ "$(cat "$CNT")" = 2 ]'
+rm -f "$CNT"; runhook sess-A
+ok "background_tasks absent holds as today" '[ $HRC -eq 0 ] && printf "%s" "$HOUT" | validjson && [ "$(cat "$CNT")" = 1 ]'
+long=$(printf '%1000s' '' | tr ' ' x)
+hold "truncated background_tasks array"  '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"shell","status":"running","command":"bin/reconcile --wait'
+hold "background_tasks key with no brackets" '{"session_id":"sess-A","background_tasks":}'
+hold "a command containing a bracket"    '{"session_id":"sess-A","background_tasks":[{"id":"x","type":"shell","status":"running","description":"odd","command":"echo ]"},{"id":"w","type":"shell","status":"running","description":"wait","command":"bin/reconcile --wait --session sess-A"}]}'
+hold "a very long command"               "{\"session_id\":\"sess-A\",\"background_tasks\":[{\"id\":\"x\",\"type\":\"shell\",\"status\":\"running\",\"command\":\"$long\"}]}"
 
 echo "$pass passed, $fail failed"; [ $fail -eq 0 ]

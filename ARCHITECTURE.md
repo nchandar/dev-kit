@@ -129,7 +129,7 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 | `DEVKIT_GRACE` | 10 | Seconds an interactive worker may keep writing after its handoff appears |
 | `DEVKIT_NUDGE_WAIT` | 20 | Seconds after launch an interactive worker may go without a task list on screen before spawn re-sends the checklist instruction once (ledgered as `nudge`); 0 disables |
 | `DEVKIT_IDLE_WAIT` | 60 | Seconds an interactive worker may sit idle with no final handoff (one ending in `## Checklist`) before spawn nudges it once (ledgered as `nudge`); idle that long again fails the run as `idle without final handoff`; 0 disables and an idle agent with any handoff counts as done |
-| `DEVKIT_WAIT` | 100 | Seconds `reconcile --wait` polls before giving up (exit 1); under the Bash tool's 120 s default timeout, so repeat it |
+| `DEVKIT_WAIT` | 100 | Seconds `reconcile --wait` polls before giving up (exit 1); raise it (`DEVKIT_WAIT=3600`) for the one host-tracked background waiter the stop gate asks for; a detached `nohup`/`&` run is untracked and never wakes you |
 | `DEVKIT_GATE_POLL` | 5 | Seconds between `reconcile --wait` polls |
 | `DEVKIT_VIEW_CLOSE_DELAY` | 2 | Seconds a finished worker's tab stays open before it closes |
 | `DEVKIT_DEPTH` | parent depth + 1 in workers (main agent is 0) | `spawn` refuses at `DEVKIT_MAX_DEPTH` (exit 3) |
@@ -170,8 +170,10 @@ Defaults live in `bin/defaults` (an env var of the same name overrides it); `tes
 - With opencode installed or configured, also symlinks `opencode/commands/dev-mode.md` into `~/.config/opencode/commands/dev-mode.md`, so its picker shows one `/dev-mode` command that routes through dev-mode. A leftover `/dev` symlink pointing at this repo is removed on install; real files and other links stay. When the config is a symlink, the `experimental.todo` write goes through the resolved target and keeps its mode (a 0600 config stays 0600); the link is never replaced by a copy.
 
 ### 3.9 Parent Stop gate (`bin/stop-gate`)
-- Holds: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row.
+- Holds: a parent Claude session ending its turn while a worker it spawned is running or finished without an `accept` ledger row newer than its last `spawn` row, except while a tracked waiter runs (next bullet).
+- Waiter exception: one `background_tasks` object with `"type":"shell"`, `"status":"running"` and a `"command"` containing `reconcile --wait` passes silently: exit 0, no output, counter untouched, no ledger row, since its exit re-invokes the agent; a missing field, a nested object or any parse doubt holds.
 - Output: exit 0 and one JSON object on stdout, `hookSpecificOutput.additionalContext` = a calm status: next step first, then `  <id> <state>  task=<task>` lines and `check n of 3`. Claude Code shows it as hook feedback, not a hook error.
+- Wait: the next step asks for ONE host-tracked background waiter, `DEVKIT_WAIT=3600 bin/reconcile --wait --session <sid>` (Claude Code: Bash `run_in_background`; its exit re-invokes the agent).
 - Escape hatch: `DEVKIT_STOP_GATE_FORMAT=exit2` restores the old exit 2 plus stderr form, for a harness that does not know `additionalContext` (there the turn would simply end). The default stays `additionalContext`.
 - Budget: 3 holds in a row (under Claude's cap of 8), then fail-open with a stderr warning and a ledger row `gate fail-open`; the counter resets when the gate clears. Anything unexpected also fails open with a stderr line: no executable `ledger` beside the script (symlinked file), malformed input or no `session_id`, a `session_id` outside `A-Za-z0-9_-`, or `reconcile --gate` exiting other than 1. The ledger row goes to every task with outstanding workers.
 - Scoping: `bin/spawn` writes `run/<id>.session` from `CLAUDE_CODE_SESSION_ID`; the hook's `session_id` selects only that session's workers.
