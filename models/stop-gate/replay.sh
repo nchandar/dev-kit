@@ -71,7 +71,7 @@ export DEVKIT_DIR="$SC/dk" DEVKIT_MODE=headless DEVKIT_VIEW=off DEVKIT_TIMEOUT=0
        CLAUDE_CODE_SESSION_ID=sess PATH="$SC:$PATH"
 mkdir -p "$SC/dk/run"
 T=; sp=
-newtask() { T=$("$SC/bin/ledger" start "$1" x); export DEVKIT_TASK=$T; rm -f "$DEVKIT_DIR/run/gate-sess.count"; }
+newtask() { T=$("$SC/bin/ledger" start "$1" x); export DEVKIT_TASK=$T; rm -f "$DEVKIT_DIR/run/gate-sess.count" "$DEVKIT_DIR"/fakepid.*; } # a stale pid file made waitfake return early (C6 flake)
 status() { cut -d' ' -f1 "$DEVKIT_DIR/tasks/$T/run/$1.status" 2>/dev/null; }
 waitfor() { local i; for i in $(seq 1 400); do [ "$(status "$1")" = "$2" ] && return 0; sleep 0.05; done; echo "  (timeout waiting $1=$2)"; return 1; } # sleep-ok: bounded poll
 waitfake() { local i; for i in $(seq 1 400); do [ -e "$DEVKIT_DIR/fakepid.$1" ] && return 0; sleep 0.05; done; return 1; } # sleep-ok: bounded poll
@@ -79,7 +79,7 @@ waithandoff() { local i; for i in $(seq 1 400); do [ -s "$DEVKIT_DIR/tasks/$T/ha
 waitrow() { local i; for i in $(seq 1 400); do rows | grep -q "$1" && return 0; sleep 0.05; done; return 1; } # sleep-ok: bounded poll
 rows() { cut -f2,3 "$DEVKIT_DIR/tasks/$T/ledger.tsv" 2>/dev/null | tail -n +2; }
 gate() { out=$("$SC/bin/reconcile" --gate -t "$T" 2>&1); grc=$?; }
-hook() { hout=$(printf '{"session_id":"sess"}' | "$SC/bin/stop-gate" 2>&1); hrc=$?; }
+hook() { hout=$(printf '{"session_id":"sess"}' | "$SC/bin/stop-gate" 2>&1); hrc=$?; held=0; case $hout in *additionalContext*) held=1;; esac; } # default form holds with rc 0 and additionalContext (stop-gate:3-5)
 start_held() { local id=$1; : > "$SC/hold.$id"; FAKE_ID=$id FAKE_HOLD="$SC/hold.$id" "$SC/bin/$2" "$id" fake "$SC/brief.md" > "$SC/$id.out" 2>&1 & sp=$!; waitfor "$id" running; }
 start_plain() { local id=$1; FAKE_ID=$id "$SC/bin/$2" "$id" fake "$SC/brief.md" > "$SC/$id.out" 2>&1 & sp=$!; }
 release() { rm -f "$SC/hold.$1"; wait "$sp" 2>/dev/null; sp=; }
@@ -89,7 +89,7 @@ echo "## C1 R1/R5: the running check blocks a stop even with an accept row (reco
 newtask c1; start_held w1 spawn
 accept w1; ok "C1: an accept can be appended while the worker runs" 'rows | grep -q "w1 accepted"'
 gate; ok "C1: the gate still reports it running" '[ $grc -eq 1 ] && printf "%s" "$out" | grep -q "w1 running"'
-hook; ok "C1: the stop hook blocks (rc 2)" '[ $hrc -eq 2 ]'
+hook; ok "C1: the stop hook holds (additionalContext, rc 0)" '[ $hrc -eq 0 ] && [ $held -eq 1 ]'
 release w1; gate; ok "C1: after the exit row, the mid-run accept is stale" '[ $grc -eq 1 ] && printf "%s" "$out" | grep -q "w1 done, unaccepted"'
 accept w1; gate; ok "C1: a fresh accept clears the gate" '[ $grc -eq 0 ] && [ -z "$out" ]'
 
@@ -124,9 +124,9 @@ wait "$sp"; sp=; gate; ok "C3b broken order: the exit row then invalidates it (N
 
 echo "## C4 R4: fail-open only after the 3 blocks (stop-gate:17-27)"
 newtask c4; start_held w1 spawn
-hook; r1=$hrc; hook; r2=$hrc; hook; r3=$hrc; hook; r4=$hrc
-ok "C4: the first three stops are blocked (rc 2,2,2)" '[ "$r1$r2$r3" = 222 ]'
-ok "C4: the fourth fails open (rc 0)" '[ "$r4" -eq 0 ]'
+hook; r1=$held; hook; r2=$held; hook; r3=$held; hook; r4=$held; r4rc=$hrc
+ok "C4: the first three stops are held" '[ "$r1$r2$r3" = 111 ]'
+ok "C4: the fourth fails open (rc 0, no hold)" '[ "$r4" -eq 0 ] && [ "$r4rc" -eq 0 ]'
 ok "C4: the fail-open is ledgered" 'rows | grep -q "fail-open"'
 release w1
 
